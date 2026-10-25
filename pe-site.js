@@ -1689,6 +1689,46 @@ try {
     body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Paste each into the image’s alt text in Squarespace, and check it first.'));
   }
 
+  /* ---------- Moving the panel ---------- */
+
+  // The panel and pill share one spot, measured from the bottom-right corner of the window
+  var pos = { r: 16, b: 16 };
+  function place() {
+    if (!panel) return;
+    var w = panel.ownerDocument.defaultView;
+    pos.r = Math.max(0, Math.min(w.innerWidth - 80, pos.r));
+    pos.b = Math.max(0, Math.min(w.innerHeight - 44, pos.b));
+    [panel, pill].forEach(function (e) { e.style.right = pos.r + 'px'; e.style.bottom = pos.b + 'px'; });
+    panel.style.maxHeight = Math.max(160, w.innerHeight - pos.b - 16) + 'px';
+  }
+  // A click does the usual thing; a drag of more than a few pixels moves it instead
+  // onDouble (optional): a double-click does that instead, so the single click waits a moment
+  function movable(handle, onClick, onDouble) {
+    var sx, sy, sr, sb, down = false, moved = false, wait = null;
+    handle.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0) return;
+      down = true; moved = false; sx = e.clientX; sy = e.clientY; sr = pos.r; sb = pos.b;
+      try { handle.setPointerCapture(e.pointerId); } catch (x) {}
+    });
+    handle.addEventListener('pointermove', function (e) {
+      if (!down) return;
+      var dx = e.clientX - sx, dy = e.clientY - sy;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      moved = true; pos.r = sr - dx; pos.b = sb - dy; place();
+    });
+    handle.addEventListener('pointerup', function () {
+      if (!down) return;
+      down = false;
+      if (moved) ls('pe-ck-pos', JSON.stringify(pos));
+    });
+    handle.addEventListener('click', function (e) {
+      if (moved) { moved = false; e.preventDefault(); return; }
+      if (!onDouble) return onClick();
+      if (wait) { clearTimeout(wait); wait = null; return onDouble(); }
+      wait = setTimeout(function () { wait = null; onClick(); }, 250);
+    });
+  }
+
   /* ---------- Build ---------- */
 
   function build() {
@@ -1702,10 +1742,11 @@ try {
     panel.className = 'pe-checklist';
     head = el('button', 'display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid #eceef1;background:none;font:700 14px ' + F + ';cursor:pointer;color:#222;');
     head.type = 'button';
-    head.title = 'Shrink';
+    head.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     head.appendChild(el('span'));
     head.appendChild(el('span'));
-    head.onclick = function () { mode = 'pill'; draw(); };
+    head.style.cursor = 'move';
+    head.style.touchAction = 'none';
     list = el('div', 'padding:2px 14px 12px;');
     panel.appendChild(head);
     panel.appendChild(list);
@@ -1717,7 +1758,10 @@ try {
     pill.title = 'Pre-publish checks';
     pill.appendChild(el('span'));
     pill.appendChild(el('span'));
-    pill.onclick = function () { mode = 'open'; draw(); };
+    pill.style.cursor = 'move';
+    pill.style.touchAction = 'none';
+    movable(head, function () { mode = 'pill'; draw(); }, function () { pos = { r: 16, b: 16 }; ls('pe-ck-pos', ''); place(); });
+    movable(pill, function () { mode = 'open'; draw(); });
 
     // Like the drawer, the panel goes in the editor window itself, so the Edit Post window
     // and Squarespace's toolbars can't cover it
@@ -1731,6 +1775,9 @@ try {
     }
     doc.body.appendChild(panel);
     doc.body.appendChild(pill);
+    try { var saved = JSON.parse(ls('pe-ck-pos') || 'null'); if (saved && saved.r >= 0 && saved.b >= 0) pos = saved; } catch (e) {}
+    place();
+    doc.defaultView.addEventListener('resize', place);
     draw();
     checkSchedule().then(function () { call({ post: post }); setTimeout(refreshAuto, 1200); });
     setInterval(function () { if (!document.hidden) { checkSchedule().then(refreshAuto); call({ post: post }); } }, 30000);
