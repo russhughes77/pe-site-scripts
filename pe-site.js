@@ -8,7 +8,8 @@
 /* ================================================================
  * Production Expert: blog post date format
  * Rewrites the date on single posts from US MM.DD.YY to "October 23, 2026",
- * so Google reads it correctly. Collection pages are not affected.
+ * so Google reads it correctly. Blog list and category pages get the same format,
+ * keeping their day name: "Monday 10.05.26" becomes "Monday, October 5, 2026".
  * ================================================================ */
 try {
 (function () {
@@ -20,9 +21,7 @@ try {
   }
 
   function fixPostDates() {
-    // Individual blog posts only
-    if (!document.body.classList.contains('view-item')) return;
-
+    // Single posts and blog list pages (main blog, category and tag pages)
     var els = document.querySelectorAll(
       'article time, .blog-item-wrapper time, .entry-dateline time, time.published, time.dt-published'
     );
@@ -46,6 +45,9 @@ try {
       }
 
       if (out) {
+        // List pages put the day name first ("Monday 10.05.26"): keep it
+        var day = el.textContent.trim().match(/^(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)\b/);
+        if (day) out = day[1] + ', ' + out;
         el.textContent = out;
         el.dataset.dateFixed = '1';
       }
