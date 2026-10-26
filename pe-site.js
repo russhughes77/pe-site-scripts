@@ -1158,7 +1158,10 @@ try {
     list.appendChild(el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eceef1;color:#888;font:11px/1.5 ' + F + ';',
       'Squarespace says: status ' + (wfN || 'unknown') + ({ 1: ' (published)', 2: ' (scheduled)', 3: ' (needs review)', 4: ' (draft)' }[wfN] || '') +
       (pOn ? ', date ' + new Date(pOn).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : ', no date') +
-      '. Asked at ' + location.pathname + (statusErr ? '. Error: ' + statusErr : '') + '.'));
+      '. Asked at ' + location.pathname + (statusErr ? '. Error: ' + statusErr : '') + '.' +
+      // What Squarespace stores for the Share tab, so the social share check can be confirmed
+      ' Share: ' + JSON.stringify(Object.keys(postData).filter(function (k) { return /share|social|push/i.test(k); })
+        .reduce(function (o, k) { o[k] = postData[k]; return o; }, {})).slice(0, 300) + '.'));
     if (reportErr) list.appendChild(el('div', 'margin-top:10px;padding:7px 9px;border-radius:4px;background:#fdecea;color:' + C.red + ';font:12px/1.4 ' + F + ';',
       'The Content Manager did not update: ' + reportErr + '. It will try again in 30 seconds.'));
     warning(c.warn || (scheduledFor > Date.now() && c.autoWarn), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn);
@@ -1400,6 +1403,36 @@ try {
     var hero = a.querySelector('.promoted-block-image img, .entry-header img') ||
       Array.prototype.slice.call(body.querySelectorAll('.sqs-block')).slice(0, 6).filter(function (b) { return /image-block|gallery-block/.test(b.className); })[0];
     out.push(hero ? { ok: true, text: 'Hero image in place' } : { ok: false, text: 'No hero image, so search results will show no picture' });
+
+    // 6b and 6c only apply before a post goes live (status 1 is published). Older live posts
+    // were written before these rules, and flagging them would fill the Content Manager with
+    // "Live with issues" for posts nobody needs to change.
+    if ((+postData.workflowState || 0) !== 1) {
+      // 6b. Image source: the credit for the article's pictures goes in the Source URL box
+      // on the post's Options tab, which Squarespace saves as sourceUrl
+      if (imgs.length || hero) {
+        out.push(String(postData.sourceUrl || '').trim()
+          ? { ok: true, text: 'Image source added' }
+          : { ok: false, text: 'No image source. Add it in the Source URL box on the Options tab' });
+      }
+
+      // 6c. Social share: the slider in the Share tab must be on. Squarespace keeps the
+      // accounts switched on for an unpublished post in pendingPushedServices, as
+      // { "facebook-123": true }, so an empty list means the slider is off.
+      var pend = postData.pendingPushedServices || {};
+      var shareOn = Object.keys(pend).some(function (k) { return !!pend[k]; });
+      // The share text: Squarespace may keep it inside each account's entry or in its own
+      // field, so look for any non-empty text in either place
+      var shareText = Object.keys(pend).map(function (k) { return pend[k]; })
+        .concat(Object.keys(postData).filter(function (k) { return /share|social|push/i.test(k); }).map(function (k) { return postData[k]; }))
+        .map(function (v) { return typeof v === 'string' ? v : (v && typeof v === 'object' ? (v.text || v.message || v.body || '') : ''); })
+        .filter(function (t) { return String(t).trim(); })[0] || '';
+      if (!shareOn) out.push({ ok: false, text: 'Social share is off. Turn on the slider in the Share tab and add the share text' });
+      // Until we've confirmed where Squarespace keeps the text, this stays a reminder rather
+      // than a warning, so it can't hold a finished post back from "Ready to schedule"
+      else if (!shareText) out.push({ ok: true, text: 'Social share on. Check the share text is filled in on the Share tab' });
+      else out.push({ ok: true, text: 'Social share on, with share text' });
+    }
 
     // 7. Internal links that lead nowhere (other sites can't be checked from the page)
     var links = Array.prototype.filter.call(body.querySelectorAll('a[href]'), function (l) {
