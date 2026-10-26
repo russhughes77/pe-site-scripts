@@ -2556,6 +2556,40 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: free site search, plus search tracking', e); }
 
 /* ================================================================
+ * Production Expert: hide tags from readers, keep tag pages out of Google
+ * - The "tags:" line under each post is hidden. The links stay in the page, because other
+ *   sections read them (Related Content cards match on tag links). Categories stay visible.
+ * - Tag archive pages (any address with ?tag=) tell Google not to index them, while still
+ *   following their links. Google reads tags added by script when it renders the page.
+ *   Category pages are left as they are.
+ * ================================================================ */
+try {
+(function () {
+  // 1. Hide the tags line. A style rule, so it also covers posts loaded later by Squarespace.
+  var st = document.createElement('style');
+  st.textContent = 'article footer .meta .tags{display:none!important}';
+  document.head.appendChild(st);
+
+  // 2. noindex on tag pages. Runs on every page load, including Squarespace's in-page loads.
+  function noindexTags() {
+    var tagPage = /[?&]tag=/.test(location.search);
+    var m = document.querySelector('meta[name="robots"][data-pe-tag]');
+    if (tagPage && !m) {
+      m = document.createElement('meta');
+      m.name = 'robots';
+      m.content = 'noindex, follow';
+      m.setAttribute('data-pe-tag', '1');   // ours, so it can be taken away on other pages
+      document.head.appendChild(m);
+    } else if (!tagPage && m) {
+      m.parentNode.removeChild(m);
+    }
+  }
+  noindexTags();
+  addEventListener('mercury:load', noindexTags);
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: hide tags and noindex tag pages', e); }
+
+/* ================================================================
  * Production Expert: placement for the top-of-article boxes
  * Puts the partner label, read time badge and contents box in one fixed order:
  * - If the article body opens with a hero image (with or without notes above it),
