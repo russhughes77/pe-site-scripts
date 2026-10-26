@@ -1577,7 +1577,7 @@ try {
     drawerHead.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     drawerChev = el('span', 'flex:0 0 auto;width:12px;color:#888;font-size:12px;', '▾');
     drawerHead.appendChild(drawerChev);
-    drawerHead.appendChild(el('span', 'flex:1;', 'Help me write'));
+    drawerHead.appendChild(el('span', 'flex:1;font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:inherit;', 'Help me write')); // capitals, like Squarespace's headers
     var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;font-weight:400;line-height:1;cursor:pointer;color:#8a9097;padding:0 2px;', '×');
     x.type = 'button';
     x.className = 'pe-x';
@@ -1886,7 +1886,8 @@ try {
     head.type = 'button';
     head.className = 'pe-ck-head';
     head.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
-    head.appendChild(el('span'));
+    // Title in small capitals with wide spacing, matching Squarespace's own window headers (EDIT POST)
+    head.appendChild(el('span', 'font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:inherit;'));
     head.appendChild(el('span', 'flex:0 0 auto;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;')); // the 2/4 count
     head.style.cursor = 'move';
     head.style.touchAction = 'none';
