@@ -2599,11 +2599,15 @@ try {
     '.pe-cats-list{display:flex;flex-wrap:wrap;gap:6px}' +
     '.pe-cats-list a{background:#f1f2f4;color:#333!important;font-size:13px;line-height:1.4;padding:5px 11px;border-radius:4px;text-decoration:none!important;border:0!important}' +
     '.pe-cats-list a:hover{background:#e6e8eb;color:#006EB3!important}' +
-    '.pe-cats-list a.pe-cat-more{display:none}';
+    '.pe-cats-list a.pe-cat-more{display:none}' +
+    // On list pages the chips sit under each excerpt, so less space around them
+    'body:not(.view-item) .pe-cats{margin:14px 0 18px}' +
+    // On a category page, that category's chip is picked out in brand blue
+    '.pe-cats-list a.pe-cat-here{background:#e3eef7;color:#006EB3!important}';
   document.head.appendChild(cs);
 
   function chipCategories() {
-    if (!document.body.classList.contains('view-item')) return;   // single articles only
+    // Runs on single articles and on blog list pages (the main blog and category/tag pages)
     document.querySelectorAll('article footer .meta .categories').forEach(function (box) {
       if (box.classList.contains('pe-cats')) return;               // already done
       var links = Array.prototype.slice.call(box.querySelectorAll('a'));
@@ -2618,8 +2622,12 @@ try {
         if (!best[key] || caps(a) > caps(best[key])) best[key] = a;
       });
       var shown = 0;
+      // The category this page is showing, if any (?category=Computer), in lower case
+      var here = (location.search.match(/[?&]category=([^&]*)/) || [])[1];
+      here = here ? decodeURIComponent(here.replace(/\+/g, ' ')).toLowerCase() : '';
       links.forEach(function (a) {
         var key = a.textContent.trim().toLowerCase();
+        if (here && key === here) a.classList.add('pe-cat-here');
         if (best[key] !== a || shown >= 3) a.classList.add('pe-cat-more');   // duplicate or over three
         else shown++;
         list.appendChild(a);
