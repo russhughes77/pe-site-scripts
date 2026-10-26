@@ -1029,7 +1029,9 @@ try {
     metaMax: 160,
     titleMax: 60,   // SEO title length Google shows before cutting off
   };
-  var F = '"Open Sans",sans-serif';
+  // Font for the team panels. 'PE UI Sans' is Open Sans loaded by styleUp() under a private name;
+  // the plain 'Open Sans' after it covers the moment before that has loaded.
+  var F = "'PE UI Sans','Open Sans',sans-serif";
 
   function ls(k, v) {
     try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; }
@@ -1150,7 +1152,7 @@ try {
     drawProblems();
     drawChecks();
     if (stage === 'Draft' || stage === 'In review' || stage === 'Checks in progress') {
-      var hw = el('button', 'display:block;width:100%;margin-top:10px;padding:8px;border:1px solid #d5d8dc;border-radius:5px;background:#fff;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Help me write');
+      var hw = el('button', 'display:block;width:100%;margin-top:12px;padding:9px;border:1px solid #dde1e6;border-radius:6px;background:#f7f9fb;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Help me write');
       hw.type = 'button';
       hw.onclick = function () { openDrawer(); };
       list.appendChild(hw);
@@ -1181,15 +1183,15 @@ try {
   }
 
   function sectionLabel(text, colour) {
-    return el('div', 'margin:8px 0 3px;font:700 11px ' + F + ';letter-spacing:.05em;text-transform:uppercase;color:' + (colour || '#777') + ';', text);
+    return el('div', 'margin:12px 0 4px;font:700 10.5px/1.4 ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:' + (colour || '#7a8088') + ';', text);
   }
 
   function drawStale(c) {
     if (!c.stale) return;
-    var note = el('div', 'margin:8px 0 4px;padding:8px 10px;border-radius:4px;background:#fff4e0;color:#5a3a00;font-size:13px;line-height:1.4;');
+    var note = el('div', 'margin:10px 0 4px;padding:10px 12px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:13px;line-height:1.45;');
     var at = new Date(editedAt).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     note.appendChild(document.createTextNode('Edited ' + at + ', after these checks were ticked. Untick anything that needs another look, or confirm they still hold.'));
-    var ok = el('button', 'display:block;margin-top:8px;padding:6px 12px;border:0;border-radius:4px;background:' + C.amber + ';color:#fff;font:700 13px ' + F + ';cursor:pointer;', 'Checks still OK');
+    var ok = el('button', 'display:block;margin-top:8px;padding:7px 13px;border:0;border-radius:6px;background:' + C.amber + ';color:#fff;font:700 13px ' + F + ';cursor:pointer;', 'Checks still OK');
     ok.type = 'button';
     ok.onclick = function () {
       ok.disabled = true;
@@ -1215,7 +1217,7 @@ try {
       row.appendChild(t);
       var fix = /^(alt|meta|headlines)$/.test(r.kind || '') ? r.kind : null;
       if (fix) {
-        var b = el('button', 'flex:0 0 auto;padding:2px 7px;border:1px solid #e3c79a;border-radius:3px;background:#fff;font:600 11px ' + F + ';color:#5a3a00;cursor:pointer;', 'Suggest');
+        var b = el('button', 'flex:0 0 auto;padding:2px 8px;border:1px solid #e3c79a;border-radius:5px;background:#fff;font:600 11px/1.6 ' + F + ';color:#5a3a00;cursor:pointer;', 'Suggest');
         b.type = 'button';
         b.onclick = function () { openDrawer(fix); };
         row.appendChild(b);
@@ -1225,8 +1227,8 @@ try {
   }
 
   function checkRow(item, s) {
-    var row = el('label', 'display:flex;align-items:center;gap:8px;padding:4px 0;cursor:pointer;');
-    var box = el('input', 'width:16px;height:16px;accent-color:' + C.blue + ';');
+    var row = el('label', 'display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13.5px;cursor:pointer;');
+    var box = el('input', 'flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:' + C.blue + ';');
     box.type = 'checkbox';
     box.checked = !!s.done;
     box.onchange = function () {
@@ -1236,7 +1238,7 @@ try {
     };
     row.appendChild(box);
     row.appendChild(el('span', 'flex:1;', item));
-    row.appendChild(el('span', 'font-size:11px;color:#777;', s.done && s.by ? s.by : ''));
+    row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', s.done && s.by ? s.by : '')); // initials of whoever ticked it
     return row;
   }
 
@@ -1248,12 +1250,12 @@ try {
       todo.forEach(function (i) {
         list.appendChild(checkRow(i, state[i] || {}));
         // Squarespace doesn't let the page see the Share tab, so social share is a reminder here
-        if (i === 'Schedule') list.appendChild(el('div', 'margin:-2px 0 4px 24px;color:#888;font:12px/1.4 ' + F + ';',
+        if (i === 'Schedule') list.appendChild(el('div', 'margin:-2px 0 4px 25px;color:#80868d;font:12px/1.45 ' + F + ';',
           'Before ticking: check the social share slider is on in the Share tab'));
       });
     }
     if (done.length) {
-      var t = el('div', 'display:flex;gap:6px;align-items:center;margin-top:6px;padding:3px 0;font:13px ' + F + ';color:#666;cursor:pointer;',
+      var t = el('div', 'display:flex;gap:6px;align-items:center;margin-top:8px;padding:3px 0;font:600 12.5px ' + F + ';color:' + C.green + ';cursor:pointer;',
         '✓ ' + done.length + ' done ' + (showDone ? '▴' : '▾'));
       t.onclick = function () { showDone = !showDone; draw(); };
       list.appendChild(t);
@@ -1475,6 +1477,45 @@ try {
     return document;
   }
 
+  /* ---------- Look of the team panels ----------
+   * The checklist and Help me write sit in Squarespace's editor window, which never loads the
+   * site's fonts, so they fell back to Arial or Helvetica. And the site itself only loads Open Sans
+   * at 400 and 800, so the panels' 600 and 700 weights came out at 800.
+   * styleUp() fixes both, for the team only: it loads Open Sans (300 to 800) into whichever window
+   * the panels are in, renamed 'PE UI Sans' so the extra weights never change how articles look,
+   * then adds the few styles inline CSS can't do: hover, keyboard focus, thin scrollbars.
+   * If the editor ever refuses the font or the stylesheet, the panels simply look as before. */
+  var UI_CSS =
+    '.pe-checklist,.pe-checklist-pill,.pe-drawer,.pe-schedule-warning{-webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;text-rendering:optimizeLegibility}' +
+    // Squarespace's editor styles its own buttons and inputs; this stops that reaching ours
+    '.pe-checklist *,.pe-checklist-pill *,.pe-drawer *{font-family:inherit!important;box-sizing:border-box}' +
+    '.pe-checklist button,.pe-checklist-pill,.pe-drawer button{transition:filter .12s,background-color .12s,box-shadow .12s}' +
+    // a slight darken on hover; the title bars are left alone because they're drag handles
+    '.pe-checklist button:not(.pe-ck-head):hover,.pe-drawer button:not(.pe-x):hover,.pe-checklist-pill:hover{filter:brightness(.95)}' +
+    '.pe-drawer .pe-x:hover{color:#222!important}' +
+    '.pe-checklist button:focus-visible,.pe-checklist input:focus-visible,.pe-checklist-pill:focus-visible,.pe-drawer button:focus-visible{outline:2px solid ' + C.blue + ';outline-offset:2px}' +
+    '.pe-checklist,.pe-drawer *{scrollbar-width:thin;scrollbar-color:#cfd4da transparent}';
+
+  function styleUp(doc) {
+    if (!doc || doc.getElementById('pe-ui-style')) return;
+    var head = doc.head || doc.documentElement;
+    var css = doc.createElement('style');
+    css.id = 'pe-ui-style';
+    css.textContent = UI_CSS;
+    head.appendChild(css);
+    // Google's stylesheet for Open Sans, with the family renamed before it goes in the page
+    fetch('https://fonts.googleapis.com/css2?family=Open+Sans:wght@300..800&display=swap')
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (t) {
+        if (!t) return;
+        var font = doc.createElement('style');
+        font.id = 'pe-ui-font';
+        font.textContent = t.replace(/font-family:\s*'Open Sans'/g, "font-family:'PE UI Sans'");
+        head.appendChild(font);
+      })
+      .catch(function () {}); // no font: the panels fall back to Open Sans or the system font
+  }
+
   // Squarespace closes the Edit Post window on any click outside it. Clicks, taps and keys inside
   // our panel and drawer stay inside them, and buttons don't take focus away from the window.
   function shield(box) {
@@ -1532,13 +1573,14 @@ try {
   // The title bar is built once, so a drag isn't cut short when suggestions arrive and the
   // rest of the window is redrawn underneath it
   function buildDrawerHead() {
-    drawerHead = el('div', 'display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:700;font-size:15px;cursor:move;touch-action:none;user-select:none;');
+    drawerHead = el('div', 'display:flex;align-items:center;gap:8px;padding:12px 16px;font-weight:700;font-size:15px;line-height:1.3;cursor:move;touch-action:none;user-select:none;');
     drawerHead.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     drawerChev = el('span', 'flex:0 0 auto;width:12px;color:#888;font-size:12px;', '▾');
     drawerHead.appendChild(drawerChev);
     drawerHead.appendChild(el('span', 'flex:1;', 'Help me write'));
-    var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#666;padding:0 2px;', '×');
+    var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;font-weight:400;line-height:1;cursor:pointer;color:#8a9097;padding:0 2px;', '×');
     x.type = 'button';
+    x.className = 'pe-x';
     x.setAttribute('aria-label', 'Close');
     x.title = 'Close';
     x.onclick = function () { drawer.style.display = 'none'; };
@@ -1558,7 +1600,8 @@ try {
     if (drawer && !drawer.isConnected) drawer = null;
     if (!drawer) {
       drawer = el('div', 'position:fixed;z-index:10002;max-width:calc(100vw - 16px);display:flex;flex-direction:column;overflow:hidden;' +
-        'background:#fff;border-top:4px solid ' + C.blue + ';border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:14px/1.45 ' + F + ';color:#222;');
+        'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 16px 40px rgba(17,24,39,.16),0 2px 6px rgba(17,24,39,.06);' +
+        'font:14px/1.5 ' + F + ';color:#222;');
       drawer.className = 'pe-drawer';
       drawer.appendChild(buildDrawerHead());
       // everything under the title bar: tabs and the scrolling content
@@ -1566,6 +1609,7 @@ try {
       drawer.appendChild(drawerInner);
       shield(drawer);
       var doc = hostDoc();
+      styleUp(doc);
       if (doc !== document) {
         drawer.style.zIndex = '2147483000';
         doc.querySelectorAll('.pe-drawer').forEach(function (d) { d.remove(); }); // one left from another post
@@ -1603,7 +1647,7 @@ try {
   function lengthNote(text, min, max) {
     var n = text.length;
     var bad = (max && n > max) || (min && n < min);
-    return el('span', 'flex:0 0 auto;font-size:11px;color:' + (bad ? C.amber : '#888') + ';', n + (max ? '/' + max : ''));
+    return el('span', 'flex:0 0 auto;padding-top:2px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:' + (bad ? C.amber : '#8a9097') + ';', n + (max ? '/' + max : ''));
   }
 
   function suggestWrite(task, more) {
@@ -1640,14 +1684,14 @@ try {
   }
 
   function copyButton(text) {
-    var b = el('button', 'flex:0 0 auto;padding:3px 9px;border:1px solid #ccd;border-radius:4px;background:#fff;font:600 11px ' + F + ';cursor:pointer;', 'Copy');
+    var b = el('button', 'flex:0 0 auto;padding:3px 10px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:600 11.5px/1.6 ' + F + ';color:#333;cursor:pointer;', 'Copy');
     b.type = 'button';
     b.onclick = function () { copyText(text, b); };
     return b;
   }
 
   function actionButton(text, onclick, primary) {
-    var b = el('button', 'margin:10px 0;padding:7px 12px;border:' + (primary ? '0' : '1px solid #ccd') + ';border-radius:5px;background:' +
+    var b = el('button', 'margin:12px 0;padding:8px 14px;border:' + (primary ? '1px solid ' + C.blue : '1px solid #d5d9de') + ';border-radius:6px;background:' +
       (primary ? C.blue : '#fff') + ';color:' + (primary ? '#fff' : '#222') + ';font:700 13px ' + F + ';cursor:pointer;', text);
     b.type = 'button';
     b.onclick = onclick;
@@ -1660,11 +1704,11 @@ try {
     var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
     drawerInner.innerHTML = '';
 
-    var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eceef1;border-bottom:1px solid #eceef1;');
+    var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eceef1;border-bottom:1px solid #eceef1;background:#fafbfc;');
     TABS.forEach(function (t) {
       var on = t[0] === drawerTab;
-      var b = el('button', 'padding:5px 10px;border:0;border-radius:5px;background:' + (on ? '#e6f0f8' : 'none') + ';color:' + (on ? C.blue : '#555') +
-        ';font:600 12px ' + F + ';cursor:pointer;', t[1]);
+      var b = el('button', 'padding:5px 11px;border:0;border-radius:999px;background:' + (on ? '#e3eef8' : 'transparent') + ';color:' + (on ? C.blue : '#5a6068') +
+        ';font:' + (on ? 700 : 600) + ' 12.5px ' + F + ';cursor:pointer;', t[1]);
       b.type = 'button';
       b.onclick = function () { drawerTab = t[0]; drawDrawer(); };
       tabs.appendChild(b);
@@ -1679,8 +1723,8 @@ try {
 
   function drawWriteTab(body) {
     var task = drawerTab, cur = currentFor(task), sg = writeSuggest[task] || {};
-    var curBox = el('div', 'margin:12px 0 4px;padding:10px 12px;background:#f6f7f9;border-radius:6px;font-size:13px;');
-    curBox.appendChild(el('div', 'font:700 11px ' + F + ';letter-spacing:.05em;text-transform:uppercase;color:#888;margin-bottom:3px;', cur.label));
+    var curBox = el('div', 'margin:14px 0 4px;padding:10px 12px;background:#f6f7f9;border:1px solid #eceef1;border-radius:6px;font-size:13px;line-height:1.45;');
+    curBox.appendChild(el('div', 'font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;margin-bottom:4px;', cur.label));
     var cv = el('div', 'display:flex;gap:8px;align-items:flex-start;');
     cv.appendChild(el('span', 'flex:1;color:' + (cur.value ? '#222' : '#999') + ';', cur.value || 'None yet'));
     if (cur.value && (cur.max || cur.min)) cv.appendChild(lengthNote(cur.value, cur.min, cur.max));
@@ -1694,8 +1738,8 @@ try {
       return;
     }
     (sg.options || []).forEach(function (o) {
-      var row = el('div', 'display:flex;gap:8px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #eceef1;');
-      row.appendChild(el('span', 'flex:1;', o));
+      var row = el('div', 'display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #eceef1;');
+      row.appendChild(el('span', 'flex:1;line-height:1.5;', o));
       if (task !== 'url') row.appendChild(lengthNote(o, cur.min, cur.max));
       row.appendChild(copyButton(o));
       body.appendChild(row);
@@ -1834,22 +1878,24 @@ try {
     post = ctx.itemId || (a && a.id.replace('article-', ''));
     if (!a || !post || panel || !isTeam()) return;
 
-    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:280px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
-      'background:#fff;border-top:4px solid ' + C.blue + ';border-radius:6px;box-shadow:0 4px 18px rgba(0,0,0,.18);font:14px ' + F + ';color:#222;');
+    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
+      'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 12px 32px rgba(17,24,39,.14),0 2px 6px rgba(17,24,39,.06);' +
+      'font:14px/1.45 ' + F + ';color:#222;');
     panel.className = 'pe-checklist';
-    head = el('button', 'display:flex;justify-content:space-between;gap:10px;width:100%;text-align:left;padding:10px 14px;border:0;border-bottom:1px solid #eceef1;background:none;font:700 14px ' + F + ';cursor:pointer;color:#222;');
+    head = el('button', 'display:flex;justify-content:space-between;align-items:baseline;gap:10px;width:100%;text-align:left;padding:12px 16px 11px;border:0;border-bottom:1px solid #eceef1;background:none;font:700 14px/1.3 ' + F + ';cursor:pointer;color:#222;');
     head.type = 'button';
+    head.className = 'pe-ck-head';
     head.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     head.appendChild(el('span'));
-    head.appendChild(el('span'));
+    head.appendChild(el('span', 'flex:0 0 auto;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;')); // the 2/4 count
     head.style.cursor = 'move';
     head.style.touchAction = 'none';
-    list = el('div', 'padding:2px 14px 12px;');
+    list = el('div', 'padding:2px 16px 14px;');
     panel.appendChild(head);
     panel.appendChild(list);
 
-    pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 14px;border:2px solid ' + C.blue +
-      ';border-radius:20px;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.15);font:700 13px ' + F + ';cursor:pointer;');
+    pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
+      ';border-radius:20px;background:#fff;box-shadow:0 6px 18px rgba(17,24,39,.16);font:700 13px ' + F + ';font-variant-numeric:tabular-nums;cursor:pointer;');
     pill.type = 'button';
     pill.className = 'pe-checklist-pill';
     pill.title = 'Pre-publish checks';
@@ -1865,6 +1911,8 @@ try {
     shield(panel);
     shield(pill);
     var doc = hostDoc();
+    styleUp(doc);
+    if (doc !== document) styleUp(document); // the red scheduled bar stays in the post's own window
     if (doc !== document) {
       panel.style.zIndex = pill.style.zIndex = '2147482999';
       doc.querySelectorAll('.pe-checklist, .pe-checklist-pill').forEach(function (d) { d.remove(); }); // one left from another post
