@@ -1101,9 +1101,11 @@ try {
     var done = 0, lastTick = 0;
     C.items.forEach(function (i) { var s = state[i] || {}; if (s.done) { done++; if (s.when > lastTick) lastTick = s.when; } });
     var all = done === C.items.length;
+    // Ready to schedule: every check except the last one (Schedule) is ticked
+    var preSchedule = C.items.slice(0, -1).every(function (i) { return (state[i] || {}).done; });
     var autoWarn = auto.filter(function (r) { return !r.ok; }).length;
     return {
-      done: done, all: all, autoWarn: autoWarn,
+      done: done, all: all, preSchedule: preSchedule, autoWarn: autoWarn,
       warn: scheduledFor > Date.now() && !all,
       stale: all && lastTick && editedAt > lastTick + C.graceMins * 60000
     };
@@ -1117,7 +1119,7 @@ try {
       : live ? 'Published'
       : c.stale ? 'Edited since checked'
       : wf === 3 ? 'In review'
-      : c.all && !c.autoWarn ? 'Ready'
+      : c.preSchedule && !c.autoWarn ? 'Ready to schedule'
       : c.done ? 'Checks in progress' : 'Draft';
   }
 
