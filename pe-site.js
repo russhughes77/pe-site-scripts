@@ -1317,7 +1317,8 @@ try {
 
   // Asks Squarespace about this post: when it goes live, its status and when it was edited
   function checkSchedule() {
-    return fetch(location.pathname + '?format=json', { credentials: 'same-origin', cache: 'no-store' })
+    // the time on the end makes Squarespace answer with the current status, never a saved copy
+    return fetch(location.pathname + '?format=json&pe=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var it = (d && d.item) || {};
@@ -1778,6 +1779,15 @@ try {
     try { var saved = JSON.parse(ls('pe-ck-pos') || 'null'); if (saved && saved.r >= 0 && saved.b >= 0) pos = saved; } catch (e) {}
     place();
     doc.defaultView.addEventListener('resize', place);
+    // A click in Squarespace's own windows (Apply in Edit Post, a status change) may have changed
+    // the post, so check its status again shortly after, and once more in case saving was slow
+    if (doc !== document) {
+      var again = [];
+      doc.addEventListener('click', function () {
+        again.forEach(clearTimeout);
+        again = [1500, 5000].map(function (ms) { return setTimeout(function () { checkSchedule().then(refreshAuto); }, ms); });
+      }, true);
+    }
     draw();
     checkSchedule().then(function () { call({ post: post }); setTimeout(refreshAuto, 1200); });
     setInterval(function () { if (!document.hidden) { checkSchedule().then(refreshAuto); call({ post: post }); } }, 30000);
