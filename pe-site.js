@@ -1002,7 +1002,7 @@ try {
  * - Shows only what matters: problems first, then unticked checks; ticked checks fold
  * into one line. When everything is done it shrinks to a small pill, and on published
  * posts with nothing wrong it disappears.
- * - Automatic checks: alt text, meta description, related links block, partner tag,
+ * - Automatic checks: alt text, meta description, partner tag,
  * broken internal links, heading order and hero image. They warn but never block.
  * - Scheduled posts with checks missing get a red bar across the top of the page.
  * - Edits made more than 10 minutes after the last tick bring the panel back.
@@ -1026,7 +1026,6 @@ try {
     metaMin: 140,   // meta description length range, in characters (house SEO rules)
     metaMax: 160,
     titleMax: 60,   // SEO title length Google shows before cutting off
-    minRelated: 2   // fewest links expected under "You Might Also Find These Articles Useful"
   };
   var F = '"Open Sans",sans-serif';
 
@@ -1377,27 +1376,9 @@ try {
     if (gt.length > C.titleMax) out.push({ ok: false, kind: 'headlines', text: (seo().seoTitle ? 'SEO title' : 'Headline, used as the SEO title,') + ' is long (' + gt.length + ' characters)' });
     else out.push({ ok: true, text: (seo().seoTitle ? 'SEO title, ' : 'Headline used as SEO title, ') + gt.length + ' characters' });
 
-    // 3. Related links block
-    // the heading can be worded "You Might (Also) Find These/This..." and set as H2, H3, H4 or a bold line
-    var hs = Array.prototype.filter.call(body.querySelectorAll('h1, h2, h3, h4, p'), function (h) {
-      return h.tagName !== 'P' || (h.querySelector('strong, b') && h.textContent.trim() === h.querySelector('strong, b').textContent.trim());
-    });
-    var rel = hs.filter(function (h) { return /you might(?:\s+also)?\s+find\s+th(?:ese|is)/i.test(h.textContent); })[0];
-    if (!rel) out.push({ ok: false, text: 'No “You Might Also Find These Articles Useful” block' });
-    else if (rel.tagName === 'H1') out.push({ ok: false, text: 'Related links heading is set as H1. Change it to H3.', els: [rel] });
-    else {
-      var n = 0, block = rel.closest('.sqs-block') || rel;
-      var walker = document.createTreeWalker(body, NodeFilter.SHOW_ELEMENT), node, started = false;
-      while ((node = walker.nextNode())) {
-        if (node === rel) { started = true; continue; }
-        if (!started) continue;
-        if (/^H[1-4]$/.test(node.tagName)) break;
-        if (node.tagName === 'A' && own(node)) n++;
-      }
-      out.push(n >= C.minRelated
-        ? { ok: true, text: 'Related links block, ' + n + ' links' }
-        : { ok: false, text: 'Related links block has ' + n + (n === 1 ? ' link' : ' links'), els: [block] });
-    }
+    // 3. Related links block: check removed 26 Oct 2026. The automatic Related
+    // Answers panel now covers related reading, so the hand-built "You Might Also
+    // Find These Articles Useful" block is optional and no longer checked.
 
     // 4. Partner tag and disclosure
     var tagged = a.classList.contains('tag-partner');
