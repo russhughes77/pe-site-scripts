@@ -1249,7 +1249,7 @@ try {
         list.appendChild(checkRow(i, state[i] || {}));
         // Squarespace doesn't let the page see the Share tab, so social share is a reminder here
         if (i === 'Schedule') list.appendChild(el('div', 'margin:-2px 0 4px 24px;color:#888;font:12px/1.4 ' + F + ';',
-          'Before ticking: social share slider on in the Share tab, with share text'));
+          'Before ticking: check the social share slider is on in the Share tab'));
       });
     }
     if (done.length) {
