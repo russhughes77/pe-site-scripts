@@ -1826,6 +1826,9 @@ try {
   /* ---------- Build ---------- */
 
   function build() {
+    // Author bios are not articles: no checklist, and nothing reported to the
+    // Content Manager dashboard, so opening a bio never adds it to the list.
+    if (/^\/author-bios(\/|$)/.test(location.pathname)) return;
     var a = document.querySelector('body.view-item article.hentry');
     var ctx = (window.Static && Static.SQUARESPACE_CONTEXT) || {};
     post = ctx.itemId || (a && a.id.replace('article-', ''));
