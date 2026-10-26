@@ -2556,7 +2556,7 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: free site search, plus search tracking', e); }
 
 /* ================================================================
- * Production Expert: hide tags from readers, keep tag pages out of Google
+ * Production Expert: hide tags from readers, keep tag pages out of Google, category chips
  * - The "tags:" line under each post is hidden. The links stay in the page, because other
  *   sections read them (Related Content cards match on tag links). Categories stay visible.
  * - Tag archive pages (any address with ?tag=) tell Google not to index them, while still
@@ -2586,6 +2586,55 @@ try {
   }
   noindexTags();
   addEventListener('mercury:load', noindexTags);
+
+  // 3. Categories as grey chips under a "FILED UNDER" label, matching the "In this article" box.
+  // The original links are moved, not copied, so they stay real links in the page. Near-duplicates
+  // that differ only in capitals ("Pro Tools computer" / "Pro Tools Computer") show once, and only
+  // the first three show. The rest stay in the page, hidden, because the Related Content cards
+  // match on every category link.
+  var cs = document.createElement('style');
+  cs.textContent =
+    '.pe-cats{margin:28px 0 24px;font-family:"Open Sans",sans-serif}' +
+    '.pe-cats-label{font-size:11px;letter-spacing:.06em;color:#777;margin:0 0 8px;text-transform:uppercase}' +
+    '.pe-cats-list{display:flex;flex-wrap:wrap;gap:6px}' +
+    '.pe-cats-list a{background:#f1f2f4;color:#333!important;font-size:13px;line-height:1.4;padding:5px 11px;border-radius:4px;text-decoration:none!important;border:0!important}' +
+    '.pe-cats-list a:hover{background:#e6e8eb;color:#006EB3!important}' +
+    '.pe-cats-list a.pe-cat-more{display:none}';
+  document.head.appendChild(cs);
+
+  function chipCategories() {
+    if (!document.body.classList.contains('view-item')) return;   // single articles only
+    document.querySelectorAll('article footer .meta .categories').forEach(function (box) {
+      if (box.classList.contains('pe-cats')) return;               // already done
+      var links = Array.prototype.slice.call(box.querySelectorAll('a'));
+      if (!links.length) return;
+      var list = document.createElement('div');
+      list.className = 'pe-cats-list';
+      // Of each near-duplicate, keep the version with more capitals ("Pro Tools Computer")
+      function caps(a) { return (a.textContent.match(/[A-Z]/g) || []).length; }
+      var best = {};
+      links.forEach(function (a) {
+        var key = a.textContent.trim().toLowerCase();
+        if (!best[key] || caps(a) > caps(best[key])) best[key] = a;
+      });
+      var shown = 0;
+      links.forEach(function (a) {
+        var key = a.textContent.trim().toLowerCase();
+        if (best[key] !== a || shown >= 3) a.classList.add('pe-cat-more');   // duplicate or over three
+        else shown++;
+        list.appendChild(a);
+      });
+      var label = document.createElement('div');
+      label.className = 'pe-cats-label';
+      label.textContent = 'Filed under';
+      box.textContent = '';                                         // drops "categories:" and the commas
+      box.appendChild(label);
+      box.appendChild(list);
+      box.classList.add('pe-cats');
+    });
+  }
+  chipCategories();
+  addEventListener('mercury:load', chipCategories);
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: hide tags and noindex tag pages', e); }
 
