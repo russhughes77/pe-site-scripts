@@ -1006,8 +1006,9 @@ try {
  * broken internal links, heading order and hero image. They warn but never block.
  * - Scheduled posts with checks missing get a red bar across the top of the page.
  * - Edits made more than 10 minutes after the last tick bring the panel back.
- * - "Help me write" opens a drawer with suggested headlines, meta descriptions, URLs and
- * alt text, written by Claude through the Google Sheet, each with a Copy button.
+ * - "Help me write" opens a floating window with suggested headlines, meta descriptions, URLs and
+ * alt text, written by Claude through the Google Sheet, each with a Copy button. Like the panel,
+ * drag its title bar to move it, click to shrink it, double-click to put it back in the corner.
  * - Reports each post's stage to the Google Sheet for the content pipeline dashboard.
  * If the panel ever fails to appear for someone on the team, open any post with
  * ?checklist on the end of its address once, and it will always show in that browser.
@@ -1479,13 +1480,85 @@ try {
     });
   }
 
+  /* The drawer is a floating window, like the checklist panel:
+   * - drag the title bar to move it anywhere; the spot is remembered
+   * - click the title bar to shrink it to just the title bar, click again to open it
+   * - double-click the title bar to put it back in the top-right corner, full size
+   * Position is measured from the top-right corner of the window, so it opens where the old
+   * full-height drawer used to sit. */
+  var DRAWER_W = 380, DRAWER_H = 640;           // full size in pixels, before fitting the window
+  var dpos = { r: 16, t: 16 };                   // gap from the right and top edges
+  var drawerShut = false;                        // true when shrunk to the title bar
+  var drawerHead, drawerInner, drawerChev;       // title bar, the part that's redrawn, and the ▾/▸ marker
+  try {
+    var dsaved = JSON.parse(ls('pe-hmw-pos') || 'null');
+    if (dsaved && dsaved.r >= 0 && dsaved.t >= 0) dpos = { r: dsaved.r, t: dsaved.t };
+    drawerShut = ls('pe-hmw-shut') === '1';
+  } catch (e) {}
+
+  // Keeps the window on screen and sizes it to fit below wherever it's been moved
+  function placeDrawer() {
+    if (!drawer) return;
+    var w = drawer.ownerDocument.defaultView;
+    dpos.r = Math.max(0, Math.min(w.innerWidth - 120, dpos.r));
+    dpos.t = Math.max(0, Math.min(w.innerHeight - 48, dpos.t));
+    drawer.style.right = dpos.r + 'px';
+    drawer.style.top = dpos.t + 'px';
+    drawer.style.width = Math.min(DRAWER_W, w.innerWidth - 16) + 'px';
+    // shrunk: just the title bar. Open: full size, or whatever room is left below it.
+    drawer.style.height = drawerShut ? 'auto' : Math.max(220, Math.min(DRAWER_H, w.innerHeight - dpos.t - 16)) + 'px';
+    if (drawerInner) drawerInner.style.display = drawerShut ? 'none' : 'flex';
+    if (drawerChev) drawerChev.textContent = drawerShut ? '▸' : '▾';
+  }
+
+  function setDrawerShut(v) {
+    drawerShut = v;
+    ls('pe-hmw-shut', v ? '1' : '');
+    placeDrawer();
+  }
+
+  // Tells the shared drag code how a drag moves this window
+  var drawerSpot = {
+    get: function () { return { r: dpos.r, t: dpos.t }; },
+    set: function (start, dx, dy) { dpos.r = start.r - dx; dpos.t = start.t + dy; placeDrawer(); },
+    save: function () { ls('pe-hmw-pos', JSON.stringify(dpos)); }
+  };
+
+  // The title bar is built once, so a drag isn't cut short when suggestions arrive and the
+  // rest of the window is redrawn underneath it
+  function buildDrawerHead() {
+    drawerHead = el('div', 'display:flex;align-items:center;gap:8px;padding:12px 14px;font-weight:700;font-size:15px;cursor:move;touch-action:none;user-select:none;');
+    drawerHead.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
+    drawerChev = el('span', 'flex:0 0 auto;width:12px;color:#888;font-size:12px;', '▾');
+    drawerHead.appendChild(drawerChev);
+    drawerHead.appendChild(el('span', 'flex:1;', 'Help me write'));
+    var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#666;padding:0 2px;', '×');
+    x.type = 'button';
+    x.setAttribute('aria-label', 'Close');
+    x.title = 'Close';
+    x.onclick = function () { drawer.style.display = 'none'; };
+    drawerHead.appendChild(x);
+    movable(drawerHead,
+      function () { setDrawerShut(!drawerShut); },                     // click: shrink or open
+      function () {                                                    // double-click: back to the corner
+        dpos = { r: 16, t: 16 }; ls('pe-hmw-pos', '');
+        setDrawerShut(false);
+      },
+      drawerSpot);
+    return drawerHead;
+  }
+
   function openDrawer(tab) {
     if (tab) drawerTab = tab;
     if (drawer && !drawer.isConnected) drawer = null;
     if (!drawer) {
-      drawer = el('div', 'position:fixed;top:0;right:0;bottom:0;z-index:10002;width:380px;max-width:100vw;display:flex;flex-direction:column;' +
-        'background:#fff;border-left:1px solid #d5d8dc;box-shadow:-6px 0 24px rgba(0,0,0,.12);font:14px/1.45 ' + F + ';color:#222;');
+      drawer = el('div', 'position:fixed;z-index:10002;max-width:calc(100vw - 16px);display:flex;flex-direction:column;overflow:hidden;' +
+        'background:#fff;border-top:4px solid ' + C.blue + ';border-radius:6px;box-shadow:0 6px 24px rgba(0,0,0,.18);font:14px/1.45 ' + F + ';color:#222;');
       drawer.className = 'pe-drawer';
+      drawer.appendChild(buildDrawerHead());
+      // everything under the title bar: tabs and the scrolling content
+      drawerInner = el('div', 'flex:1;min-height:0;display:flex;flex-direction:column;');
+      drawer.appendChild(drawerInner);
       shield(drawer);
       var doc = hostDoc();
       if (doc !== document) {
@@ -1495,8 +1568,12 @@ try {
         addEventListener('pagehide', function () { if (drawer) drawer.remove(); });
       }
       doc.body.appendChild(drawer);
+      doc.defaultView.addEventListener('resize', placeDrawer);
     }
     drawer.style.display = 'flex';
+    // Opened from a warning's fix button: the person wants that tab, so don't leave it shrunk
+    if (tab && drawerShut) setDrawerShut(false);
+    placeDrawer();
     drawDrawer();
   }
 
@@ -1573,18 +1650,12 @@ try {
   }
 
   function drawDrawer() {
-    if (!drawer) return;
-    var scroll = drawer.lastChild ? drawer.lastChild.scrollTop : 0;
-    drawer.innerHTML = '';
-    var top = el('div', 'display:flex;justify-content:space-between;align-items:center;padding:14px 16px;border-bottom:1px solid #eceef1;font-weight:700;font-size:15px;', 'Help me write');
-    var x = el('button', 'border:0;background:none;font-size:22px;line-height:1;cursor:pointer;color:#666;', '×');
-    x.type = 'button';
-    x.setAttribute('aria-label', 'Close');
-    x.onclick = function () { drawer.style.display = 'none'; };
-    top.appendChild(x);
-    drawer.appendChild(top);
+    if (!drawer || !drawerInner) return;
+    // only the part under the title bar is redrawn; keep the reader's scroll position
+    var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
+    drawerInner.innerHTML = '';
 
-    var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-bottom:1px solid #eceef1;');
+    var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eceef1;border-bottom:1px solid #eceef1;');
     TABS.forEach(function (t) {
       var on = t[0] === drawerTab;
       var b = el('button', 'padding:5px 10px;border:0;border-radius:5px;background:' + (on ? '#e6f0f8' : 'none') + ';color:' + (on ? C.blue : '#555') +
@@ -1593,10 +1664,10 @@ try {
       b.onclick = function () { drawerTab = t[0]; drawDrawer(); };
       tabs.appendChild(b);
     });
-    drawer.appendChild(tabs);
+    drawerInner.appendChild(tabs);
 
-    var body = el('div', 'flex:1;overflow:auto;padding:4px 16px 16px;');
-    drawer.appendChild(body);
+    var body = el('div', 'flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;');
+    drawerInner.appendChild(body);
     if (drawerTab === 'alt') drawAltTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
   }
@@ -1706,26 +1777,41 @@ try {
   }
   // A click does the usual thing; a drag of more than a few pixels moves it instead
   // onDouble (optional): a double-click does that instead, so the single click waits a moment
-  function movable(handle, onClick, onDouble) {
-    var sx, sy, sr, sb, down = false, moved = false, wait = null;
+  // spot (optional): which box is being moved. Defaults to the checklist panel and pill.
+  //   { get: returns its position, set: takes dx and dy from where the drag started, save: stores it }
+  //   The checklist is measured from the bottom-right corner, the Help me write window from the
+  //   top-right, so each box says how a drag changes its own position.
+  var checklistSpot = {
+    get: function () { return { r: pos.r, b: pos.b }; },
+    set: function (start, dx, dy) { pos.r = start.r - dx; pos.b = start.b - dy; place(); },
+    save: function () { ls('pe-ck-pos', JSON.stringify(pos)); }
+  };
+  function movable(handle, onClick, onDouble, spot) {
+    spot = spot || checklistSpot;
+    var sx, sy, start, down = false, moved = false, wait = null;
     handle.addEventListener('pointerdown', function (e) {
       if (e.button !== 0) return;
-      down = true; moved = false; sx = e.clientX; sy = e.clientY; sr = pos.r; sb = pos.b;
+      // a press on a button inside the handle (the drawer's close button) isn't a drag
+      if (e.target !== handle && e.target.closest && e.target.closest('button') && e.target.closest('button') !== handle) return;
+      down = true; moved = false; sx = e.clientX; sy = e.clientY; start = spot.get();
       try { handle.setPointerCapture(e.pointerId); } catch (x) {}
     });
     handle.addEventListener('pointermove', function (e) {
       if (!down) return;
       var dx = e.clientX - sx, dy = e.clientY - sy;
       if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
-      moved = true; pos.r = sr - dx; pos.b = sb - dy; place();
+      moved = true; spot.set(start, dx, dy);
     });
     handle.addEventListener('pointerup', function () {
       if (!down) return;
       down = false;
-      if (moved) ls('pe-ck-pos', JSON.stringify(pos));
+      if (moved) spot.save();
     });
     handle.addEventListener('click', function (e) {
       if (moved) { moved = false; e.preventDefault(); return; }
+      // a click on a button inside the handle does that button's job only
+      var inner = e.target.closest && e.target.closest('button');
+      if (inner && inner !== handle) return;
       if (!onDouble) return onClick();
       if (wait) { clearTimeout(wait); wait = null; return onDouble(); }
       wait = setTimeout(function () { wait = null; onClick(); }, 250);
