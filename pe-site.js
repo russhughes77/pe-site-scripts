@@ -1407,7 +1407,9 @@ try {
     // 6b and 6c only apply before a post goes live (status 1 is published). Older live posts
     // were written before these rules, and flagging them would fill the Content Manager with
     // "Live with issues" for posts nobody needs to change.
-    if ((+postData.workflowState || 0) !== 1) {
+    // They also only apply to posts created from 26 Oct 2026, when these rules began, so old
+    // drafts and posts already in the queue aren't flagged (addedOn is when the post was created).
+    if ((+postData.workflowState || 0) !== 1 && (+postData.addedOn || 0) >= Date.UTC(2026, 9, 26)) {
       // 6b. Image source: the credit for the article's pictures goes in the Source URL box
       // on the post's Options tab, which Squarespace saves as sourceUrl
       if (imgs.length || hero) {
