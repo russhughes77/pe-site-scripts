@@ -3027,7 +3027,10 @@ try {
  * Every image starts a new person; the text after it belongs to them.
  * Divider (line) blocks in between are ignored. With no name line, a name at
  * the start of the bio ("Burak Topalakci is a ...") is picked up as the name.
- * Inside the Squarespace editor nothing changes, so the blocks stay editable.
+ * Inside the Squarespace editor the blocks are left exactly as they are, so they stay
+ * editable. A blue "Preview people section" button appears above the #people line;
+ * it swaps the blocks for a preview built from copies, and "Back to editing" swaps back.
+ * Nothing inside a text block is touched in the editor, so nothing extra can be saved.
  * ================================================================ */
 try {
 (function () {
@@ -3059,6 +3062,8 @@ try {
       '.pe-person-text p{margin:0 0 10px!important}' +
       '.pe-person-text>:last-child{margin-bottom:0!important}' +
       '.pe-person-text a{color:' + BLUE + ';text-underline-offset:3px}' +
+      '.pe-people-toggle{display:inline-block;margin:0 0 10px;padding:6px 12px;border:0;border-radius:4px;background:' + BLUE + ';color:#fff;font:600 13px/1.3 "Open Sans",sans-serif;cursor:pointer}' +
+      '.pe-people-preview{outline:2px dashed #9cc7e6;outline-offset:8px}' +
       '@media (max-width:600px){' +
         '.pe-person{gap:18px;padding:22px 0}' +
         '.pe-person-photo{flex-basis:84px;width:84px;height:84px}' +
@@ -3080,7 +3085,7 @@ try {
     return u;
   }
 
-  function build(body, startP, endP) {
+  function build(body, startP, endP, editor) {
     var label = (text(startP).match(START) || [])[1] || '';
 
     // Walk everything between the two marker lines, in page order:
@@ -3099,7 +3104,7 @@ try {
         cur.parts.push(n);
       }
     }
-    if (!people.length) return;
+    if (!people.length) return null;
 
     styles();
     var sec = document.createElement('section');
@@ -3139,11 +3144,18 @@ try {
       t.className = 'pe-person-text';
       if (name) { var h = document.createElement('p'); h.className = 'pe-person-name'; h.textContent = name; t.appendChild(h); }
       if (role) { var r = document.createElement('p'); r.className = 'pe-person-role'; r.textContent = role; t.appendChild(r); }
-      // Move (not copy) the original paragraphs, so links and formatting come with them
-      parts.forEach(function (el) { el.removeAttribute('style'); t.appendChild(el); });
+      // On the live page the original paragraphs are moved (links and formatting come with them).
+      // In the editor they are copied, so the real blocks are never changed.
+      parts.forEach(function (el) {
+        var node = editor ? el.cloneNode(true) : el;
+        node.removeAttribute('style');
+        t.appendChild(node);
+      });
       row.appendChild(t);
       list.appendChild(row);
     });
+
+    if (editor) return sec;                                             // the editor preview places itself
 
     // Put the section where the #people line was, then hide the leftovers
     startP.parentNode.insertBefore(sec, startP);
@@ -3160,18 +3172,54 @@ try {
       var blocks = r.querySelectorAll('.sqs-block');
       if (blocks.length && [].every.call(blocks, function (b) { return b.style.display === 'none'; })) r.style.display = 'none';
     });
+    return sec;
+  }
+
+  // Editor only: a button above the #people block that swaps between the editable
+  // blocks and a preview. Everything it adds sits outside the blocks, and it only
+  // shows or hides whole blocks, so Squarespace never saves any of it.
+  function editorPreview(body, startP, endP) {
+    var startBlock = startP.closest('.sqs-block'), endBlock = endP.closest('.sqs-block');
+    if (!startBlock || !startBlock.parentNode || startBlock.previousElementSibling && startBlock.previousElementSibling.classList.contains('pe-people-toggle')) return;
+    var preview = null, hidden = [];
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'pe-people-toggle';
+    btn.textContent = 'Preview people section';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (preview) {                                                    // back to editing
+        preview.remove(); preview = null;
+        hidden.forEach(function (b) { b.style.display = ''; }); hidden = [];
+        btn.textContent = 'Preview people section';
+        return;
+      }
+      preview = build(body, startP, endP, true);
+      if (!preview) { btn.textContent = 'No photos found between #people and #end people'; return; }
+      styles();
+      preview.classList.add('pe-people-preview');
+      [].forEach.call(body.querySelectorAll('.sqs-block'), function (b) {
+        if (between(b, startBlock, endBlock || endP)) { b.style.display = 'none'; hidden.push(b); }
+      });
+      startBlock.parentNode.insertBefore(preview, btn.nextSibling);
+      btn.textContent = 'Back to editing';
+    });
+    startBlock.parentNode.insertBefore(btn, startBlock);
+    styles();
   }
 
   function run() {
-    if (inEditor) return;                                               // leave the editor untouched
     var body = document.querySelector('body.view-item article.hentry .body.entry-content');
-    if (!body || body.querySelector('.pe-people')) return;
+    if (!body || (!inEditor && body.querySelector('.pe-people'))) return;
     var lines = [].filter.call(body.querySelectorAll('p'), function (p) { return !p.closest('.pe-people'); });
     var startP = null;
     lines.forEach(function (p) {
       var t = text(p);
       if (END.test(t)) {
-        if (startP) { try { build(body, startP, p); } catch (e) { if (window.console) console.warn('PE people section', e); } }
+        if (startP) {
+          try { if (inEditor) editorPreview(body, startP, p); else build(body, startP, p); }
+          catch (e) { if (window.console) console.warn('PE people section', e); }
+        }
         startP = null;
       } else if (START.test(t) && !END.test(t)) {
         startP = p;
@@ -3180,6 +3228,7 @@ try {
   }
 
   run();
+  if (inEditor) setTimeout(run, 1500);                                  // the editor can draw the blocks late
   addEventListener('mercury:load', function () { setTimeout(run, 50); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: people section', e); }
