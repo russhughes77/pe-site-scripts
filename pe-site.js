@@ -3129,7 +3129,9 @@ try {
       if (name && parts.length > 1 && isShortLine(parts[0])) { role = text(parts.shift()); }
       // No name line: take a name from the start of the bio, e.g. "George Haddad is known for..."
       if (!name && parts.length) {
-        var m = text(parts[0]).match(/^((?:[A-Z][\p{L}'’.-]+\s){1,3}[A-Z][\p{L}'’-]+)\s+(?:is|was|has|works|began|started|joined|spent)\b/u);
+        // \p{Lu} is any capital letter in any alphabet, so accented names (Árnason, Øvrebø, Žižek)
+        // count; lower-case particles (van, de, da...) are allowed between the capitalised words.
+        var m = text(parts[0]).match(/^(\p{Lu}[\p{L}'’.-]+(?:\s(?:(?:van|von|de|da|del|della|di|du|der|den|dos|das|la|le|bin|al|ibn)\s)?\p{Lu}[\p{L}'’.-]+){1,3})\s+(?:is|was|has|works|began|started|joined|spent)\b/u);
         if (m) name = m[1];
       }
 
