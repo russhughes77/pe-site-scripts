@@ -1282,6 +1282,100 @@ try {
     embBox.appendChild(line);
   }
 
+  /* ---------- Notes ----------
+   * A shared notes box at the bottom of the panel for anything the checks don't cover
+   * ("waiting on a quote from the developer", "hold the hero image until Thursday").
+   * Each note is kept per post in the Notes tab of the Google Sheet with the initials of
+   * whoever left it and the time, so everyone opening the post sees the same notes.
+   * Anyone on the team can remove a note; adding and removing both go into the edit history.
+   * The box stays hidden until the sheet answers with notes, so this part does nothing
+   * until the Code.gs with the Notes section has been deployed. */
+  var notes = null;                             // this post's notes from the sheet, oldest first (null until the sheet answers)
+  var notesBox = null, notesList = null;        // built once; only the list part is redrawn
+  var NOTE_MAX = 800;                           // characters per note, so a note always fits in one request
+
+  // Reads the post's notes, or adds or removes one (extra holds add/text or del), then redraws the list
+  function notesCall(extra) {
+    var data = { action: 'notes', post: post };
+    if (extra) { data.title = postTitle(); data.by = who(); Object.keys(extra).forEach(function (k) { data[k] = extra[k]; }); }
+    var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+    return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
+      // An older Code.gs answers this with the ordinary checklist read, which has no notes: stay hidden
+      if (!d || !d.ok || !d.notes) { if (extra) throw new Error((d && d.error) || 'the sheet needs the Notes update'); return; }
+      var before = JSON.stringify(notes);
+      notes = d.notes;
+      if (extra) getHistory();                  // the sheet logged the change in the history
+      if (JSON.stringify(notes) !== before) renderNotes();
+    });
+  }
+
+  // The notes themselves, each with initials and time on top. Rebuilt on its own,
+  // never by draw(), so a half-typed note isn't wiped by the 30-second refresh.
+  function renderNotes() {
+    if (!notesBox || !notes) return;
+    notesBox.style.display = '';
+    notesList.innerHTML = '';
+    notes.forEach(function (n) {
+      var card = el('div', 'margin:0 0 6px;padding:8px 10px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;font-size:12.5px;line-height:1.45;');
+      var top = el('div', 'display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:11.5px;color:#80868d;');
+      top.appendChild(el('span', 'font-weight:700;color:#222;', n.by || '?'));                    // initials of whoever left it
+      top.appendChild(el('span', 'flex:1;font-variant-numeric:tabular-nums;', when(+n.at)));
+      var x = el('button', 'padding:0 4px;border:0;background:none;font:600 14px/1 ' + F + ';color:#a0a6ad;cursor:pointer;', '×');
+      x.type = 'button';
+      x.title = 'Remove this note';
+      x.onclick = function () {
+        if (!confirm('Remove this note from ' + (n.by || 'the team') + '?')) return;
+        x.disabled = true;
+        notesCall({ del: n.id }).catch(function () { x.disabled = false; });
+      };
+      top.appendChild(x);
+      card.appendChild(top);
+      card.appendChild(el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;', n.text)); // keeps the writer's line breaks
+      notesList.appendChild(card);
+    });
+  }
+
+  // Builds the box once: heading, the notes, and a text box with an Add button underneath
+  function buildNotes() {
+    notesBox = el('div', 'display:none;padding:2px 16px 14px;border-top:1px solid #eceef1;');
+    notesBox.appendChild(sectionLabel('Notes'));
+    notesList = el('div');
+    notesBox.appendChild(notesList);
+    var field = el('textarea', 'display:block;box-sizing:border-box;width:100%;min-height:54px;padding:7px 9px;border:1px solid #d5d9de;border-radius:6px;' +
+      'resize:vertical;background:#fff;font:13px/1.45 ' + F + ';color:#222;');
+    field.placeholder = 'Anything the team should know about this post';
+    field.maxLength = NOTE_MAX;
+    var row = el('div', 'display:flex;align-items:center;gap:8px;margin-top:6px;');
+    var msg = el('span', 'flex:1;font-size:11.5px;color:#80868d;');
+    var add = el('button', 'padding:5px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + C.blue + ';font:700 12px/1.6 ' + F + ';color:#fff;cursor:pointer;', 'Add note');
+    add.type = 'button';
+    function showWho() { // tells people their initials will go on the note, or that they'll be asked for them
+      msg.style.color = '#80868d';
+      msg.textContent = ls('pe-initials') ? 'Signed ' + ls('pe-initials') : 'You\'ll be asked for your initials';
+    }
+    add.onclick = function () {
+      var text = field.value.trim();
+      if (!text) { field.focus(); return; }
+      add.disabled = true; add.textContent = 'Saving…';
+      notesCall({ add: 1, text: text.slice(0, NOTE_MAX) }).then(function () {
+        field.value = '';
+        add.disabled = false; add.textContent = 'Add note';
+        showWho();
+      }).catch(function (e) {
+        add.disabled = false; add.textContent = 'Add note';
+        msg.style.color = C.red; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.';
+      });
+    };
+    // Cmd+Enter or Ctrl+Enter adds the note without reaching for the mouse
+    field.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add.click(); } });
+    showWho();
+    row.appendChild(msg);
+    row.appendChild(add);
+    notesBox.appendChild(field);
+    notesBox.appendChild(row);
+    return notesBox;
+  }
+
   /* ---------- Edit history ----------
    * Squarespace records when a post was last saved, but not who saved it, and keeps no history
    * the page can read. So the checklist keeps one in the History tab of the Google Sheet:
@@ -1387,6 +1481,8 @@ try {
     if (h.kind === 'tick') return who + ' ticked ' + h.item;
     if (h.kind === 'untick') return who + ' unticked ' + h.item;
     if (h.kind === 'confirm') return who + ' confirmed the checks still hold';
+    if (h.kind === 'note') return who + ' added a note: ' + h.item;       // item is the start of the note
+    if (h.kind === 'unnote') return who + ' removed a note: ' + h.item;
     return h.kind;
   }
 
@@ -2210,6 +2306,7 @@ try {
     panel.appendChild(head);
     panel.appendChild(embBox);
     panel.appendChild(list);
+    panel.appendChild(buildNotes()); // under the checks, outside the part draw() rebuilds
 
     pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
       ';border-radius:20px;background:#fff;box-shadow:0 6px 18px rgba(17,24,39,.16);font:700 13px ' + F + ';font-variant-numeric:tabular-nums;cursor:pointer;');
@@ -2259,10 +2356,12 @@ try {
     checkSchedule().then(function () { call({ post: post }); setTimeout(refreshAuto, 1200); });
     renderEmbargo();
     embargoCall().catch(function () {}); // no answer: no embargo line changes, try again in 30 seconds
+    notesCall().catch(function () {});   // no answer: the notes box stays as it is
     setInterval(function () {
       if (document.hidden) return;
       checkSchedule().then(refreshAuto); call({ post: post });
       if (!embEditing) embargoCall().catch(function () {}); // someone else may have set one
+      notesCall().catch(function () {});                    // someone else may have left a note
     }, 30000);
   }
 
