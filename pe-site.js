@@ -111,7 +111,7 @@ try {
       if (t.parentElement && !t.parentElement.closest(C.skip)) words += (t.nodeValue.match(/\S*[\p{L}\p{N}]\S*/gu) || []).length;
     }
     var code = all('pre', article).filter(beforeStop).length;
-    var badge = el('div', 'pe-ui pe-badge', 'display:inline-flex;align-items:center;gap:6px;padding:6px 12px;margin-bottom:1rem;background:' + C.panel + ';border-radius:4px;font-family:' + C.font + ';font-size:13px;color:' + C.grey);
+    var badge = el('div', 'pe-ui pe-badge', 'display:flex;width:max-content;max-width:100%;clear:both;align-items:center;gap:6px;padding:6px 12px;margin-bottom:1rem;background:' + C.panel + ';border-radius:4px;font-family:' + C.font + ';font-size:13px;color:' + C.grey);
     badge.innerHTML = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg><span>' + mins(words / C.wpm * 60 + code * C.codeSecs) + ' min read</span>';
     article.insertBefore(badge, article.firstChild);
   }
@@ -162,7 +162,7 @@ try {
       }
     });
     html += (subOpen ? '</ul>' : '') + '</li>';
-    var nav = el('nav', 'pe-ui pe-contents', 'margin:0 0 1.75rem;padding:14px 18px;background:' + C.panel + ';border-radius:4px;font-family:' + C.font + ';color:' + C.ink);
+    var nav = el('nav', 'pe-ui pe-contents', 'clear:both;margin:0 0 1.75rem;padding:14px 18px;background:' + C.panel + ';border-radius:4px;font-family:' + C.font + ';color:' + C.ink);
     nav.setAttribute('aria-label', 'Contents');
     nav.innerHTML = '<details' + (heads.length >= 8 && innerWidth < 700 ? '' : ' open') + '>' +
       '<summary style="cursor:pointer;font-size:13px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:' + C.grey + '">&nbsp;In this article (' + sections + ' sections)</summary>' +
@@ -3010,14 +3010,37 @@ try {
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
  * Puts the partner label, read time badge and contents box in one fixed order:
- * - If the article body opens with a hero image (with or without notes above it),
- * the boxes go directly beneath that image.
+ * - If the article body opens with a hero image (with or without short notes above it),
+ *   the boxes go directly beneath that image.
  * - If the hero sits outside the body (promoted posts), they stay at the top of the body.
+ * Only a full-width image counts as the hero. Small, floated or side-by-side images
+ * (a contributor headshot beside their bio, say) are skipped, so the boxes never wrap
+ * around them. Fixed 27 Oct 2026 after the boxes landed beside a floated headshot.
  * ================================================================ */
 try {
 (function () {
   var ORDER = ['.pe-partner-label', '.pe-badge', '.pe-contents'];
-  var LOOKAHEAD = 6; // how many blocks from the top to search for the hero image
+  var LOOKAHEAD = 6;      // how many blocks from the top to search for the hero image
+  var MIN_WIDTH = 0.6;    // a hero must fill at least 60% of the article column
+  var NOTE_CHARS = 350;   // a text block longer than this is the article itself, not a note
+
+  // True when an image block is floated (Squarespace's "float left/right" image layout)
+  function floated(b) {
+    if (/\bfloat\b/.test(b.className)) return true;
+    var f = getComputedStyle(b).float;
+    if (f && f !== 'none') return true;
+    var inner = b.querySelector('.image-block-outer-wrapper, figure, .sqs-image');
+    return !!(inner && getComputedStyle(inner).float !== 'none');
+  }
+
+  // True when the block (or row) is wide enough to be a hero.
+  // If the page hasn't laid out yet (width 0), give it the benefit of the doubt.
+  function wide(node, layout) {
+    var w = node.getBoundingClientRect().width, full = layout.getBoundingClientRect().width;
+    return !w || !full || w / full >= MIN_WIDTH;
+  }
+
+  function isImage(b) { return /\b(image-block|gallery-block)\b/.test(b.className); }
 
   function hero(body) {
     var layout = body.querySelector('.sqs-layout');
@@ -3025,13 +3048,26 @@ try {
     var blocks = layout.querySelectorAll('.sqs-block');
     for (var i = 0; i < blocks.length && i < LOOKAHEAD; i++) {
       var b = blocks[i];
-      if (b.querySelector('h2, h3')) return null; // reached the article proper
-      if (/\b(image-block|gallery-block)\b/.test(b.className)) {
-        var row = b.closest('.row');
-        // In a multi-column row, go below the whole row rather than into a column
-        if (row && row.querySelectorAll(':scope > .col').length > 1) return row;
-        return b;
+      if (b.querySelector('h2, h3')) return null;                       // reached the article proper
+      if (!isImage(b)) {
+        // Long text before any hero means the article has started: keep the boxes at the top
+        if (b.textContent.replace(/\s+/g, ' ').trim().length > NOTE_CHARS) return null;
+        continue;
       }
+      if (floated(b)) continue;                                         // headshot or inline picture, not a hero
+      var row = b.closest('.row');
+      var cols = row ? row.querySelectorAll(':scope > .col') : [];
+      if (cols.length > 1) {
+        // A multi-column row only counts if every column is an image (a side-by-side hero).
+        // A picture beside text is a bio or illustration, so keep looking.
+        var allImages = [].every.call(cols, function (c) {
+          var inC = c.querySelectorAll('.sqs-block');
+          return inC.length && [].every.call(inC, isImage);
+        });
+        if (allImages && wide(row, layout)) return row;
+        continue;
+      }
+      if (wide(b, layout)) return b;
     }
     return null;
   }
@@ -3045,6 +3081,9 @@ try {
       if (el) items.push(el);
     });
     if (!items.length) return;
+
+    // Belt and braces: never let any of the boxes wrap around a floated image
+    items.forEach(function (el) { el.style.clear = 'both'; });
 
     var anchor = hero(body);
     var parent = anchor ? anchor.parentNode : body;
