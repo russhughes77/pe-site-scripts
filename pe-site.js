@@ -1132,6 +1132,156 @@ try {
       : c.done ? 'Checks in progress' : 'Draft';
   }
 
+  /* ---------- Embargo ----------
+   * Some posts can't go out before a set time. Anyone on the team can give a post an embargo
+   * in the panel (date, time and the time zone the embargo was given in, since press embargoes
+   * often come in US time). It's kept per post in the Embargoes tab of the Google Sheet.
+   * While the embargo hasn't lifted, the automatic checks warn, in red:
+   * - a draft or review post whose planned date is before the embargo (before it's scheduled)
+   * - a scheduled post set to go out before the embargo (the red bar shows too)
+   * - a live post published before the embargo (the red bar shows too)
+   * Like every warning, it never blocks Squarespace; it makes the problem impossible to miss.
+   * Setting, changing and removing an embargo also go into the edit history. */
+  var embargo = { at: 0, tz: '', by: '' };      // from the Google Sheet; at 0 means no embargo
+  var embBox = null;                            // the embargo line in the panel, built once
+  var embEditing = false;                       // true while the date and time boxes are showing
+  var ZONES = [['Europe/London', 'UK'], ['America/New_York', 'US Eastern'], ['America/Los_Angeles', 'US Pacific'], ['Europe/Berlin', 'Central Europe']];
+
+  function zoneName(tz) {
+    for (var i = 0; i < ZONES.length; i++) if (ZONES[i][0] === tz) return ZONES[i][1];
+    return tz;
+  }
+  // A time as it reads in a given zone: 'Thu 29 Oct, 17:00'
+  function inZone(t, tz) {
+    return new Date(t).toLocaleString('en-GB', { timeZone: tz, weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+  }
+  // The embargo in UK time, plus the zone it was given in when that's different
+  function embText(t, tz) {
+    var uk = inZone(t, 'Europe/London') + ' UK';
+    return tz && tz !== 'Europe/London' ? uk + ' (' + inZone(t, tz) + ' ' + zoneName(tz) + ')' : uk;
+  }
+  // How far a zone's clock is ahead of UTC at a given moment, in milliseconds (allows for summer time)
+  function zoneOffset(t, tz) {
+    var parts = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(new Date(t)).forEach(function (x) { parts[x.type] = +x.value; });
+    return Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) - Math.floor(t / 60000) * 60000;
+  }
+  // '2026-10-29' and '09:00' in US Pacific (say) as an exact moment
+  function zonedTime(dateStr, timeStr, tz) {
+    var d = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr || ''), h = /^(\d{2}):(\d{2})$/.exec(timeStr || '');
+    if (!d || !h) return 0;
+    var wall = Date.UTC(+d[1], d[2] - 1, +d[3], +h[1], +h[2]);
+    var t = wall - zoneOffset(wall, tz);
+    return wall - zoneOffset(t, tz); // second pass gets it right on the days the clocks change
+  }
+  // The other way: an exact moment as date and time boxes in a zone
+  function zonedParts(t, tz) {
+    var p = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' })
+      .formatToParts(new Date(t)).forEach(function (x) { p[x.type] = x.value; });
+    return { date: p.year + '-' + p.month + '-' + p.day, time: p.hour + ':' + p.minute };
+  }
+
+  // Reads the post's embargo from the sheet, or saves a new one (extra holds at, tz, by)
+  function embargoCall(extra) {
+    var data = { action: 'emb', post: post };
+    if (extra) { data.set = 1; data.title = postTitle(); Object.keys(extra).forEach(function (k) { data[k] = extra[k]; }); }
+    var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+    return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok) throw new Error((d && d.error) || 'no reply');
+      var e = d.embargo || {};
+      var changed = (+e.at || 0) !== embargo.at || (e.tz || '') !== embargo.tz;
+      embargo = { at: +e.at || 0, tz: e.tz || '', by: e.by || '' };
+      if (extra) { embEditing = false; getHistory(); }  // the sheet logged the change in the history
+      if (changed || extra) { renderEmbargo(); refreshAuto(); }
+    });
+  }
+
+  // The automatic check, added to the others by runAuto
+  function embargoCheck() {
+    if (!embargo.at || embargo.at <= Date.now()) return null; // no embargo, or it has lifted
+    var wf = +postData.workflowState || 0, t = +postData.publishOn || 0, lift = embText(embargo.at, embargo.tz);
+    if (wf === 1 && t && t <= Date.now())
+      return { ok: false, kind: 'embargo', live: true, text: 'Live before the embargo lifts on ' + lift, bar: 'This post is live, but the embargo lifts on ' + lift };
+    if (scheduledFor && scheduledFor < embargo.at)
+      return { ok: false, kind: 'embargo', text: 'Scheduled for ' + inZone(scheduledFor, 'Europe/London') + ', before the embargo lifts on ' + lift, bar: 'This goes out before the embargo lifts on ' + lift };
+    // Squarespace keeps a planned date on drafts and review posts; only a future one is a real plan
+    if ((wf === 3 || wf === 4) && t > Date.now() && t < embargo.at)
+      return { ok: false, kind: 'embargo', text: 'Planned date ' + inZone(t, 'Europe/London') + ' is before the embargo lifts on ' + lift };
+    return { ok: true, text: 'Embargoed until ' + lift };
+  }
+
+  // The embargo line under the panel's title bar. Kept out of the part draw() rebuilds, so typing
+  // a date isn't wiped by the panel refreshing every 30 seconds.
+  function renderEmbargo() {
+    if (!embBox) return;
+    embBox.innerHTML = '';
+    var small = 'padding:3px 9px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:600 11.5px/1.6 ' + F + ';color:#333;cursor:pointer;';
+    function btn(text, css, onclick) { var b = el('button', css, text); b.type = 'button'; b.onclick = onclick; return b; }
+
+    if (embEditing) {
+      var start = embargo.at ? zonedParts(embargo.at, embargo.tz || 'Europe/London') : { date: '', time: '09:00' };
+      var form = el('div', 'margin:10px 0 2px;padding:10px 12px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;');
+      form.appendChild(el('div', 'margin-bottom:6px;font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;', 'Embargo lifts'));
+      var field = 'padding:5px 6px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:13px ' + F + ';color:#222;';
+      var row = el('div', 'display:flex;gap:6px;flex-wrap:wrap;');
+      var dIn = el('input', field + 'flex:1 1 130px;'); dIn.type = 'date'; dIn.value = start.date;
+      var tIn = el('input', field + 'flex:0 0 92px;'); tIn.type = 'time'; tIn.value = start.time;
+      var zIn = el('select', field + 'flex:1 1 100%;');
+      ZONES.forEach(function (z) { var o = el('option', '', z[1] + ' time'); o.value = z[0]; zIn.appendChild(o); });
+      zIn.value = embargo.tz || 'Europe/London';
+      row.appendChild(dIn); row.appendChild(tIn); row.appendChild(zIn);
+      form.appendChild(row);
+      var msg = el('div', 'min-height:0;margin-top:6px;font-size:12px;color:#80868d;');
+      function preview() { // shows the time in the UK as it's typed, so a US embargo is easy to check
+        var t = zonedTime(dIn.value, tIn.value, zIn.value);
+        msg.style.color = '#80868d';
+        msg.textContent = t ? 'Lifts ' + embText(t, zIn.value) : '';
+      }
+      dIn.oninput = tIn.oninput = zIn.onchange = preview;
+      preview();
+      form.appendChild(msg);
+      var acts = el('div', 'display:flex;gap:6px;margin-top:8px;');
+      var save = btn('Save embargo', 'padding:5px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + C.blue + ';font:700 12px/1.6 ' + F + ';color:#fff;cursor:pointer;', function () {
+        var t = zonedTime(dIn.value, tIn.value, zIn.value);
+        if (!t) { msg.style.color = C.red; msg.textContent = 'Add a date and a time.'; return; }
+        save.disabled = true; save.textContent = 'Saving…';
+        embargoCall({ at: t, tz: zIn.value, by: who() }).catch(function (e) {
+          save.disabled = false; save.textContent = 'Save embargo';
+          msg.style.color = C.red; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.';
+        });
+      });
+      acts.appendChild(save);
+      acts.appendChild(btn('Cancel', small, function () { embEditing = false; renderEmbargo(); }));
+      form.appendChild(acts);
+      embBox.appendChild(form);
+      return;
+    }
+
+    if (!embargo.at) {
+      embBox.appendChild(btn('+ Add an embargo', 'margin:10px 0 0;padding:0;border:0;background:none;font:600 12px ' + F + ';color:' + C.blue + ';cursor:pointer;',
+        function () { embEditing = true; renderEmbargo(); }));
+      return;
+    }
+    var future = embargo.at > Date.now();
+    // The embargo on its own lines, with Change and Remove underneath so the text has the full width
+    var line = el('div', 'margin:10px 0 0;padding:9px 11px;border-radius:6px;font-size:12.5px;line-height:1.45;' +
+      (future ? 'background:#fdecea;color:#7a1d17;' : 'background:#f6f7f9;color:#5a6068;'));
+    line.appendChild(el('div', 'font-weight:700;', (future ? '🔒 Embargoed until ' : 'Embargo lifted ') + inZone(embargo.at, 'Europe/London') + ' UK'));
+    var sub = [];
+    if (embargo.tz && embargo.tz !== 'Europe/London') sub.push(inZone(embargo.at, embargo.tz) + ' ' + zoneName(embargo.tz));
+    if (embargo.by) sub.push('set by ' + embargo.by);
+    var foot = el('div', 'display:flex;align-items:center;gap:6px;margin-top:4px;');
+    foot.appendChild(el('span', 'flex:1;opacity:.85;', sub.join(' · ')));
+    foot.appendChild(btn('Change', small, function () { embEditing = true; renderEmbargo(); }));
+    foot.appendChild(btn('Remove', small, function () {
+      embargoCall({ at: 0, tz: '', by: who() }).catch(function () {});
+    }));
+    line.appendChild(foot);
+    embBox.appendChild(line);
+  }
+
   /* ---------- Edit history ----------
    * Squarespace records when a post was last saved, but not who saved it, and keeps no history
    * the page can read. So the checklist keeps one in the History tab of the Google Sheet:
@@ -1224,6 +1374,7 @@ try {
   function histText(h) {
     var who = h.who || '';
     if (h.kind === 'save') return (who ? who + ' saved' : 'Saved, editor unknown') + (h.detail ? ': ' + h.detail : '');
+    if (h.kind === 'embargo') return h.item === 'removed' ? who + ' removed the embargo' : who + ' set the embargo: lifts ' + h.item;
     if (h.kind === 'status') return (who ? who + ' changed the status' : 'Status changed') + (h.detail ? ': ' + h.detail : '');
     if (h.kind === 'tick') return who + ' ticked ' + h.item;
     if (h.kind === 'untick') return who + ' unticked ' + h.item;
@@ -1276,9 +1427,10 @@ try {
     var colour = c.warn ? C.red : (c.stale || c.autoWarn) ? C.amber : c.all ? C.green : C.blue;
     var status = c.done + '/' + C.items.length + (c.autoWarn ? ' · ' + c.autoWarn + (c.autoWarn === 1 ? ' warning' : ' warnings') : '');
 
-    head.firstChild.textContent = c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
+    var embIssue = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
+    head.firstChild.textContent = embIssue ? (embIssue.live ? 'Live before embargo' : 'Embargo clash') : c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
     head.lastChild.textContent = status;
-    head.style.color = c.warn ? C.red : c.stale ? C.amber : '#222';
+    head.style.color = embIssue || c.warn ? C.red : c.stale ? C.amber : '#222';
     head.lastChild.style.color = colour;
     panel.style.borderTopColor = colour;
     pill.style.borderColor = colour;
@@ -1303,7 +1455,8 @@ try {
       'Couldn\'t check the post with Squarespace: ' + statusErr + '. Trying again in 30 seconds.'));
     if (reportErr) list.appendChild(el('div', 'margin-top:10px;padding:7px 9px;border-radius:4px;background:#fdecea;color:' + C.red + ';font:12px/1.4 ' + F + ';',
       'The Content Manager did not update: ' + reportErr + '. It will try again in 30 seconds.'));
-    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn);
+    var embBad = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
+    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad);
     if (drawer && drawer.style.display !== 'none') drawDrawer();
 
     clearTimeout(hideTimer);
@@ -1352,8 +1505,9 @@ try {
     if (!warnings.length) return;
     list.appendChild(sectionLabel('Needs fixing', C.amber));
     warnings.forEach(function (r) {
-      var row = el('div', 'display:flex;gap:8px;align-items:flex-start;padding:3px 0;font:13px/1.4 ' + F + ';color:#5a3a00;');
-      row.appendChild(el('span', 'color:' + C.amber + ';', '⚠'));
+      var hard = r.kind === 'embargo'; // an embargo problem is shown in red
+      var row = el('div', 'display:flex;gap:8px;align-items:flex-start;padding:3px 0;font:' + (hard ? 600 : 400) + ' 13px/1.4 ' + F + ';color:' + (hard ? C.red : '#5a3a00') + ';');
+      row.appendChild(el('span', 'color:' + (hard ? C.red : C.amber) + ';', '⚠'));
       var t = el('span', 'flex:1;' + (r.els ? 'cursor:pointer;text-decoration:underline;text-underline-offset:2px;' : ''), r.text);
       if (r.els) { t.title = 'Show me'; t.onclick = function () { point(r.els); }; }
       row.appendChild(t);
@@ -1449,7 +1603,7 @@ try {
   }
 
   // Red bar across the top of the page while a scheduled post has unticked checks or warnings
-  function warning(on, missing, autoWarn) {
+  function warning(on, missing, autoWarn, embBad) {
     if (!on) { if (banner) banner.style.display = 'none'; return; }
     if (!banner) {
       banner = el('div', 'position:fixed;top:0;left:0;right:0;z-index:10001;padding:10px 16px;background:' + C.red +
@@ -1460,9 +1614,12 @@ try {
     }
     var when = new Date(scheduledFor).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     var bits = [];
+    if (embBad) bits.push('EMBARGO: ' + (embBad.bar || embBad.text) + '.'); // named first, before anything else
     if (missing.length) bits.push(missing.length + (missing.length === 1 ? ' check' : ' checks') + ' not done: ' + missing.join(', ') + '.');
-    if (autoWarn) bits.push(autoWarn + (autoWarn === 1 ? ' automatic warning' : ' automatic warnings') + ' in the checklist.');
-    banner.textContent = 'Scheduled for ' + when + '. ' + bits.join(' ');
+    var others = autoWarn - (embBad ? 1 : 0); // the embargo is already named above
+    if (others) bits.push(others + (others === 1 ? ' other automatic warning' : ' other automatic warnings') + ' in the checklist.');
+    // a live post has no schedule to report, only the embargo
+    banner.textContent = (scheduledFor ? 'Scheduled for ' + when + '. ' : '') + bits.join(' ');
     banner.style.display = '';
   }
 
@@ -1501,6 +1658,10 @@ try {
     var body = articleBody();
     if (!a || !body) return Promise.resolve([]);
     var out = [];
+
+    // 0. Embargo (see the Embargo section): first, because it's the costliest mistake
+    var emb = embargoCheck();
+    if (emb) out.push(emb);
 
     // 1. Alt text on the pictures in the article body and its header (ad banners don't count)
     var imgs = Array.prototype.filter.call(a.querySelectorAll('.body.entry-content img, .promoted-block-image img, .entry-header img'), function (i) {
@@ -2036,7 +2197,9 @@ try {
     head.style.cursor = 'move';
     head.style.touchAction = 'none';
     list = el('div', 'padding:2px 16px 14px;');
+    embBox = el('div', 'padding:0 16px;');
     panel.appendChild(head);
+    panel.appendChild(embBox);
     panel.appendChild(list);
 
     pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
@@ -2085,7 +2248,13 @@ try {
     }
     draw();
     checkSchedule().then(function () { call({ post: post }); setTimeout(refreshAuto, 1200); });
-    setInterval(function () { if (!document.hidden) { checkSchedule().then(refreshAuto); call({ post: post }); } }, 30000);
+    renderEmbargo();
+    embargoCall().catch(function () {}); // no answer: no embargo line changes, try again in 30 seconds
+    setInterval(function () {
+      if (document.hidden) return;
+      checkSchedule().then(refreshAuto); call({ post: post });
+      if (!embEditing) embargoCall().catch(function () {}); // someone else may have set one
+    }, 30000);
   }
 
   build();
