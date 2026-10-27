@@ -3175,6 +3175,13 @@ try {
     return sec;
   }
 
+  // True when the block has any wording after the given line
+  function textAfter(line, block) {
+    var w = document.createTreeWalker(block, NodeFilter.SHOW_TEXT), t;
+    while ((t = w.nextNode())) if (after(line, t) && !line.contains(t) && t.nodeValue.trim()) return true;
+    return false;
+  }
+
   // Editor only: a button below the #people line that swaps between the editable
   // blocks and a preview. Everything it adds sits outside the blocks, and it only
   // shows or hides whole blocks, so Squarespace never saves any of it.
@@ -3203,6 +3210,10 @@ try {
       [].forEach.call(body.querySelectorAll('.sqs-block'), function (b) {
         if (between(b, startBlock, endBlock || endP)) { b.style.display = 'none'; hidden.push(b); }
       });
+      // "#end people" is often typed at the end of the last person's text block. When
+      // nothing follows it in that block, hide the whole block too, or the last
+      // person's text shows twice (once in the preview, once below it).
+      if (endBlock && endBlock !== startBlock && !textAfter(endP, endBlock)) { endBlock.style.display = 'none'; hidden.push(endBlock); }
       startBlock.parentNode.insertBefore(preview, btn.nextSibling);
       btn.textContent = 'Back to editing';
     });
