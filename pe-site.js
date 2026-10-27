@@ -1067,6 +1067,11 @@ try {
   var showDone = false, drawerTab = 'headlines';
   var force = /[?&]checklist\b/.test(location.search);
   var guarded = document.documentElement.classList.contains('pe-editor'); // set by the editor guard in the Header
+  var hist = null;              // this post's edit history from the Google Sheet, newest first (null until loaded)
+  var histOpen = false;         // true while the History list is showing in the panel
+  var histScroll = 0;           // keeps the History list's scroll position when the panel redraws
+  var seenSave = 0;             // the last save time this browser has sent to the history
+  var seenStatus = '';          // the status that went with it, so a status change on its own is noticed
 
   function postTitle() {
     if (postData.title) return postData.title;
@@ -1127,6 +1132,133 @@ try {
       : c.done ? 'Checks in progress' : 'Draft';
   }
 
+  /* ---------- Edit history ----------
+   * Squarespace records when a post was last saved, but not who saved it, and keeps no history
+   * the page can read. So the checklist keeps one in the History tab of the Google Sheet:
+   * - Saves: noticed within seconds (on every status check). A save is credited to whoever was
+   *   working on this post in this browser around the time of the save; the record of that
+   *   activity is kept in localStorage, so it survives the preview reloading after Save.
+   *   A save nobody's checklist saw being made (the phone app, say) is logged as editor unknown.
+   *   Each save also notes what changed since the last one: headline, SEO title, meta
+   *   description, URL, status and word count. The Google Sheet works that out.
+   * - Ticks, unticks and "Checks still OK" are logged with initials.
+   * When two people's checklists see the same save, the sheet keeps one row, and fills in
+   * the initials if the first report didn't have them. */
+
+  // Remembers that this person is working on this post. One unbroken stretch of activity
+  // (no gap over 10 minutes) is kept as its start and latest time.
+  function noteActivity(e) {
+    if (e && e.target && e.target.closest && e.target.closest('.pe-checklist, .pe-checklist-pill, .pe-drawer')) return; // our own panels don't count
+    var now = Date.now(), a = {};
+    try { a = JSON.parse(ls('pe-act') || '{}') || {}; } catch (x) {}
+    if (a.p === post && now - a.l < 600000) { if (now - a.l < 5000) return; a.l = now; } // within 5 seconds: no need to write again
+    else a = { p: post, s: now, l: now };
+    ls('pe-act', JSON.stringify(a));
+  }
+
+  // Initials of the person who made a save at this time, or '' if this browser can't tell.
+  // A minute of slack either side allows for Squarespace's clock and ours differing slightly.
+  function saverAt(when) {
+    var a = {};
+    try { a = JSON.parse(ls('pe-act') || '{}') || {}; } catch (x) {}
+    if (a.p !== post || when < a.s - 60000 || when > a.l + 60000) return '';
+    return ls('pe-initials') || ''; // never prompts: a save isn't the moment to ask for initials
+  }
+
+  // The post's state as the history compares it from one save to the next
+  function snapshot(it) {
+    var words = String(it.body || '').replace(/<[^>]+>/g, ' ').replace(/&[#a-z0-9]+;/gi, ' ').split(/\s+/).filter(Boolean).length;
+    return {
+      title: postTitle(), seoTitle: seo().seoTitle || '', meta: seo().seoDescription || '',
+      url: it.urlId || '', status: statusText(it), words: words
+    };
+  }
+
+  // Squarespace's status number as words. A scheduled post includes its time, so a reschedule shows.
+  function statusText(it) {
+    var wf = +it.workflowState || 0, t = +it.publishOn || 0;
+    if ((wf === 2 || wf === 1) && t > Date.now())
+      return 'Scheduled for ' + new Date(t).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    return wf === 1 ? 'Published' : wf === 2 ? 'Scheduled' : wf === 3 ? 'In review' : wf === 4 ? 'Draft' : '';
+  }
+
+  // Called after every status check: logs a new save, or a status change with no save
+  function noteSave(it) {
+    if (!editedAt) return;
+    var status = statusText(it);
+    if (editedAt === seenSave && status === seenStatus) return;
+    // a status change on its own keeps the old save time, so it's dated now instead
+    var saved = editedAt !== seenSave || !seenSave;
+    var at = saved ? editedAt : Date.now();
+    seenSave = editedAt;
+    seenStatus = status;
+    logEvent({ kind: saved ? 'save' : 'status', at: editedAt, when: at, status: status, who: saverAt(at), snap: JSON.stringify(snapshot(it)) });
+  }
+
+  // Sends one event to the History tab; the sheet answers with the post's updated history
+  function logEvent(data) {
+    data.action = 'hlog';
+    data.post = post;
+    data.title = postTitle();
+    getHistory(data);
+  }
+  function getHistory(data) {
+    data = data || { action: 'hist', post: post };
+    var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+    return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
+      if (d && d.ok && d.history) { hist = d.history; draw(); }
+    }).catch(function () {}); // no history this time: the panel just shows the save time
+  }
+
+  // 'Today 08:14', 'Yesterday 17:02', or 'Mon 26 Oct 17:02'
+  function when(t) {
+    var d = new Date(t), now = new Date();
+    var hm = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    var day = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+    if (t >= day) return 'Today ' + hm;
+    if (t >= day - 86400000) return 'Yesterday ' + hm;
+    return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + hm;
+  }
+
+  // One history entry as a sentence
+  function histText(h) {
+    var who = h.who || '';
+    if (h.kind === 'save') return (who ? who + ' saved' : 'Saved, editor unknown') + (h.detail ? ': ' + h.detail : '');
+    if (h.kind === 'status') return (who ? who + ' changed the status' : 'Status changed') + (h.detail ? ': ' + h.detail : '');
+    if (h.kind === 'tick') return who + ' ticked ' + h.item;
+    if (h.kind === 'untick') return who + ' unticked ' + h.item;
+    if (h.kind === 'confirm') return who + ' confirmed the checks still hold';
+    return h.kind;
+  }
+
+  // The 'Last edited' line at the top of the panel, with the History list under it when open
+  function drawHistory() {
+    if (!editedAt) return;
+    var last = (hist || []).filter(function (h) { return h.kind === 'save' && h.when === editedAt; })[0]; // the entry for the latest save
+    var line = el('div', 'display:flex;align-items:center;gap:8px;margin:8px 0 2px;font-size:12px;line-height:1.4;color:#80868d;');
+    line.appendChild(el('span', 'flex:1;', 'Last edited ' + when(editedAt) + (last && last.who ? ' by ' + last.who : '')));
+    var b = el('button', 'flex:0 0 auto;padding:2px 8px;border:1px solid #dde1e6;border-radius:5px;background:' + (histOpen ? '#e3eef8' : '#fff') +
+      ';font:600 11px/1.6 ' + F + ';color:' + (histOpen ? C.blue : '#444') + ';cursor:pointer;', 'History ' + (histOpen ? '▴' : '▾'));
+    b.type = 'button';
+    b.onclick = function () { histOpen = !histOpen; histScroll = 0; draw(); if (histOpen) getHistory(); };
+    line.appendChild(b);
+    list.appendChild(line);
+    if (!histOpen) return;
+
+    var box = el('div', 'margin:6px 0 4px;max-height:220px;overflow:auto;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;');
+    if (!hist) box.appendChild(el('div', 'padding:10px 12px;font-size:12px;color:#888;', 'Loading…'));
+    else if (!hist.length) box.appendChild(el('div', 'padding:10px 12px;font-size:12px;color:#888;', 'Nothing recorded yet. The history starts from 27 Oct 2026.'));
+    else hist.forEach(function (h, i) {
+      var row = el('div', 'display:flex;gap:10px;padding:7px 12px;font-size:12px;line-height:1.45;' + (i ? 'border-top:1px solid #eceef1;' : ''));
+      row.appendChild(el('span', 'flex:0 0 92px;color:#80868d;font-variant-numeric:tabular-nums;', when(h.when)));
+      row.appendChild(el('span', 'flex:1;color:' + (h.kind === 'save' || h.kind === 'status' ? '#222' : '#555') + ';', histText(h)));
+      box.appendChild(row);
+    });
+    box.addEventListener('scroll', function () { histScroll = box.scrollTop; });
+    list.appendChild(box);
+    setTimeout(function () { box.scrollTop = histScroll; }, 0); // after it's in the page, so the scroll sticks
+  }
+
   /* ---------- Drawing the panel ---------- */
 
   function draw() {
@@ -1148,6 +1280,7 @@ try {
     pill.lastChild.textContent = status;
 
     list.innerHTML = '';
+    drawHistory();
     drawStale(c);
     drawProblems();
     drawChecks();
@@ -1197,6 +1330,7 @@ try {
       ok.disabled = true;
       ok.textContent = 'Saving…';
       var by = who(), chain = Promise.resolve();
+      logEvent({ kind: 'confirm', who: by }); // one history line, not one per check
       C.items.forEach(function (i) {
         chain = chain.then(function () { return call({ action: 'set', post: post, item: i, done: 1, by: by, title: postTitle() }); });
       });
@@ -1235,6 +1369,7 @@ try {
       state[item] = { done: box.checked, by: who(), when: Date.now() };
       draw();
       call({ action: 'set', post: post, item: item, done: box.checked ? 1 : 0, by: state[item].by, title: postTitle() });
+      logEvent({ kind: box.checked ? 'tick' : 'untick', item: item, who: state[item].by }); // into the edit history
     };
     row.appendChild(box);
     row.appendChild(el('span', 'flex:1;', item));
@@ -1338,6 +1473,7 @@ try {
         var wfNow = +it.workflowState || 0;
         scheduledFor = t > Date.now() && (wfNow === 2 || wfNow === 1) ? t : 0;
         editedAt = +it.updatedOn || 0;
+        noteSave(it); // into the edit history, if this save or status hasn't been sent yet
         // In the editor the reader extras are hidden while a post is a draft or in review.
         // Once it's scheduled or live, show them so the team sees what readers will see.
         if (guarded) document.documentElement.classList.toggle('pe-editor', !(scheduledFor || ((wfNow === 1 || wfNow === 2) && t && t <= Date.now())));
@@ -1926,6 +2062,12 @@ try {
     doc.defaultView.addEventListener('resize', place);
     // A click in Squarespace's own windows (Apply in Edit Post, a status change) may have changed
     // the post, so check its status again shortly after, and once more in case saving was slow
+    // Clicks and typing mark this person as working on the post, for the edit history
+    [document, doc].forEach(function (d, i) {
+      if (i && d === document) return; // outside the editor both are the same page
+      d.addEventListener('pointerdown', noteActivity, true);
+      d.addEventListener('keydown', noteActivity, true);
+    });
     if (doc !== document) {
       var again = [];
       doc.addEventListener('click', function () {
