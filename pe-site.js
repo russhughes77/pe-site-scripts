@@ -3063,7 +3063,6 @@ try {
       '.pe-person-text>:last-child{margin-bottom:0!important}' +
       '.pe-person-text a{color:' + BLUE + ';text-underline-offset:3px}' +
       '.pe-people-toggle{display:inline-block;margin:0 0 10px;padding:6px 12px;border:0;border-radius:4px;background:' + BLUE + ';color:#fff;font:600 13px/1.3 "Open Sans",sans-serif;cursor:pointer}' +
-      '.pe-people-preview{outline:2px dashed #9cc7e6;outline-offset:8px}' +
       '@media (max-width:600px){' +
         '.pe-person{gap:18px;padding:22px 0}' +
         '.pe-person-photo{flex-basis:84px;width:84px;height:84px}' +
