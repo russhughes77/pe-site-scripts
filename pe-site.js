@@ -3175,12 +3175,14 @@ try {
     return sec;
   }
 
-  // Editor only: a button above the #people block that swaps between the editable
+  // Editor only: a button below the #people line that swaps between the editable
   // blocks and a preview. Everything it adds sits outside the blocks, and it only
   // shows or hides whole blocks, so Squarespace never saves any of it.
   function editorPreview(body, startP, endP) {
     var startBlock = startP.closest('.sqs-block'), endBlock = endP.closest('.sqs-block');
-    if (!startBlock || !startBlock.parentNode || startBlock.previousElementSibling && startBlock.previousElementSibling.classList.contains('pe-people-toggle')) return;
+    // The button and preview go straight after the block holding the #people line,
+    // so any intro text earlier in that block stays above them, as on the live page.
+    if (!startBlock || !startBlock.parentNode || startBlock.nextElementSibling && startBlock.nextElementSibling.classList.contains('pe-people-toggle')) return;
     var preview = null, hidden = [];
     var btn = document.createElement('button');
     btn.type = 'button';
@@ -3204,7 +3206,7 @@ try {
       startBlock.parentNode.insertBefore(preview, btn.nextSibling);
       btn.textContent = 'Back to editing';
     });
-    startBlock.parentNode.insertBefore(btn, startBlock);
+    startBlock.parentNode.insertBefore(btn, startBlock.nextSibling);
     styles();
   }
 
