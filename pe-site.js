@@ -1587,9 +1587,10 @@ try {
       checks: c.done + ' of ' + C.items.length, warnings: c.autoWarn, details: details,
       edited: editedAt || '', publishOn: scheduledFor || '', by: ls('pe-initials') || '', wf: wf,
       missing: C.items.filter(function (i) { return !(state[i] || {}).done; }).join(', '),
-      seo: seoSummary()
+      seo: seoSummary(),
+      categories: (postData.categories || []).join(', ') // so the dashboard can highlight News posts
     };
-    var sig = JSON.stringify([wf, stage, data.checks, c.autoWarn, details, editedAt, scheduledFor, data.title, author, data.missing, data.seo]);
+    var sig = JSON.stringify([wf, stage, data.checks, c.autoWarn, details, editedAt, scheduledFor, data.title, author, data.missing, data.seo, data.categories]);
     if (sig === lastReport) return;
     if (!auto.length && Date.now() - started < 8000) return; // give the automatic checks a moment first
     lastReport = sig;
