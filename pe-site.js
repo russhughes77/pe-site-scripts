@@ -1243,6 +1243,14 @@ try {
     b.onclick = function () { histOpen = !histOpen; histScroll = 0; draw(); if (histOpen) getHistory(); };
     line.appendChild(b);
     list.appendChild(line);
+    // Without initials in this browser, saves can only be logged as 'editor unknown', so ask once here
+    if (!ls('pe-initials')) {
+      var ask = el('button', 'display:block;width:100%;margin:4px 0 2px;padding:6px 10px;border:1px dashed #c9cfd6;border-radius:6px;background:#fff;' +
+        'font:600 12px ' + F + ';color:' + C.blue + ';text-align:left;cursor:pointer;', 'Add your initials so your saves are credited');
+      ask.type = 'button';
+      ask.onclick = function () { who(); draw(); };
+      list.appendChild(ask);
+    }
     if (!histOpen) return;
 
     var box = el('div', 'margin:6px 0 4px;max-height:220px;overflow:auto;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;');
