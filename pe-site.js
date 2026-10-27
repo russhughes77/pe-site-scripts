@@ -3199,23 +3199,25 @@ try {
     // The button and preview go straight after the block holding the #people line,
     // so any intro text earlier in that block stays above them, as on the live page.
     if (!startBlock || !startBlock.parentNode || startBlock.nextElementSibling && startBlock.nextElementSibling.classList.contains('pe-people-toggle')) return;
-    var preview = null, hidden = [];
+    var preview = null, hidden = [], markers = [];
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'pe-people-toggle';
     btn.textContent = 'Preview people section';
-    btn.addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      if (preview) {                                                    // back to editing
-        preview.remove(); preview = null;
-        hidden.forEach(function (b) { b.style.display = ''; }); hidden = [];
-        btn.textContent = 'Preview people section';
-        return;
-      }
+
+    // Back to editing: remove the preview and show everything exactly as it was
+    function exit() {
+      if (!preview) return;
+      preview.remove(); preview = null;
+      hidden.forEach(function (b) { b.style.display = ''; }); hidden = [];
+      markers.forEach(function (m) { m.style.display = ''; if (!m.getAttribute('style')) m.removeAttribute('style'); }); markers = [];
+      btn.textContent = 'Preview people section';
+    }
+
+    function enter() {
       preview = build(body, startP, endP, true);
       if (!preview) { btn.textContent = 'No photos found between #people and #end people'; return; }
       styles();
-      preview.classList.add('pe-people-preview');
       [].forEach.call(body.querySelectorAll('.sqs-block'), function (b) {
         if (between(b, startBlock, endBlock || endP)) { b.style.display = 'none'; hidden.push(b); }
       });
@@ -3223,9 +3225,33 @@ try {
       // nothing follows it in that block, hide the whole block too, or the last
       // person's text shows twice (once in the preview, once below it).
       if (endBlock && endBlock !== startBlock && !textAfter(endP, endBlock)) { endBlock.style.display = 'none'; hidden.push(endBlock); }
+      // The two marker lines disappear too, so the preview reads as the finished page.
+      // They sit inside text blocks, so they are only hidden while previewing, and any
+      // click into one of those blocks ends the preview first (see guard below).
+      [startP, endP].forEach(function (m) {
+        if (m.style.display !== 'none') { m.style.display = 'none'; markers.push(m); }
+      });
       startBlock.parentNode.insertBefore(preview, btn.nextSibling);
       btn.textContent = 'Back to editing';
+    }
+
+    btn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      if (preview) exit(); else enter();
     });
+
+    // Guard: clicking or tabbing into a block that holds a hidden marker line returns to
+    // editing before Squarespace's own editor sees the click, so the hiding can never be
+    // saved into the article along with someone's typing.
+    function guard(e) {
+      if (!preview || !e.target || !e.target.closest) return;
+      var blk = e.target.closest('.sqs-block');
+      if (blk && (blk === startBlock || blk === endBlock)) exit();
+    }
+    document.addEventListener('mousedown', guard, true);
+    document.addEventListener('focusin', guard, true);
+    document.addEventListener('keydown', function (e) { if (preview && e.key === 'Escape') exit(); }, true);
+
     startBlock.parentNode.insertBefore(btn, startBlock.nextSibling);
     styles();
   }
