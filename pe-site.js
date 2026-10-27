@@ -3008,6 +3008,183 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: hide tags and noindex tag pages', e); }
 
 /* ================================================================
+ * Production Expert: people section (#people ... #end people)
+ * Turns a run of image + text blocks into a designed list of people:
+ * a round photo on the left, the person's name, an optional role line and
+ * their text on the right, separated by fine lines. Transparent background,
+ * full width of the article column.
+ *
+ * How the team uses it, all in the normal Squarespace editor:
+ *   #people                      (on its own line; add a label after it if wanted,
+ *                                 e.g. "#people The Contributors")
+ *   [image block]  photo of person 1, any image layout
+ *   [text block]   Name on its own line (optional)
+ *                  Role on its own line (optional)
+ *                  Their bio paragraphs
+ *   [image block]  photo of person 2 ... and so on, one image per person
+ *   #end people                  (on its own line)
+ *
+ * Every image starts a new person; the text after it belongs to them.
+ * Divider (line) blocks in between are ignored. With no name line, a name at
+ * the start of the bio ("Burak Topalakci is a ...") is picked up as the name.
+ * Inside the Squarespace editor nothing changes, so the blocks stay editable.
+ * ================================================================ */
+try {
+(function () {
+  var START = /^\s*#people\b\s*(.*)$/i;            // "#people" plus an optional label
+  var END = /^\s*#\s*end[\s-]*people\s*$/i;         // "#end people" (also "#end-people")
+  var TEXT_TAGS = 'P,UL,OL,BLOCKQUOTE,H1,H2,H3,H4,H5,H6';
+  var SHORT = 80;                                    // a line this short with no full stop is a name or role
+  var BLUE = '#006eb3';
+
+  var inEditor = false;
+  try { inEditor = window.top !== window; } catch (e) { inEditor = true; }
+
+  // One small stylesheet: inline styles can't do the phone layout, and the site's
+  // own paragraph styles are strong, so the text rules carry !important.
+  function styles() {
+    if (document.getElementById('pe-people-style')) return;
+    var s = document.createElement('style');
+    s.id = 'pe-people-style';
+    s.textContent =
+      '.pe-people{clear:both;margin:2.25rem 0;padding:0;background:transparent;font-family:"Open Sans",sans-serif}' +
+      '.pe-people-label{margin:0 0 6px!important;font-size:13px!important;font-weight:700!important;letter-spacing:.14em;text-transform:uppercase;color:#6b6b70!important;line-height:1.4!important}' +
+      '.pe-person{display:flex;gap:28px;align-items:flex-start;padding:26px 0;border-top:1px solid #e3e3e3}' +
+      '.pe-person:last-child{border-bottom:1px solid #e3e3e3}' +
+      '.pe-person-photo{flex:0 0 120px;width:120px;height:120px;border-radius:50%;object-fit:cover;object-position:50% 30%;display:block;background:#eee;margin:0}' +
+      '.pe-person-text{flex:1 1 auto;min-width:0}' +
+      '.pe-person-name{margin:2px 0 4px!important;font-size:22px!important;font-weight:700!important;line-height:1.25!important;color:#222!important}' +
+      '.pe-person-role{margin:0 0 10px!important;font-size:13px!important;letter-spacing:.06em;text-transform:uppercase;line-height:1.4!important;color:#6b6b70!important}' +
+      '.pe-person-text p,.pe-person-text li{font-size:16px!important;line-height:1.7!important;color:#333}' +
+      '.pe-person-text p{margin:0 0 10px!important}' +
+      '.pe-person-text>:last-child{margin-bottom:0!important}' +
+      '.pe-person-text a{color:' + BLUE + ';text-underline-offset:3px}' +
+      '@media (max-width:600px){' +
+        '.pe-person{gap:18px;padding:22px 0}' +
+        '.pe-person-photo{flex-basis:84px;width:84px;height:84px}' +
+        '.pe-person-name{font-size:19px!important}' +
+        '.pe-person-text p,.pe-person-text li{font-size:15px!important}' +
+      '}';
+    document.head.appendChild(s);
+  }
+
+  function after(a, b) { return !!(a.compareDocumentPosition(b) & 4); }   // b comes after a
+  function between(node, s, e) { return after(s, node) && after(node, e) && !node.contains(s) && !node.contains(e); }
+  function text(n) { return (n.textContent || '').replace(/\s+/g, ' ').trim(); }
+  function isShortLine(n) { var t = text(n); return n.tagName !== 'UL' && n.tagName !== 'OL' && t && t.length <= SHORT && !/[.!?]$/.test(t); }
+
+  // Best image address: Squarespace keeps the real one in data-src until it lazy-loads
+  function photoUrl(img) {
+    var u = img.getAttribute('data-src') || img.getAttribute('data-image') || img.currentSrc || img.src || '';
+    if (/squarespace-cdn\.com/.test(u) && u.indexOf('format=') === -1) u += (u.indexOf('?') === -1 ? '?' : '&') + 'format=300w';
+    return u;
+  }
+
+  function build(body, startP, endP) {
+    var label = (text(startP).match(START) || [])[1] || '';
+
+    // Walk everything between the two marker lines, in page order:
+    // each image opens a new person, text elements fill the current one.
+    var people = [], cur = null;
+    var walk = document.createTreeWalker(body, NodeFilter.SHOW_ELEMENT), n;
+    walk.currentNode = startP;
+    while ((n = walk.nextNode()) && n !== endP) {
+      if (endP && n.contains(endP)) continue;
+      if (n.tagName === 'IMG' && n.closest('.sqs-block-image, .image-block, .sqs-block-gallery')) {
+        if (n.closest('noscript')) continue;
+        cur = { img: n, parts: [] };
+        people.push(cur);
+      } else if (cur && TEXT_TAGS.indexOf(n.tagName) !== -1 && n.closest('.sqs-block-html, .html-block') &&
+                 !n.parentElement.closest('p,ul,ol,blockquote,h1,h2,h3,h4,h5,h6') && text(n)) {
+        cur.parts.push(n);
+      }
+    }
+    if (!people.length) return;
+
+    styles();
+    var sec = document.createElement('section');
+    sec.className = 'pe-people';
+    sec.setAttribute('aria-label', label || 'People');
+    if (label) {
+      var l = document.createElement('p');
+      l.className = 'pe-people-label';
+      l.textContent = label;
+      sec.appendChild(l);
+    }
+    var list = document.createElement('div');
+    sec.appendChild(list);
+
+    people.forEach(function (p) {
+      var row = document.createElement('div');
+      row.className = 'pe-person';
+      var parts = p.parts.slice(), name = '', role = '';
+
+      // Name and role: up to two short leading lines
+      if (parts.length > 1 && isShortLine(parts[0])) { name = text(parts.shift()); }
+      if (name && parts.length > 1 && isShortLine(parts[0])) { role = text(parts.shift()); }
+      // No name line: take a name from the start of the bio, e.g. "George Haddad is known for..."
+      if (!name && parts.length) {
+        var m = text(parts[0]).match(/^((?:[A-Z][\p{L}'’.-]+\s){1,3}[A-Z][\p{L}'’-]+)\s+(?:is|was|has|works|began|started|joined|spent)\b/u);
+        if (m) name = m[1];
+      }
+
+      var img = document.createElement('img');
+      img.className = 'pe-person-photo';
+      img.src = photoUrl(p.img);
+      img.alt = name || p.img.alt || '';
+      img.loading = 'lazy';
+      row.appendChild(img);
+
+      var t = document.createElement('div');
+      t.className = 'pe-person-text';
+      if (name) { var h = document.createElement('p'); h.className = 'pe-person-name'; h.textContent = name; t.appendChild(h); }
+      if (role) { var r = document.createElement('p'); r.className = 'pe-person-role'; r.textContent = role; t.appendChild(r); }
+      // Move (not copy) the original paragraphs, so links and formatting come with them
+      parts.forEach(function (el) { el.removeAttribute('style'); t.appendChild(el); });
+      row.appendChild(t);
+      list.appendChild(row);
+    });
+
+    // Put the section where the #people line was, then hide the leftovers
+    startP.parentNode.insertBefore(sec, startP);
+    startP.style.display = 'none';
+    endP.style.display = 'none';
+    [].forEach.call(body.querySelectorAll('.sqs-block'), function (b) {
+      if (between(b, startP, endP)) b.style.display = 'none';         // images, emptied text blocks, dividers
+    });
+    var endBlock = endP.closest('.sqs-block');                          // "#end people" alone in its block
+    if (endBlock && !text(endBlock).replace(text(endP), '').trim() && !endBlock.querySelector('img')) endBlock.style.display = 'none';
+    // Rows and columns left with nothing showing
+    [].forEach.call(body.querySelectorAll('.row, .col'), function (r) {
+      if (r.contains(sec)) return;
+      var blocks = r.querySelectorAll('.sqs-block');
+      if (blocks.length && [].every.call(blocks, function (b) { return b.style.display === 'none'; })) r.style.display = 'none';
+    });
+  }
+
+  function run() {
+    if (inEditor) return;                                               // leave the editor untouched
+    var body = document.querySelector('body.view-item article.hentry .body.entry-content');
+    if (!body || body.querySelector('.pe-people')) return;
+    var lines = [].filter.call(body.querySelectorAll('p'), function (p) { return !p.closest('.pe-people'); });
+    var startP = null;
+    lines.forEach(function (p) {
+      var t = text(p);
+      if (END.test(t)) {
+        if (startP) { try { build(body, startP, p); } catch (e) { if (window.console) console.warn('PE people section', e); } }
+        startP = null;
+      } else if (START.test(t) && !END.test(t)) {
+        startP = p;
+      }
+    });
+  }
+
+  run();
+  addEventListener('mercury:load', function () { setTimeout(run, 50); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: people section', e); }
+
+/* ================================================================
  * Production Expert: placement for the top-of-article boxes
  * Puts the partner label, read time badge and contents box in one fixed order:
  * - If the article body opens with a hero image (with or without short notes above it),
