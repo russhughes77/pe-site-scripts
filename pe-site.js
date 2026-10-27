@@ -1325,10 +1325,18 @@ try {
   }
 
   // Squarespace's status number as words. A scheduled post includes its time, so a reschedule shows.
+  // The time is always built the same way, in UK time, whatever the browser. Safari and Chrome
+  // word dates differently ("Wed 28 Oct at 09:00" against "Wed 28 Oct, 09:00"), and the sheet
+  // matches one save reported by two browsers on its status text, so different wording logged
+  // the same save twice (the second as "editor unknown").
   function statusText(it) {
     var wf = +it.workflowState || 0, t = +it.publishOn || 0;
-    if ((wf === 2 || wf === 1) && t > Date.now())
-      return 'Scheduled for ' + new Date(t).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+    if ((wf === 2 || wf === 1) && t > Date.now()) {
+      var parts = {};
+      new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+        .formatToParts(new Date(t)).forEach(function (p) { parts[p.type] = p.value; });
+      return 'Scheduled for ' + parts.weekday + ' ' + parts.day + ' ' + parts.month + ', ' + parts.hour + ':' + parts.minute;
+    }
     return wf === 1 ? 'Published' : wf === 2 ? 'Scheduled' : wf === 3 ? 'In review' : wf === 4 ? 'Draft' : '';
   }
 
