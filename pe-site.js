@@ -1012,6 +1012,8 @@ try {
  * alt text, written by Claude through the Google Sheet, each with a Copy button. Like the panel,
  * drag its title bar to move it, click to shrink it, double-click to put it back in the corner.
  * - Reports each post's stage to the Google Sheet for the content pipeline dashboard.
+ * - "Flag for author" in the Notes box emails the author a content issue; it stays a red warning
+ * until someone marks it resolved (see the Notes section).
  * If the panel ever fails to appear for someone on the team, open any post with
  * ?checklist on the end of its address once, and it will always show in that browser.
  * ================================================================ */
@@ -1289,10 +1291,51 @@ try {
    * whoever left it and the time, so everyone opening the post sees the same notes.
    * Anyone on the team can remove a note; adding and removing both go into the edit history.
    * The box stays hidden until the sheet answers with notes, so this part does nothing
-   * until the Code.gs with the Notes section has been deployed. */
+   * until the Code.gs with the Notes section has been deployed.
+   *
+   * Flag for author (since 29 Oct 2026): the same text box, sent as a content issue instead of a
+   * note. The sheet emails the post's author (and the reviewer, if someone else has taken the
+   * review) with an "I've read this" button. The flag shows in red at the top of the notes and as
+   * a red automatic warning until someone marks it Resolved. Read and resolved are kept apart:
+   * read means the author has seen it, resolved means it's fixed. The button only appears once
+   * the sheet says it can handle flags ("flags: 1" in its answer). */
   var notes = null;                             // this post's notes from the sheet, oldest first (null until the sheet answers)
   var notesBox = null, notesList = null;        // built once; only the list part is redrawn
+  var flagBtn = null;                           // the Flag for author button, shown once the sheet can take flags
+  var flagsOn = false;                          // the sheet answered with flags: 1
   var NOTE_MAX = 800;                           // characters per note, so a note always fits in one request
+
+  // The person logged in to Squarespace, from the page's own record of their account.
+  // Used so flag emails reach the right author and read buttons show only to them.
+  function account() {
+    var ctx = (window.Static && Static.SQUARESPACE_CONTEXT) || {};
+    var a = ctx.authenticatedAccount || {};
+    return { id: a.id || '', name: a.displayName || '', first: a.firstName || '', email: a.email || '' };
+  }
+  // The post's author, as Squarespace records it
+  function authorOf() {
+    var a = postData.author || {};
+    return { id: postData.authorId || a.id || '', name: a.displayName || [a.firstName, a.lastName].filter(Boolean).join(' ') || '' };
+  }
+  // Tells the sheet who is logged in, once a day per browser, so flag emails have an address
+  // to go to. Sent in the body of a request, never in the address.
+  function registerMe() {
+    var me = account();
+    if (!me.id || !me.email) return;
+    var mark = me.id + '|' + new Date().toISOString().slice(0, 10);
+    if (ls('pe-acct-sent') === mark) return;
+    fetch(C.store, { method: 'POST', body: JSON.stringify({ action: 'whoami', id: me.id, name: me.name, first: me.first, email: me.email }) })
+      .then(function (r) { return r.json(); }).then(function (d) { if (d && d.ok) ls('pe-acct-sent', mark); }).catch(function () {});
+  }
+
+  // Takes the sheet's answer to a notes or flag request and redraws what changed
+  function gotNotes(d, logged) {
+    var before = JSON.stringify(notes), wasOn = flagsOn;
+    notes = d.notes;
+    flagsOn = !!d.flags;
+    if (logged) getHistory();                   // the sheet logged the change in the history
+    if (JSON.stringify(notes) !== before || flagsOn !== wasOn) { renderNotes(); refreshAuto(); }
+  }
 
   // Reads the post's notes, or adds or removes one (extra holds add/text or del), then redraws the list
   function notesCall(extra) {
@@ -1302,40 +1345,131 @@ try {
     return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
       // An older Code.gs answers this with the ordinary checklist read, which has no notes: stay hidden
       if (!d || !d.ok || !d.notes) { if (extra) throw new Error((d && d.error) || 'the sheet needs the Notes update'); return; }
-      var before = JSON.stringify(notes);
-      notes = d.notes;
-      if (extra) getHistory();                  // the sheet logged the change in the history
-      if (JSON.stringify(notes) !== before) renderNotes();
+      gotNotes(d, !!extra);
+      return d;
     });
+  }
+
+  // The flag buttons: op add (with text), send (with id and to), read or done (with id).
+  // Sent as the body of the request, since it carries the account's email address.
+  function flagCall(op, extra) {
+    var au = authorOf();
+    var data = { action: 'flag', op: op, post: post, title: postTitle(), by: who(), me: account(),
+      authorId: au.id, author: au.name, url: postData.fullUrl || location.pathname };
+    Object.keys(extra || {}).forEach(function (k) { data[k] = extra[k]; });
+    return fetch(C.store, { method: 'POST', body: JSON.stringify(data) }).then(function (r) { return r.json(); }).then(function (d) {
+      if (!d || !d.ok) throw new Error((d && d.error) || 'no reply');
+      gotNotes(d, true);
+      return d;
+    });
+  }
+
+  var smallBtn = 'padding:3px 9px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:600 11.5px/1.6 ' + F + ';color:#333;cursor:pointer;';
+
+  // One flagged issue: red edge, who raised it, the note, then where it's up to and its buttons
+  function flagCard(n) {
+    var open = n.flag === 'open', me = account();
+    var card = el('div', 'margin:0 0 6px;padding:8px 10px;border:1px solid ' + (open ? '#f2c4c0' : '#eceef1') + ';border-left:4px solid ' + (open ? C.red : '#b9bdc3') +
+      ';border-radius:6px;background:' + (open ? '#fdf3f2' : '#fafbfc') + ';font-size:12.5px;line-height:1.45;');
+    var top = el('div', 'display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:11.5px;color:#80868d;');
+    top.appendChild(el('span', 'font-weight:700;color:' + (open ? C.red : '#5a6068') + ';', open ? '⚑ Content issue' : '✓ Issue resolved'));
+    top.appendChild(el('span', 'font-weight:700;color:#222;', n.by || '?'));
+    top.appendChild(el('span', 'flex:1;font-variant-numeric:tabular-nums;', when(+n.at)));
+    if (!open) top.appendChild(removeX(n));                                 // only a resolved issue can be removed
+    card.appendChild(top);
+    card.appendChild(el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;', n.text));
+
+    // Where it's up to, in one grey line
+    var bits = [];
+    if (n.emailed) bits.push('Emailed to ' + n.emailed);
+    else if (n.authorId && n.authorId === me.id) bits.push('Your own post, so no email was sent');
+    else if (open) bits.push('Not emailed: no address on file for ' + (n.author || 'the author'));
+    if (n.readAt) bits.push('read ' + when(n.readAt));
+    else if (n.emailed && open) bits.push('not read yet');
+    if (!open) bits.push('resolved by ' + (n.doneBy || '?') + ' ' + when(n.doneAt));
+    card.appendChild(el('div', 'margin-top:4px;font-size:11.5px;color:' + (open && !n.readAt ? C.red : '#80868d') + ';', bits.join(' · ')));
+    if (!open) return card;
+
+    var acts = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
+    var msg = el('div', 'flex:1 1 100%;font-size:11.5px;color:' + C.red + ';');
+    function act(text, primary, fn) {
+      var b = el('button', primary ? 'padding:3px 10px;border:1px solid ' + C.red + ';border-radius:5px;background:' + C.red + ';font:700 11.5px/1.6 ' + F + ';color:#fff;cursor:pointer;' : smallBtn, text);
+      b.type = 'button';
+      b.onclick = function () {
+        b.disabled = true;
+        fn().catch(function (e) { b.disabled = false; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.'; });
+      };
+      acts.appendChild(b);
+    }
+    // The author can mark it read here too, as well as from the email
+    if (!n.readAt && n.authorId && n.authorId === me.id) act('I\'ve read this', false, function () { return flagCall('read', { id: n.id }); });
+    act('Resolved', true, function () { return flagCall('done', { id: n.id }); });
+    // No address on file: a box to type one in, saved to the Authors tab for next time
+    if (!n.emailed && !(n.authorId && n.authorId === me.id)) {
+      var addr = el('input', 'flex:1 1 150px;min-width:0;padding:3px 7px;border:1px solid #d5d9de;border-radius:5px;font:12px ' + F + ';color:#222;');
+      addr.type = 'email';
+      addr.placeholder = (n.author ? n.author.split(' ')[0] + '\'s' : 'Author\'s') + ' email address';
+      acts.insertBefore(addr, acts.firstChild);
+      var send = el('button', smallBtn, 'Send');
+      send.type = 'button';
+      send.onclick = function () {
+        var to = addr.value.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[a-z]{2,}$/i.test(to)) { msg.textContent = 'Add an email address.'; addr.focus(); return; }
+        send.disabled = true;
+        flagCall('send', { id: n.id, to: to }).catch(function (e) { send.disabled = false; msg.textContent = 'Not sent: ' + (e.message || e) + '.'; });
+      };
+      acts.insertBefore(send, addr.nextSibling);
+    }
+    acts.appendChild(msg);
+    card.appendChild(acts);
+    return card;
+  }
+
+  // The × that removes a note, after a confirm
+  function removeX(n) {
+    var x = el('button', 'padding:0 4px;border:0;background:none;font:600 14px/1 ' + F + ';color:#a0a6ad;cursor:pointer;', '×');
+    x.type = 'button';
+    x.title = 'Remove this note';
+    x.onclick = function () {
+      if (!confirm('Remove this note from ' + (n.by || 'the team') + '?')) return;
+      x.disabled = true;
+      notesCall({ del: n.id }).catch(function () { x.disabled = false; });
+    };
+    return x;
   }
 
   // The notes themselves, each with initials and time on top. Rebuilt on its own,
   // never by draw(), so a half-typed note isn't wiped by the 30-second refresh.
+  // Open flags come first, so the issue is the first thing anyone opening the post sees.
   function renderNotes() {
     if (!notesBox || !notes) return;
     notesBox.style.display = '';
+    if (flagBtn) flagBtn.style.display = flagsOn ? '' : 'none';
     notesList.innerHTML = '';
-    notes.forEach(function (n) {
+    var openFlags = notes.filter(function (n) { return n.flag === 'open'; });
+    openFlags.concat(notes.filter(function (n) { return n.flag !== 'open'; })).forEach(function (n) {
+      if (n.flag) { notesList.appendChild(flagCard(n)); return; }
       var card = el('div', 'margin:0 0 6px;padding:8px 10px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;font-size:12.5px;line-height:1.45;');
       var top = el('div', 'display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:11.5px;color:#80868d;');
       top.appendChild(el('span', 'font-weight:700;color:#222;', n.by || '?'));                    // initials of whoever left it
       top.appendChild(el('span', 'flex:1;font-variant-numeric:tabular-nums;', when(+n.at)));
-      var x = el('button', 'padding:0 4px;border:0;background:none;font:600 14px/1 ' + F + ';color:#a0a6ad;cursor:pointer;', '×');
-      x.type = 'button';
-      x.title = 'Remove this note';
-      x.onclick = function () {
-        if (!confirm('Remove this note from ' + (n.by || 'the team') + '?')) return;
-        x.disabled = true;
-        notesCall({ del: n.id }).catch(function () { x.disabled = false; });
-      };
-      top.appendChild(x);
+      top.appendChild(removeX(n));
       card.appendChild(top);
       card.appendChild(el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;', n.text)); // keeps the writer's line breaks
       notesList.appendChild(card);
     });
   }
 
-  // Builds the box once: heading, the notes, and a text box with an Add button underneath
+  // The automatic check for open flags, added to the others by runAuto
+  function flagCheck() {
+    var open = (notes || []).filter(function (n) { return n.flag === 'open'; });
+    if (!open.length) return null;
+    var unread = open.filter(function (n) { return !n.readAt; }).length;
+    return { ok: false, kind: 'flag', text: (open.length === 1 ? 'Content issue flagged by ' + (open[0].by || '?') : open.length + ' content issues flagged') +
+      (unread ? ', not read yet' : ', read by the author') + '. See Notes' };
+  }
+
+  // Builds the box once: heading, the notes, and a text box with Add note and Flag for author underneath
   function buildNotes() {
     notesBox = el('div', 'display:none;padding:2px 16px 14px;border-top:1px solid #eceef1;');
     notesBox.appendChild(sectionLabel('Notes'));
@@ -1349,6 +1483,9 @@ try {
     var msg = el('span', 'flex:1;font-size:11.5px;color:#80868d;');
     var add = el('button', 'padding:5px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + C.blue + ';font:700 12px/1.6 ' + F + ';color:#fff;cursor:pointer;', 'Add note');
     add.type = 'button';
+    flagBtn = el('button', 'display:none;padding:5px 10px;border:1px solid ' + C.red + ';border-radius:5px;background:#fff;font:700 12px/1.6 ' + F + ';color:' + C.red + ';cursor:pointer;', '⚑ Flag for author');
+    flagBtn.type = 'button';
+    flagBtn.title = 'Save this as a content issue and email the author';
     function showWho() { // tells people their initials will go on the note, or that they'll be asked for them
       msg.style.color = '#80868d';
       msg.textContent = ls('pe-initials') ? 'Signed ' + ls('pe-initials') : 'You\'ll be asked for your initials';
@@ -1366,13 +1503,39 @@ try {
         msg.style.color = C.red; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.';
       });
     };
+    flagBtn.onclick = function () {
+      var text = field.value.trim();
+      if (!text) { field.focus(); msg.style.color = C.red; msg.textContent = 'Write what needs fixing first.'; return; }
+      var au = authorOf(), me = account();
+      var own = au.id && au.id === me.id;
+      if (!confirm(own ? 'This is your own post, so no email goes out. Flag it as a content issue anyway?'
+        : 'Flag this for ' + (au.name || 'the author') + '? They\'ll get an email with your note.')) return;
+      flagBtn.disabled = true; flagBtn.textContent = 'Sending…';
+      flagCall('add', { text: text.slice(0, NOTE_MAX) }).then(function (d) {
+        field.value = '';
+        flagBtn.disabled = false; flagBtn.textContent = '⚑ Flag for author';
+        msg.style.color = d.needEmail || d.capped ? C.red : C.green;
+        msg.textContent = d.needEmail ? 'Flagged. No address on file for ' + (d.author || 'the author') + ': add one on the flag above.'
+          : d.capped ? 'Flagged, but the daily email limit is reached.'
+          : d.sent && d.sent.length ? 'Flagged and emailed to ' + d.sent.join(', ') + '.' : 'Flagged.';
+      }).catch(function (e) {
+        flagBtn.disabled = false; flagBtn.textContent = '⚑ Flag for author';
+        msg.style.color = C.red; msg.textContent = 'Not flagged: ' + (e.message || e) + '. Try again.';
+      });
+    };
     // Cmd+Enter or Ctrl+Enter adds the note without reaching for the mouse
     field.addEventListener('keydown', function (e) { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); add.click(); } });
     showWho();
-    row.appendChild(msg);
-    row.appendChild(add);
+    var btns = el('div', 'display:flex;gap:6px;flex:0 0 auto;');
+    btns.appendChild(flagBtn);
+    btns.appendChild(add);
     notesBox.appendChild(field);
     notesBox.appendChild(row);
+    notesBox.appendChild(msg);
+    row.appendChild(el('span', 'flex:1;'));
+    row.appendChild(btns);
+    msg.style.display = 'block';
+    msg.style.marginTop = '5px';
     return notesBox;
   }
 
@@ -1483,6 +1646,10 @@ try {
     if (h.kind === 'confirm') return who + ' confirmed the checks still hold';
     if (h.kind === 'note') return who + ' added a note: ' + h.item;       // item is the start of the note
     if (h.kind === 'unnote') return who + ' removed a note: ' + h.item;
+    if (h.kind === 'flag') return who + ' flagged a content issue: ' + h.item;
+    if (h.kind === 'flagsent') return 'Content issue emailed to ' + h.item;
+    if (h.kind === 'flagread') return (who || 'The author') + ' read the content issue';
+    if (h.kind === 'flagdone') return who + ' resolved the content issue: ' + h.item;
     return h.kind;
   }
 
@@ -1532,9 +1699,10 @@ try {
     var status = c.done + '/' + C.items.length + (c.autoWarn ? ' · ' + c.autoWarn + (c.autoWarn === 1 ? ' warning' : ' warnings') : '');
 
     var embIssue = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
-    head.firstChild.textContent = embIssue ? (embIssue.live ? 'Live before embargo' : 'Embargo clash') : c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
+    var flagIssue = auto.filter(function (r) { return r.kind === 'flag'; })[0];
+    head.firstChild.textContent = embIssue ? (embIssue.live ? 'Live before embargo' : 'Embargo clash') : flagIssue ? 'Content issue' : c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
     head.lastChild.textContent = status;
-    head.style.color = embIssue || c.warn ? C.red : c.stale ? C.amber : '#222';
+    head.style.color = embIssue || flagIssue || c.warn ? C.red : c.stale ? C.amber : '#222';
     head.lastChild.style.color = colour;
     panel.style.borderTopColor = colour;
     pill.style.borderColor = colour;
@@ -1560,7 +1728,7 @@ try {
     if (reportErr) list.appendChild(el('div', 'margin-top:10px;padding:7px 9px;border-radius:4px;background:#fdecea;color:' + C.red + ';font:12px/1.4 ' + F + ';',
       'The Content Manager did not update: ' + reportErr + '. It will try again in 30 seconds.'));
     var embBad = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
-    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad);
+    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue);
     if (drawer && drawer.style.display !== 'none') drawDrawer();
 
     clearTimeout(hideTimer);
@@ -1609,7 +1777,7 @@ try {
     if (!warnings.length) return;
     list.appendChild(sectionLabel('Needs fixing', C.amber));
     warnings.forEach(function (r) {
-      var hard = r.kind === 'embargo'; // an embargo problem is shown in red
+      var hard = r.kind === 'embargo' || r.kind === 'flag'; // embargo problems and flagged issues are shown in red
       var row = el('div', 'display:flex;gap:8px;align-items:flex-start;padding:3px 0;font:' + (hard ? 600 : 400) + ' 13px/1.4 ' + F + ';color:' + (hard ? C.red : '#5a3a00') + ';');
       row.appendChild(el('span', 'color:' + (hard ? C.red : C.amber) + ';', '⚠'));
       var t = el('span', 'flex:1;' + (r.els ? 'cursor:pointer;text-decoration:underline;text-underline-offset:2px;' : ''), r.text);
@@ -1708,7 +1876,7 @@ try {
   }
 
   // Red bar across the top of the page while a scheduled post has unticked checks or warnings
-  function warning(on, missing, autoWarn, embBad) {
+  function warning(on, missing, autoWarn, embBad, flagBad) {
     if (!on) { if (banner) banner.style.display = 'none'; return; }
     if (!banner) {
       banner = el('div', 'position:fixed;top:0;left:0;right:0;z-index:10001;padding:10px 16px;background:' + C.red +
@@ -1720,8 +1888,9 @@ try {
     var when = new Date(scheduledFor).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
     var bits = [];
     if (embBad) bits.push('EMBARGO: ' + (embBad.bar || embBad.text) + '.'); // named first, before anything else
+    if (flagBad) bits.push('CONTENT ISSUE flagged for the author and not resolved.');
     if (missing.length) bits.push(missing.length + (missing.length === 1 ? ' check' : ' checks') + ' not done: ' + missing.join(', ') + '.');
-    var others = autoWarn - (embBad ? 1 : 0); // the embargo is already named above
+    var others = autoWarn - (embBad ? 1 : 0) - (flagBad ? 1 : 0); // the embargo and flag are already named above
     if (others) bits.push(others + (others === 1 ? ' other automatic warning' : ' other automatic warnings') + ' in the checklist.');
     // a live post has no schedule to report, only the embargo
     banner.textContent = (scheduledFor ? 'Scheduled for ' + when + '. ' : '') + bits.join(' ');
@@ -1767,6 +1936,9 @@ try {
     // 0. Embargo (see the Embargo section): first, because it's the costliest mistake
     var emb = embargoCheck();
     if (emb) out.push(emb);
+    // 0b. A content issue flagged for the author and not yet resolved (see the Notes section)
+    var flg = flagCheck();
+    if (flg) out.push(flg);
 
     // 1. Alt text on the pictures in the article body and its header (ad banners don't count)
     var imgs = Array.prototype.filter.call(a.querySelectorAll('.body.entry-content img, .promoted-block-image img, .entry-header img'), function (i) {
@@ -2357,6 +2529,7 @@ try {
     renderEmbargo();
     embargoCall().catch(function () {}); // no answer: no embargo line changes, try again in 30 seconds
     notesCall().catch(function () {});   // no answer: the notes box stays as it is
+    registerMe();                        // so flag emails can reach this person as an author
     setInterval(function () {
       if (document.hidden) return;
       checkSchedule().then(refreshAuto); call({ post: post });
