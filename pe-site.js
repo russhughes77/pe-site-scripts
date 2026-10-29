@@ -3028,6 +3028,17 @@ try {
       '.pe-sr input{flex:1;min-width:0;padding:14px 16px;border:1px solid #d5d8dc;border-radius:6px;font:18px ' + F + ';color:#222;background:#fff}' +
       '.pe-sr input:focus{outline:2px solid ' + I + ';outline-offset:-1px}' +
       '.pe-sr form button{padding:0 22px;border:0;border-radius:6px;background:' + I + ';color:#fff;font:700 15px ' + F + ';cursor:pointer}' +
+      '.pe-sr-tabs{display:flex;gap:24px;margin:-4px 0 14px;border-bottom:1px solid #e6e8eb;overflow-x:auto;scrollbar-width:none}' +
+      '.pe-sr-tabs button{flex:0 0 auto;padding:8px 2px 10px;border:0;border-bottom:3px solid transparent;margin-bottom:-1px;border-radius:0;background:none;font:600 14px ' + F + ';color:#666;cursor:pointer}' +
+      '.pe-sr-tabs button:hover{color:' + I + '}' +
+      '.pe-sr-tabs button[aria-selected="true"]{color:' + I + ';border-bottom-color:' + I + '}' +
+      '.pe-sr-tabs button span{margin-left:6px;font-weight:400;color:#999}' +
+      '.pe-sr-tabs button.none{color:#aaa}' +
+      '.pe-sr-pic.vid{position:relative;width:160px;height:90px;background:#000}' +
+      '.pe-sr-pic.vid i{position:absolute;left:50%;top:50%;width:36px;height:26px;margin:-13px 0 0 -18px;border-radius:7px;background:rgba(0,0,0,.72)}' +
+      '.pe-sr-pic.vid i:after{content:"";position:absolute;left:14px;top:7px;border-style:solid;border-width:6px 0 6px 10px;border-color:transparent transparent transparent #fff}' +
+      '@media (max-width:600px){.pe-sr-pic.vid{width:112px;height:63px}}' +
+      '.pe-sr-podrow{padding:8px 0;border-bottom:1px solid #e6e8eb}' +
       '.pe-sr-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 18px}' +
       '.pe-sr-count{margin:0;font:600 14px ' + F + ';color:#666}' +
       '.pe-sr-sort{display:flex;gap:4px;padding:3px;background:#f1f2f4;border-radius:20px}' +
@@ -3081,6 +3092,7 @@ try {
     var root = document.createElement('div');
     root.className = 'pe-sr';
     root.innerHTML = '<p class="pe-sr-fix" hidden></p><form action="/search" method="get" role="search"><input type="search" name="q" placeholder="Search Production Expert" aria-label="Search terms" required><button type="submit">Search</button></form>' +
+      '<div class="pe-sr-tabs" role="tablist" aria-label="Type of result" hidden></div>' +
       '<div class="pe-sr-bar"><p class="pe-sr-count" aria-live="polite"></p><div class="pe-sr-sort" role="group" aria-label="Sort results"><button type="button" data-s="new" aria-pressed="true">Newest</button><button type="button" data-s="best" aria-pressed="false">Best match</button></div></div>' +
       '<div class="pe-sr-grid"></div><button type="button" class="pe-sr-more" hidden>Show more</button>';
     var native = document.querySelector('.sqs-search-page');
@@ -3089,8 +3101,14 @@ try {
     root.querySelector('input').value = q;
 
     var grid = root.querySelector('.pe-sr-grid'), count = root.querySelector('.pe-sr-count'), more = root.querySelector('.pe-sr-more');
-    var bar = root.querySelector('.pe-sr-bar'), sorter = root.querySelector('.pe-sr-sort');
+    var bar = root.querySelector('.pe-sr-bar'), sorter = root.querySelector('.pe-sr-sort'), tabsEl = root.querySelector('.pe-sr-tabs');
     var items = [], older = [], phrases = [q], order = 'new', shown = PER, loose = false;
+    // Tabs, as on Google: All (articles with video and podcast strips), Articles, Videos, Podcasts.
+    // The chosen tab is kept in the address (&t=videos), so Back and shared links keep it.
+    var TABS = [['all', 'All'], ['articles', 'Articles'], ['videos', 'Videos'], ['podcasts', 'Podcasts']];
+    var tab = params.get('t');
+    if (!TABS.some(function (t) { return t[0] === tab; })) tab = 'all';
+    var vlist = [], plist = [];   // every matching video and podcast episode, for their tabs
     if (!q) { bar.hidden = true; return; }
     count.textContent = 'Searching…';
 
@@ -3136,24 +3154,99 @@ try {
       return a;
     }
 
+    function pool() {
+      var strong = items.filter(function (it) { return it._strong; });
+      return (loose || !strong.length) ? items : strong;
+    }
+    function drawTabs() {
+      var n = { all: null, articles: pool().length, videos: vlist.length, podcasts: plist.length };
+      tabsEl.innerHTML = TABS.map(function (t) {
+        var c = n[t[0]];
+        return '<button type="button" role="tab" data-t="' + t[0] + '" aria-selected="' + (t[0] === tab) + '"' + (c === 0 ? ' class="none"' : '') + '>' +
+          t[1] + (c ? '<span>' + c + '</span>' : '') + '</button>';
+      }).join('');
+      tabsEl.hidden = false;
+    }
+    tabsEl.onclick = function (e) {
+      var b = e.target.closest('button');
+      if (!b || b.getAttribute('data-t') === tab) return;
+      tab = b.getAttribute('data-t');
+      shown = PER;
+      try { var u = new URL(location.href); if (tab === 'all') u.searchParams.delete('t'); else u.searchParams.set('t', tab); history.replaceState(null, '', u); } catch (x) {}
+      draw();
+    };
+    function plural(n, one, many) { return n + ' ' + (n === 1 ? one : many); }
+    function pager(total) {
+      if (total > shown) { more.textContent = 'Show more'; more.hidden = false; more.dataset.act = 'more'; } else more.hidden = true;
+    }
+    // Videos and podcast episodes on their own tabs: newest first, or the sheet's own order for best match
+    function byDate(list) { return order === 'new' ? list.slice().sort(function (a, b) { return (b.date || 0) - (a.date || 0); }) : list.slice(); }
+    function drawVideos() {
+      grid.innerHTML = '';
+      var list = byDate(vlist);
+      list.slice(0, shown).forEach(function (v) {
+        var a = document.createElement('a');
+        a.className = 'pe-sr-card';
+        a.href = 'https://www.youtube.com/watch?v=' + encodeURIComponent(v.id);
+        a.target = '_blank'; a.rel = 'noopener';
+        a.innerHTML = '<div class="pe-sr-txt"><p class="pe-sr-meta">' + esc(['YouTube', date(v.date)].filter(Boolean).join(' \u00b7 ')) + '</p><p class="pe-sr-title">' + esc(v.title) + '</p></div>' +
+          '<div class="pe-sr-pic has vid"><img loading="lazy" alt="" src="https://i.ytimg.com/vi/' + encodeURIComponent(v.id) + '/mqdefault.jpg"><i></i></div>';
+        grid.appendChild(a);
+      });
+      if (!list.length) grid.innerHTML = '<p class="pe-sr-empty">No videos on our YouTube channel match \u201c' + esc(q) + '\u201d.</p>';
+      count.textContent = plural(list.length, 'video', 'videos') + ' for \u201c' + q + '\u201d';
+      sorter.hidden = !list.length;
+      pager(list.length);
+    }
+    function drawPodcasts() {
+      grid.innerHTML = '';
+      var list = byDate(plist);
+      list.slice(0, shown).forEach(function (e) {
+        var row = document.createElement('div');
+        row.className = 'pe-sr-podrow';
+        row.innerHTML = podLink(e);
+        grid.appendChild(row);
+      });
+      if (!list.length) grid.innerHTML = '<p class="pe-sr-empty">No podcast episodes match \u201c' + esc(q) + '\u201d.</p>';
+      count.textContent = plural(list.length, 'podcast episode', 'podcast episodes') + ' for \u201c' + q + '\u201d';
+      sorter.hidden = !list.length;
+      pager(list.length);
+    }
+
     function draw() {
+      drawTabs();
+      if (tab === 'videos') return drawVideos();
+      if (tab === 'podcasts') return drawPodcasts();
+      var strips = tab === 'all';
       var strong = items.filter(function (it) { return it._strong; });
       var pool = (loose || !strong.length) ? items : strong;
       var list = pool.slice().sort(order === 'new'
         ? function (a, b) { return (b.publishOn || 9e15) - (a.publishOn || 9e15); } // guide pages (no date) stay on top
         : best);
       grid.innerHTML = '';
-      if (vids && vidsTop) grid.appendChild(vids);
+      sorter.hidden = false;
+      if (!list.length) {
+        // no articles: say so, but keep the video and podcast strips on the All tab
+        grid.innerHTML = '<p class="pe-sr-empty">No articles for \u201c' + esc(q) + '\u201d' + (older.length ? ' from the last ' + C.maxYears + ' years' : '') + '.</p>';
+        if (strips && vids) grid.appendChild(vids);
+        if (strips && pods) grid.appendChild(pods);
+        count.textContent = '';
+        sorter.hidden = true;
+        if (older.length) { more.textContent = 'Show ' + plural(older.length, 'older article', 'older articles'); more.dataset.act = 'older'; more.hidden = false; }
+        else more.hidden = true;
+        return;
+      }
+      if (vids && vidsTop && strips) grid.appendChild(vids);
       describe(list.slice(0, shown));
       list.slice(0, shown).forEach(function (it, i) {
         grid.appendChild(card(it));
-        if (i === 2 && vids && !vidsTop) grid.appendChild(vids);
-        if (i === 2 && pods) grid.appendChild(pods);
+        if (i === 2 && strips && vids && !vidsTop) grid.appendChild(vids);
+        if (i === 2 && strips && pods) grid.appendChild(pods);
       });
-      if (vids && !vids.parentNode) grid.appendChild(vids);
-      if (pods && !pods.parentNode) grid.appendChild(pods);
+      if (strips && vids && !vids.parentNode) grid.appendChild(vids);
+      if (strips && pods && !pods.parentNode) grid.appendChild(pods);
       var weak = items.length - strong.length;
-      count.textContent = pool.length + (pool.length === 1 ? ' result' : ' results') + ' for “' + q + '”' +
+      count.textContent = pool.length + (tab === 'articles' ? (pool.length === 1 ? ' article' : ' articles') : (pool.length === 1 ? ' result' : ' results')) + ' for “' + q + '”' +
         (!strong.length ? ' (no close matches, showing everything that mentions it)' : '');
       if (list.length > shown) { more.textContent = 'Show more'; more.hidden = false; more.dataset.act = 'more'; }
       else if (!loose && strong.length && weak) { more.textContent = 'Show ' + weak + ' less relevant results'; more.hidden = false; more.dataset.act = 'loose'; }
@@ -3183,21 +3276,19 @@ try {
     var videosReady = new Promise(function (done) { videosIn = done; });
     if (!C.videoStore) videosIn();
     else {
-      fetch(C.videoStore + '?media=' + encodeURIComponent(q) + '&years=' + C.maxYears).then(function (r) { return r.json(); }).then(function (d) {
+      // limit: how many of each the sheet should send for the Videos and Podcasts tabs
+      fetch(C.videoStore + '?media=' + encodeURIComponent(q) + '&years=' + C.maxYears + '&limit=60').then(function (r) { return r.json(); }).then(function (d) {
         var cutoff = Date.now() - C.maxYears * YEAR;
         var eps = (d.podcasts || []).filter(function (e) { return e.date >= cutoff; });
+        plist = eps;
+        vlist = (d.videos || []).filter(function (v) { return v.date >= cutoff; });
         if (eps.length) {
           pods = document.createElement('div');
           pods.className = 'pe-sr-pods';
-          pods.innerHTML = '<h3>Podcast episodes</h3>' + eps.map(function (e) {
-            var meta = ['Podcast', date(e.date), e.minutes ? e.minutes + ' min' : ''].filter(Boolean).join(' \u00b7 ');
-            return '<a class="pe-sr-pod" href="' + esc(e.url) + '" target="_blank" rel="noopener"><span class="pe-sr-mic" aria-hidden="true"></span>' +
-              '<span class="pe-sr-podtxt"><span class="pe-sr-pt">' + esc(e.title) + '</span><span class="pe-sr-pm">' + esc(meta) + '</span>' +
-              (e.summary ? '<span class="pe-sr-ps">' + esc(e.summary) + '</span>' : '') + '</span></a>';
-          }).join('');
-          if (drawn && items.length) draw();
+          pods.innerHTML = '<h3>Podcast episodes</h3>' + eps.slice(0, 3).map(podLink).join('');
         }
-        var list = (d.videos || []).filter(function (v) { return v.date >= cutoff; }).slice(0, 4);
+        if (drawn) draw();
+        var list = vlist.slice(0, 4);
         if (!list.length) return videosIn();
         vids = document.createElement('div');
         vids.className = 'pe-sr-vids';
@@ -3209,8 +3300,14 @@ try {
         videosIn();
         if (!drawn) return;
         vidsTop = window.scrollY < 150;
-        if (items.length) draw(); else if (grid.parentNode) grid.appendChild(vids); else root.appendChild(vids);
+        draw();
       }).catch(function () { videosIn(); });
+    }
+    function podLink(e) {
+      var meta = ['Podcast', date(e.date), e.minutes ? e.minutes + ' min' : ''].filter(Boolean).join(' \u00b7 ');
+      return '<a class="pe-sr-pod" href="' + esc(e.url) + '" target="_blank" rel="noopener"><span class="pe-sr-mic" aria-hidden="true"></span>' +
+        '<span class="pe-sr-podtxt"><span class="pe-sr-pt">' + esc(e.title) + '</span><span class="pe-sr-pm">' + esc(meta) + '</span>' +
+        (e.summary ? '<span class="pe-sr-ps">' + esc(e.summary) + '</span>' : '') + '</span></a>';
     }
     var waitForVideos = Promise.race([videosReady, new Promise(function (r) { setTimeout(r, 1500); })]);
 
@@ -3265,22 +3362,9 @@ try {
     });
 
     function show() {
-      if (!items.length && older.length) {
-        count.textContent = 'Nothing from the last ' + C.maxYears + ' years for “' + q + '”';
-        more.textContent = 'Show ' + older.length + ' older ' + (older.length === 1 ? 'article' : 'articles');
-        more.dataset.act = 'older';
-        more.hidden = false;
-        sorter.hidden = true;
-        return;
-      }
-      if (!items.length) {
-        bar.hidden = true;
-        if (vids) root.appendChild(vids);
-        if (pods) root.appendChild(pods);
-        grid.outerHTML = '<p class="pe-sr-empty">No results for “' + esc(q) + '”. Try fewer words, or a product or brand name.</p>';
-        return;
-      }
       draw();
+      if (!items.length && !older.length && !vlist.length && !plist.length && tab === 'all')
+        grid.innerHTML = '<p class="pe-sr-empty">No results for \u201c' + esc(q) + '\u201d. Try fewer words, or a product or brand name.</p>';
     }
   }
 
