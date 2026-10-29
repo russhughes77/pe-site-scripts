@@ -1366,6 +1366,70 @@ try {
 
   var smallBtn = 'padding:3px 9px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:600 11.5px/1.6 ' + F + ';color:#333;cursor:pointer;';
 
+  // While someone is editing a note, the list isn't redrawn under them (the 30-second refresh
+  // would wipe what they're typing). It catches up as soon as they save or cancel.
+  var editingNote = null, notesWaiting = false;
+
+  // A note's text, selectable so it can be copied, plus "edited" when it has been changed
+  function noteText(n) {
+    var box = el('div');
+    var t = el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;user-select:text;-webkit-user-select:text;cursor:text;', n.text); // keeps the writer's line breaks
+    t.className = 'pe-sel';
+    box.appendChild(t);
+    if (n.editedAt) box.appendChild(el('div', 'margin-top:2px;font-size:11px;color:#a0a6ad;', 'Edited by ' + (n.editedBy || '?') + ' ' + when(n.editedAt)));
+    return box;
+  }
+
+  // The Edit button: turns the note into a text box with Save and Cancel, in place
+  function editBtn(n, card, textBox) {
+    var b = el('button', 'padding:0 4px;border:0;background:none;font:600 11.5px/1 ' + F + ';color:' + C.blue + ';cursor:pointer;', 'Edit');
+    b.type = 'button';
+    b.title = 'Change the wording of this note';
+    b.onclick = function () {
+      if (editingNote) return;
+      editingNote = n.id;
+      var box = el('div');
+      var area = el('textarea', 'display:block;box-sizing:border-box;width:100%;min-height:70px;padding:7px 9px;border:1px solid #d5d9de;border-radius:6px;' +
+        'resize:vertical;background:#fff;font:13px/1.45 ' + F + ';color:#222;');
+      area.value = n.text;
+      area.maxLength = NOTE_MAX;
+      var row = el('div', 'display:flex;align-items:center;gap:6px;margin-top:6px;');
+      var msg = el('span', 'flex:1;font-size:11.5px;color:' + C.red + ';');
+      var cancel = el('button', smallBtn, 'Cancel');
+      var save = el('button', 'padding:3px 10px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + C.blue + ';font:700 11.5px/1.6 ' + F + ';color:#fff;cursor:pointer;', 'Save');
+      cancel.type = save.type = 'button';
+      function done() { editingNote = null; renderNotes(); }
+      cancel.onclick = done;
+      save.onclick = function () {
+        var text = area.value.trim();
+        if (!text) { msg.textContent = 'A note can\'t be empty.'; area.focus(); return; }
+        if (text === n.text) { done(); return; }
+        save.disabled = cancel.disabled = true; save.textContent = 'Saving…';
+        editingNote = null;   // let the answer redraw the list
+        notesCall({ edit: n.id, text: text.slice(0, NOTE_MAX) }).then(function (d) {
+          // An older Code.gs ignores edits: say so rather than look as if it saved
+          var now = (d && d.notes || []).filter(function (x) { return x.id === n.id; })[0];
+          if (!now || now.text !== text.slice(0, NOTE_MAX)) throw new Error('the sheet needs the latest Code.gs');
+          renderNotes();
+        }).catch(function (e) {
+          editingNote = n.id;
+          save.disabled = cancel.disabled = false; save.textContent = 'Save';
+          msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.';
+        });
+      };
+      area.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); save.click(); }
+        if (e.key === 'Escape') { e.preventDefault(); done(); }
+      });
+      row.appendChild(msg); row.appendChild(cancel); row.appendChild(save);
+      box.appendChild(area); box.appendChild(row);
+      card.replaceChild(box, textBox);
+      b.style.display = 'none';
+      area.focus();
+    };
+    return b;
+  }
+
   // One flagged issue: red edge, who raised it, the note, then where it's up to and its buttons
   function flagCard(n) {
     var open = n.flag === 'open', me = account();
@@ -1375,9 +1439,11 @@ try {
     top.appendChild(el('span', 'font-weight:700;color:' + (open ? C.red : '#5a6068') + ';', open ? '⚑ Content issue' : '✓ Issue resolved'));
     top.appendChild(el('span', 'font-weight:700;color:#222;', n.by || '?'));
     top.appendChild(el('span', 'flex:1;font-variant-numeric:tabular-nums;', when(+n.at)));
+    var textBox = noteText(n);
+    top.appendChild(editBtn(n, card, textBox));
     if (!open) top.appendChild(removeX(n));                                 // only a resolved issue can be removed
     card.appendChild(top);
-    card.appendChild(el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;', n.text));
+    card.appendChild(textBox);
 
     // Where it's up to, in one grey line
     var bits = [];
@@ -1388,7 +1454,20 @@ try {
     else if (n.emailed && open) bits.push('not read yet');
     if (!open) bits.push('resolved by ' + (n.doneBy || '?') + ' ' + when(n.doneAt));
     card.appendChild(el('div', 'margin-top:4px;font-size:11.5px;color:' + (open && !n.readAt ? C.red : '#80868d') + ';', bits.join(' · ')));
-    if (!open) return card;
+    if (!open) {
+      // A resolved issue can be put back: it returns to the warnings and the dashboard's alert
+      var again = el('button', smallBtn + 'margin-top:6px;', 'Reopen issue');
+      again.type = 'button';
+      again.title = 'Not fixed after all: put it back as an open content issue';
+      var amsg = el('div', 'font-size:11.5px;color:' + C.red + ';');
+      again.onclick = function () {
+        again.disabled = true;
+        flagCall('reopen', { id: n.id }).catch(function (e) { again.disabled = false; amsg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.'; });
+      };
+      card.appendChild(again);
+      card.appendChild(amsg);
+      return card;
+    }
 
     var acts = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
     var msg = el('div', 'flex:1 1 100%;font-size:11.5px;color:' + C.red + ';');
@@ -1397,13 +1476,19 @@ try {
       b.type = 'button';
       b.onclick = function () {
         b.disabled = true;
-        fn().catch(function (e) { b.disabled = false; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.'; });
+        // re-enabled afterwards too, so a cancelled confirm leaves the button usable
+        fn().then(function () { b.disabled = false; }, function (e) { b.disabled = false; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.'; });
       };
       acts.appendChild(b);
     }
     // The author can mark it read here too, as well as from the email
     if (!n.readAt && n.authorId && n.authorId === me.id) act('I\'ve read this', false, function () { return flagCall('read', { id: n.id }); });
-    act('Resolved', true, function () { return flagCall('done', { id: n.id }); });
+    // Closing an issue takes it off the warnings and the dashboard, so it's a plain button
+    // with a confirm, never a one-click red one (29 Oct 2026). Reopen undoes it.
+    act('Mark as fixed', false, function () {
+      if (!confirm('Mark this issue as fixed?\n\nIt comes off the warnings and the Content Manager. You can reopen it later.')) return Promise.resolve();
+      return flagCall('done', { id: n.id });
+    });
     // No address on file: a box to type one in, saved to the Authors tab for next time
     if (!n.emailed && !(n.authorId && n.authorId === me.id)) {
       var addr = el('input', 'flex:1 1 150px;min-width:0;padding:3px 7px;border:1px solid #d5d9de;border-radius:5px;font:12px ' + F + ';color:#222;');
@@ -1443,6 +1528,8 @@ try {
   // Open flags come first, so the issue is the first thing anyone opening the post sees.
   function renderNotes() {
     if (!notesBox || !notes) return;
+    if (editingNote) { notesWaiting = true; return; }   // someone is mid-edit: catch up when they finish
+    notesWaiting = false;
     notesBox.style.display = '';
     if (flagBtn) flagBtn.style.display = flagsOn ? '' : 'none';
     notesList.innerHTML = '';
@@ -1453,9 +1540,11 @@ try {
       var top = el('div', 'display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:11.5px;color:#80868d;');
       top.appendChild(el('span', 'font-weight:700;color:#222;', n.by || '?'));                    // initials of whoever left it
       top.appendChild(el('span', 'flex:1;font-variant-numeric:tabular-nums;', when(+n.at)));
+      var textBox = noteText(n);
+      top.appendChild(editBtn(n, card, textBox));
       top.appendChild(removeX(n));
       card.appendChild(top);
-      card.appendChild(el('div', 'white-space:pre-wrap;word-wrap:break-word;color:#222;', n.text)); // keeps the writer's line breaks
+      card.appendChild(textBox);
       notesList.appendChild(card);
     });
   }
@@ -1650,6 +1739,9 @@ try {
     if (h.kind === 'flagsent') return 'Content issue emailed to ' + h.item;
     if (h.kind === 'flagread') return (who || 'The author') + ' read the content issue';
     if (h.kind === 'flagdone') return who + ' resolved the content issue: ' + h.item;
+    if (h.kind === 'flagreopen') return who + ' reopened the content issue: ' + h.item;
+    if (h.kind === 'noteedit') return who + ' edited a note: ' + h.item;
+    if (h.kind === 'flagedit') return who + ' edited the content issue: ' + h.item;
     return h.kind;
   }
 
@@ -2104,6 +2196,8 @@ try {
     ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'touchstart', 'touchend', 'focusin', 'focusout', 'keydown', 'keyup', 'wheel']
       .forEach(function (t) { box.addEventListener(t, function (e) { e.stopPropagation(); }); });
     box.addEventListener('mousedown', function (e) {
+      // Note text (class pe-sel) can be selected and copied, so it's left alone (29 Oct 2026)
+      if (e.target.closest && e.target.closest('.pe-sel')) return;
       if (!/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) e.preventDefault();
     });
   }
