@@ -2540,8 +2540,9 @@ try {
    *     brand's product or to a roundup or buying guide (the competitor rule)
    *   - better tiers win ties: Exceptional, Strong, Average, Below median, Unscored
    *
-   * Add puts the link in for you, through Squarespace's own editor, with the post open in Edit:
-   *   1. finds the same paragraph in the Edit Post window
+   * Add puts the link in for you, through Squarespace's own editor, with the post open in Edit
+   * (inline on the page, or the Edit Post window from the post list):
+   *   1. finds the same paragraph in the text being edited
    *   2. selects exactly those words
    *   3. hands Squarespace's editor the link as a paste, the way pasting by hand would
    *   4. checks the link is there and the text around it is unchanged. If not, it undoes
@@ -2719,19 +2720,28 @@ try {
   }
 
   /* ----- Putting a link in -----
-   * Squarespace edits a post in the Edit Post window (the editor window, not the preview frame
-   * the checklist reads). Each text block there is a ProseMirror editor (.sqs-html-content), always
-   * open for editing. Add finds the same paragraph there by its text, selects the words, and hands
-   * ProseMirror the link as a paste, so Squarespace makes the link itself and knows the post has
-   * changed. Confirmed in the live editor, 30 Oct 2026. */
+   * Squarespace has two ways to edit a post, and Add works with both:
+   *   - inline: Edit on the page itself. The article is edited in place, in the page the checklist
+   *     runs in. This is how most of the team works.
+   *   - the Edit Post window: Edit from the post list. The article is edited in a window in the
+   *     editor's own page, while the page behind it is only a preview.
+   * Either way each text block is a ProseMirror editor (.sqs-html-content), open for editing.
+   * Add finds the same paragraph by its text, selects the words, and hands ProseMirror the link as
+   * a paste, so Squarespace makes the link itself and knows the post has changed. Both confirmed
+   * in the live editor, 30 Oct 2026. */
 
-  // The editable text blocks in the Edit Post window (empty when it isn't open)
+  // The editable text blocks: in this page (inline editing) first, then in the Edit Post window.
+  // Empty when the post isn't open for editing either way.
   function editorRoots() {
-    var doc = hostDoc(), roots = [];
-    try {
-      roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-layout.sqs-editing .sqs-html-content.ProseMirror'));
-      if (!roots.length) roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-html-content[contenteditable="true"]'));
-    } catch (e) {}
+    var docs = [document], host = hostDoc(), roots = [];
+    if (host !== document) docs.push(host);
+    docs.some(function (doc) {
+      try {
+        roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-layout.sqs-editing .sqs-html-content.ProseMirror'));
+        if (!roots.length) roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-html-content[contenteditable="true"]'));
+      } catch (e) {}
+      return roots.length > 0;
+    });
     return roots;
   }
 
@@ -2797,7 +2807,7 @@ try {
     });
   }
 
-  var NOT_OPEN = 'The post isn’t open for editing. Click Edit on the post, then Add again.';
+  var NOT_OPEN = 'The post isn’t open for editing. Click Edit, then Add again.';
 
   function addLink(s) {
     var key = s.target.u, url = LINKS.site + s.target.u;
