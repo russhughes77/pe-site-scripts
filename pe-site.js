@@ -1055,8 +1055,10 @@ try {
    *   1.6  30 Oct 2026  4e57de0  Place as hero waits for the new picture's asset id before moving on (fixes
    *                              pictures not sticking); credit waits for the caption box to be redrawn
    *   1.7  30 Oct 2026  c6c2348  Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
-   *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs) */
-  var PE_VERSION = '1.7';
+   *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs)
+   *   1.8  30 Oct 2026  (push)   Homepage: first ad moves below the first six articles on tablets and
+   *                              desktops; stays under the hero on phones */
+  var PE_VERSION = '1.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5297,6 +5299,80 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 50); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: people section', e); }
+
+/* ================================================================
+ * Production Expert: homepage ad after the first six articles (v1.8, 30 Oct 2026)
+ * On tablets and desktops, moves the first ad (the banner directly under the
+ * hero) down into the article grid, after the first six articles, so the
+ * taller hero leads straight into the stories. On phones (640px and under)
+ * the ad stays under the hero. Turning a tablet or resizing a window across
+ * that width moves it back and forth.
+ * The ad is found by position (the first block after the hero), not by its
+ * block ID, so it keeps working if the block is rebuilt in the editor. If
+ * anything is missing (no hero, no ad, fewer than seven articles) the page
+ * is left exactly as Squarespace built it.
+ * ================================================================ */
+try {
+(function () {
+  var AFTER = 6;                          // articles before the ad on tablets and desktops
+  var PHONE = '(max-width: 640px)';       // same width the homepage hero CSS uses for phones
+
+  if (!document.body || !document.body.classList.contains('homepage')) return;
+  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+
+  var ad, home, slot;
+
+  function find() {
+    var hero = document.querySelector('#container-content .sqs-block-gallery');
+    if (!hero) return false;
+    // The ad is the block straight after the hero, and must be an embed with a link out
+    var next = hero.nextElementSibling;
+    if (!next || !next.classList.contains('sqs-block-embed') || !next.querySelector('a[href]')) return false;
+    // The first article list on the page
+    var list = document.querySelector('#container-content .sqs-block-summary-v2 .summary-item-list');
+    if (!list) return false;
+    var items = list.querySelectorAll(':scope > .summary-item');
+    if (items.length <= AFTER) return false;
+    ad = next;
+    // A marker where the ad came from, so it can go back on phones
+    home = document.createElement('div');
+    home.className = 'pe-ad-home';
+    home.style.display = 'none';
+    ad.parentNode.insertBefore(home, ad);
+    // A full-width row after article six. The articles are floated in rows of three,
+    // so clearing both sides drops the ad below the tallest of the row above.
+    slot = document.createElement('div');
+    slot.className = 'pe-ad-slot';
+    slot.style.cssText = 'clear:both;float:none;width:100%;padding:8px 0 calc(0.877193% + 8px);';
+    items[AFTER - 1].parentNode.insertBefore(slot, items[AFTER - 1].nextSibling);
+    return true;
+  }
+
+  function place() {
+    if (!ad) return;
+    var phone = window.matchMedia && window.matchMedia(PHONE).matches;
+    if (phone) {
+      if (ad.parentNode !== home.parentNode || ad.previousSibling !== home) home.parentNode.insertBefore(ad, home.nextSibling);
+      slot.style.display = 'none';
+      ad.style.padding = '';
+    } else {
+      if (ad.parentNode !== slot) slot.appendChild(ad);
+      slot.style.display = '';
+      ad.style.padding = '0';
+    }
+  }
+
+  function run() {
+    if (!ad && !find()) return;
+    place();
+  }
+
+  run();
+  document.addEventListener('DOMContentLoaded', run);
+  var m = window.matchMedia && window.matchMedia(PHONE);
+  if (m) { if (m.addEventListener) m.addEventListener('change', place); else if (m.addListener) m.addListener(place); }
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: homepage ad after six articles', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
