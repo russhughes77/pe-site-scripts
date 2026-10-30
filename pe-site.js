@@ -2124,9 +2124,19 @@ try {
           if (l.host === location.host || /(^|\.)production-expert\.com$/.test(l.hostname)) inBody++;
         });
       });
-      if (words >= 300) out.push(inBody
-        ? { ok: true, text: inBody + (inBody === 1 ? ' internal link' : ' internal links') + ' in the article' }
-        : { ok: false, kind: 'links', text: 'No internal links in the article' });
+      // A warning only when there's something to act on: if the archive has nothing that
+      // matches this article, a neutral note instead, so the post isn't held back for nothing.
+      // While the link index is still loading, nothing is shown; the check runs again once it has.
+      if (words >= 300 && inBody) out.push({ ok: true, text: inBody + (inBody === 1 ? ' internal link' : ' internal links') + ' in the article' });
+      else if (words >= 300) {
+        if (!linkIdx) loadLinkIndex();
+        if (linkIdx && linkIdx.targets) {
+          if (!linkSugg || linkSugg.sig !== textSig()) findLinks();
+          out.push(linkSugg.list.length
+            ? { ok: false, kind: 'links', text: 'No internal links in the article' }
+            : { ok: true, text: 'No internal links, and nothing in the archive matches this article' });
+        }
+      }
     }
 
     // 7. Internal links that lead nowhere (other sites can't be checked from the page)
@@ -2770,7 +2780,7 @@ try {
       .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(function (d) { linkIdx = d && d.targets ? d : 'error'; if (linkIdx !== 'error') findLinks(); })
       .catch(function () { linkIdx = 'error'; })
-      .then(drawDrawer);
+      .then(function () { drawDrawer(); refreshAuto(); }); // the internal links check needs the index too
   }
 
   // The paragraphs a link may go in: text blocks only (so Add can edit them), never headings,
@@ -2827,8 +2837,23 @@ try {
     return { on: false, brands: {} };
   }
 
+  // Suggestions for this post. The strict rules first; if they find nothing, a looser pass
+  // (any phrase of two words or more, or a product name, without needing a shared tag), shown
+  // with a note so each one is judged. Remembers a fingerprint of the text, so the 30-second
+  // checks only redo the work when the article changes.
   function findLinks() {
     if (!linkIdx || !linkIdx.targets) return;
+    var strict = matchLinks(false);
+    linkSugg = strict.list.length ? strict : matchLinks(true);
+    linkSugg.loose = !strict.list.length && linkSugg.list.length > 0;
+    linkSugg.sig = textSig();
+  }
+  function textSig() {
+    var b = articleBody();
+    return b ? b.textContent.length + ':' + b.querySelectorAll('a[href]').length : '';
+  }
+
+  function matchLinks(loose) {
     var paras = linkParas();
     var words = paras.reduce(function (n, p) { return n + squash(p.textContent).split(' ').length; }, 0);
     var here = location.pathname.replace(/\/+$/, '');
@@ -2850,8 +2875,9 @@ try {
       x.p.forEach(function (ph) {
         var nw = ph.split(/\s+/).length;
         var named = /[A-Z0-9]/.test(ph);
-        // relevance guard: a shared tag, a phrase of three words or more, or a product name
-        if (!shared && nw < 3 && !named) return;
+        // relevance guard: a shared tag, a phrase of three words or more, or a product name.
+        // The looser pass still needs two words or a product name.
+        if (loose ? (nw < 2 && !named) : (!shared && nw < 3 && !named)) return;
         var re = phraseRe(ph);
         paras.forEach(function (p, pi) {
           var last = pi === paras.length - 1 && paras.length > 3;
@@ -2895,7 +2921,7 @@ try {
       out.push(s);
     });
     out.sort(function (a, b) { return a.pi - b.pi; });
-    linkSugg = { list: out, guard: guard, words: words, linked: Object.keys(linked).length };
+    return { list: out, guard: guard, words: words, linked: Object.keys(linked).length };
   }
 
   /* ----- Putting a link in -----
@@ -3109,7 +3135,9 @@ try {
     body.appendChild(el('div', 'margin:0 0 6px;font-size:12px;color:#8a9097;', list.length ? added + ' of ' + list.length + ' added' : ''));
 
     if (!list.length) {
-      body.appendChild(el('div', 'padding:12px 0;color:#555;font-size:13px;', 'No phrases in this draft match an article worth linking to.'));
+      body.appendChild(el('div', 'padding:12px 0;color:#555;font-size:13px;', 'No phrases in this draft match an article worth linking to, so the internal links check won’t hold this post back.'));
+    } else if (sg.loose) {
+      body.appendChild(el('div', 'margin:4px 0 6px;padding:8px 10px;background:#fff8e6;border-radius:6px;font-size:12px;color:#5a3a00;', 'No close matches, so these are looser ones: they share words with the article but not its tags. Check each fits before adding it.'));
     }
     list.forEach(function (s) {
       var d = linkDone[s.target.u] || {};
@@ -3160,7 +3188,7 @@ try {
       body.appendChild(row);
     });
 
-    body.appendChild(actionButton('Refresh', function () { linkSugg = null; drawDrawer(); }));
+    body.appendChild(actionButton('Refresh', function () { linkSugg = null; drawDrawer(); refreshAuto(); }));
     body.appendChild(el('div', 'font-size:12px;color:#777;', 'Add links the words for you without changing them. Nothing goes live until you press Save in Squarespace.'));
   }
 
