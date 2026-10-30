@@ -1061,8 +1061,10 @@ try {
    *   1.9  30 Oct 2026  99f02ef  Homepage ad move: finds the ad by the ad server's placeholder, as the
    *                              banner itself loads after the script runs (v1.8 never moved it)
    *   2.0  30 Oct 2026  d77accb  Homepage banners in the article grid: every 9 articles on desktop, every
-   *                              8 on tablet, none within 4 of the end; phones unchanged */
-  var PE_VERSION = '2.0';
+   *                              8 on tablet, none within 4 of the end; phones unchanged
+   *   2.1  30 Oct 2026  (push)   Article title on the hero picture, bottom left, large white type; tag
+   *                              "Title Above" opts an article out */
+  var PE_VERSION = '2.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5433,6 +5435,115 @@ try {
   });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage banners in the article grid', e); }
+
+/* ================================================================
+ * Production Expert: article title on the hero picture (v2.1, 30 Oct 2026)
+ * Moves the article title off its own line above the picture and onto the
+ * hero, bottom left, in large white Open Sans Extra Bold over a soft dark
+ * fade, matching the homepage hero. The title stays the page's H1, so search
+ * engines read it exactly as before.
+ * - Titles up to 45 characters are 40px on a laptop; longer ones drop to 32px,
+ *   so nearly every title sits on two even lines. 22px on phones.
+ * - Only when the article opens with a full-width hero picture: either the
+ *   promoted image Squarespace shows above the body, or a single wide image
+ *   as the very first block of the body. Anything else keeps its title above.
+ * - Opt out per article with the tag "Title Above" (screenshots where the
+ *   picture is the point, or pictures with words in the bottom left).
+ * - Leaves the editor alone, so writers edit the title as normal.
+ * ================================================================ */
+try {
+(function () {
+  var LONG = 45;                      // characters; longer titles use the smaller size
+  var MIN_WIDTH = 0.6;                // the picture must fill 60% of the article column
+
+  if (!document.body || !document.body.classList.contains('view-item')) return;
+  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+
+  var CSS =
+    '.pe-hero-title-wrap{position:relative}' +
+    // the fade: darkest at the bottom, clear two thirds of the way up; lets clicks through
+    '.pe-hero-title-wrap::after{content:"";position:absolute;top:0;right:0;bottom:0;left:0;z-index:1;pointer-events:none;' +
+      'background:linear-gradient(to top,rgba(0,0,0,.72) 0%,rgba(0,0,0,.35) 40%,rgba(0,0,0,0) 68%)}' +
+    'h1.pe-hero-title{position:absolute!important;z-index:2;left:clamp(16px,3.5%,32px);right:clamp(16px,3.5%,32px);' +
+      'bottom:clamp(14px,4%,30px);max-width:78%;margin:0!important;padding:0!important;background:none!important;' +
+      "font-family:'Open Sans',sans-serif!important;font-weight:800!important;font-size:clamp(22px,3vw,40px)!important;" +
+      'line-height:1.12!important;letter-spacing:-0.01em!important;color:#fff!important;text-align:left!important;' +
+      'text-wrap:balance;text-shadow:0 2px 14px rgba(0,0,0,.45)}' +
+    'h1.pe-hero-title a{color:#fff!important}' +
+    'h1.pe-hero-title.pe-long{font-size:clamp(20px,2.4vw,32px)!important;max-width:88%}' +
+    '@media (max-width:640px){h1.pe-hero-title,h1.pe-hero-title.pe-long{max-width:none;font-size:22px!important;' +
+      'left:16px;right:16px;bottom:14px}}' +
+    // the header the title came from is left empty, so take it out of the flow
+    'article header.pe-title-moved{display:none!important}';
+
+  function floated(b) {
+    if (/\bfloat\b/.test(b.className)) return true;
+    var inner = b.querySelector('.image-block-outer-wrapper, figure, .sqs-image');
+    return getComputedStyle(b).float !== 'none' || !!(inner && getComputedStyle(inner).float !== 'none');
+  }
+
+  function wideEnough(b, layout) {
+    var w = b.getBoundingClientRect().width, full = layout.getBoundingClientRect().width;
+    return !w || !full || w / full >= MIN_WIDTH;
+  }
+
+  // The first real block of a layout, skipping spacers and empty blocks
+  function firstBlock(layout) {
+    var blocks = layout.querySelectorAll('.sqs-block');
+    for (var i = 0; i < blocks.length; i++) {
+      var b = blocks[i];
+      if (/\bspacer-block\b/.test(b.className)) continue;
+      if (!b.querySelector('img, iframe, video') && !b.textContent.trim()) continue;
+      return b;
+    }
+    return null;
+  }
+
+  // A single wide image block, not floated, alone in its row
+  function heroFrom(layout) {
+    if (!layout) return null;
+    var b = firstBlock(layout);
+    if (!b || !/\bimage-block\b/.test(b.className) || floated(b)) return null;
+    var row = b.closest('.row');
+    if (row && row.querySelectorAll(':scope > .col').length > 1) return null;
+    if (!wideEnough(b, layout)) return null;
+    return b.querySelector('.image-block-wrapper');
+  }
+
+  function run() {
+    var art = document.querySelector('article.hentry');
+    if (!art || art.classList.contains('tag-title-above')) return;
+    var h1 = art.querySelector('h1.entry-title');
+    if (!h1 || h1.classList.contains('pe-hero-title')) return;   // missing, or already done
+
+    // Promoted image above the body first, then the start of the body
+    var wrap = heroFrom(art.querySelector('.special-content .sqs-layout')) ||
+               heroFrom(art.querySelector('.body.entry-content .sqs-layout'));
+    if (!wrap || !wrap.querySelector('img')) return;
+
+    if (!document.getElementById('pe-hero-title-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-hero-title-css';
+      st.textContent = CSS;
+      document.head.appendChild(st);
+    }
+    var header = h1.parentNode;
+    if (h1.textContent.replace(/\s+/g, ' ').trim().length > LONG) h1.classList.add('pe-long');
+    h1.classList.add('pe-hero-title');
+    wrap.classList.add('pe-hero-title-wrap');
+    wrap.appendChild(h1);
+    // Hide the old header only if the title was all it held
+    if (header && header.tagName === 'HEADER' && !header.textContent.trim() && !header.querySelector('img, a, time')) {
+      header.classList.add('pe-title-moved');
+    }
+  }
+
+  run();
+  document.addEventListener('DOMContentLoaded', run);
+  addEventListener('load', run);
+  addEventListener('mercury:load', function () { setTimeout(run, 100); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: article title on the hero picture', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
