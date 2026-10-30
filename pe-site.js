@@ -1049,8 +1049,10 @@ try {
    *   1.3  30 Oct 2026  cdf8585  Image tab starts with Add image; Depositphotos search folded in, with a
    *                              sign-in reminder and a warning on files under 1000px wide
    *   1.4  30 Oct 2026  e05f2e9  Pixabay searched inside the Image tab; credit under the hero and Source URL
-   *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs) */
-  var PE_VERSION = '1.4';
+   *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs)
+   *   1.5  30 Oct 2026  (this)   Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
+   *                              file name, credit) */
+  var PE_VERSION = '1.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2674,6 +2676,12 @@ try {
     if (!drawer || !drawerInner) return;
     // only the part under the title bar is redrawn; keep the reader's scroll position
     var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
+    // The checklist redraws Joe every few seconds. A text box someone is typing in (marked with
+    // data-keep) keeps its words, cursor and focus across the redraw (v1.5)
+    var act = drawer.ownerDocument.activeElement, kept = null;
+    if (act && drawerInner.contains(act) && act.getAttribute && act.getAttribute('data-keep')) {
+      kept = { key: act.getAttribute('data-keep'), value: act.value, a: act.selectionStart, b: act.selectionEnd };
+    }
     drawerInner.innerHTML = '';
 
     var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eceef1;border-bottom:1px solid #eceef1;background:#fafbfc;');
@@ -2694,6 +2702,14 @@ try {
     if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
     else if (drawerTab === 'image') drawImageTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
+    if (kept) {
+      var again = body.querySelector('[data-keep="' + kept.key + '"]');
+      if (again) {
+        again.value = kept.value;
+        again.focus();
+        try { again.setSelectionRange(kept.a, kept.b); } catch (e) {}
+      }
+    }
   }
 
   function drawWriteTab(body) {
@@ -2828,6 +2844,7 @@ try {
   var imgSource = null;       // 'pixabay' or 'deposit': which search is open under the drop box (v1.4)
   var pxRes = null;           // Pixabay results: { status, q, page, hits, total, error }
   var pxPicking = null;       // id of the Pixabay photo being fetched
+  var pxTyped = null;         // words typed in the Pixabay search box, kept until searched (v1.5)
   var imgLastQ = '';          // the search last opened, used for the file name
 
   if (/[?&]image\b/.test(location.search)) ls('pe-image', '1');
@@ -3135,6 +3152,7 @@ try {
   function pixabaySearch(q, more) {
     q = String(q || '').replace(/\s+/g, ' ').trim();
     if (!q) return;
+    pxTyped = null;
     var prev = more && pxRes && pxRes.q === q ? pxRes : null;
     pxRes = { status: 'loading', q: q, page: prev ? prev.page + 1 : 1, hits: prev ? prev.hits : [], total: prev ? prev.total : 0 };
     imgLastQ = q;
@@ -3246,7 +3264,9 @@ try {
     var own = el('div', 'display:flex;gap:6px;margin-top:8px;');
     var box = el('input', 'flex:1;min-width:0;padding:6px 8px;border:1px solid #cfd4da;border-radius:6px;font:13px ' + F + ';color:#222;');
     box.type = 'text'; box.placeholder = 'Your own search words';
-    box.value = pxRes ? pxRes.q : '';
+    box.setAttribute('data-keep', 'px-q');
+    box.value = pxTyped != null ? pxTyped : pxRes ? pxRes.q : '';
+    box.oninput = function () { pxTyped = box.value; };
     box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); pixabaySearch(box.value); } };
     own.appendChild(box);
     own.appendChild(linkBtn('Search', function () { pixabaySearch(box.value); }, true));
@@ -3331,13 +3351,13 @@ try {
 
       body.appendChild(el('div', 'font-size:12px;color:#5a6068;margin:12px 0 4px;', 'File name'));
       var nm = el('input', 'width:100%;padding:7px 9px;border:1px solid #cfd4da;border-radius:6px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;');
-      nm.type = 'text'; nm.value = P.name;
+      nm.type = 'text'; nm.value = P.name; nm.setAttribute('data-keep', 'img-name');
       nm.oninput = function () { P.name = nm.value; P.auto = false; };
       body.appendChild(nm);
 
       body.appendChild(el('div', 'font-size:12px;color:#5a6068;margin:12px 0 4px;', 'Credit under the picture' + (P.credit ? '' : ' (optional)')));
       var cr = el('input', 'width:100%;padding:7px 9px;border:1px solid #cfd4da;border-radius:6px;font:13px ' + F + ';color:#222;');
-      cr.type = 'text'; cr.value = P.creditText || ''; cr.placeholder = 'Image courtesy of …';
+      cr.type = 'text'; cr.value = P.creditText || ''; cr.placeholder = 'Image courtesy of …'; cr.setAttribute('data-keep', 'img-credit');
       cr.oninput = function () { P.creditText = cr.value; };
       body.appendChild(cr);
       if (P.credit) body.appendChild(el('div', 'font-size:11.5px;color:#777;margin-top:4px;line-height:1.45;',
