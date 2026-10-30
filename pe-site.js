@@ -1045,8 +1045,10 @@ try {
    *   0.9  30 Oct 2026  7217ed2  Before versions began
    *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe
    *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block
-   *   1.2  30 Oct 2026  e9ff08a  Links and Image tabs, and the internal links check, on for the whole team */
-  var PE_VERSION = '1.2';
+   *   1.2  30 Oct 2026  e9ff08a  Links and Image tabs, and the internal links check, on for the whole team
+   *   1.3  30 Oct 2026  (this)   Image tab starts with Add image; Depositphotos search folded in, with a
+   *                              sign-in reminder and a warning on files under 1000px wide */
+  var PE_VERSION = '1.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2790,7 +2792,8 @@ try {
   }
 
   /* ---------- Image (hero image from Depositphotos) ----------
-   * Three steps, all in this tab:
+   * Three steps, all in this tab (since v1.3 step 1 is Add image: drop any picture in; the
+   * Depositphotos searches sit under it behind "No picture yet?"):
    *   1 Search: Joe suggests three Depositphotos searches for the draft (the pe-image-search
    *     rules, asked of the sheet as task 'image'). If the sheet has no Image prompt yet, three
    *     searches are built from the headline instead, so the tab still works. Open in
@@ -3076,7 +3079,7 @@ try {
 
   function stepBar(n) {
     var bar = el('div', 'display:flex;gap:4px;margin:12px 0 4px;');
-    ['Search', 'Crop and name', 'Place'].forEach(function (t, i) {
+    ['Add image', 'Crop and name', 'Place'].forEach(function (t, i) {
       var on = i + 1 === n, done = i + 1 < n;
       bar.appendChild(el('span', 'flex:1;text-align:center;padding:4px 0;border-radius:4px;font:600 11px ' + F + ';background:' + (on ? '#e3eef8' : '#f4f5f7') +
         ';color:' + (on ? C.blue : done ? '#5a6068' : '#9aa0a6') + ';', (done ? '✓ ' : (i + 1) + ' ') + t));
@@ -3086,64 +3089,87 @@ try {
 
   function sub(text) { return el('div', 'font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;margin:14px 0 6px;', text); }
 
+  // Below this width a file is too small for a hero; from Depositphotos it's almost certainly the
+  // watermarked preview, which is what you get when not signed in (since v1.3)
+  var IMG_TOO_SMALL = 1000;
+
+  function dropZone() {
+    var dz = el('div', 'padding:18px 12px;border:1.5px dashed #c9cfd6;border-radius:8px;text-align:center;font-size:13px;color:#5a6068;background:#fafbfc;');
+    dz.appendChild(el('div', 'margin-bottom:4px;font-weight:600;color:#222;', 'Drop a picture here'));
+    dz.appendChild(el('div', 'margin-bottom:10px;font-size:12px;color:#777;', 'A press shot, a screenshot or a Depositphotos download'));
+    var pick = el('input', 'display:none;');
+    pick.type = 'file'; pick.accept = 'image/*';
+    pick.onchange = function () { takeImageFile(pick.files && pick.files[0]); };
+    dz.appendChild(pick);
+    dz.appendChild(linkBtn('Choose file', function () { pick.click(); }));
+    ['dragenter', 'dragover'].forEach(function (t) {
+      dz.addEventListener(t, function (e) { e.preventDefault(); e.stopPropagation(); dz.style.borderColor = C.blue; dz.style.background = '#eef5fb'; });
+    });
+    dz.addEventListener('dragleave', function (e) { e.stopPropagation(); dz.style.borderColor = '#c9cfd6'; dz.style.background = '#fafbfc'; });
+    dz.addEventListener('drop', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      takeImageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+    });
+    return dz;
+  }
+
+  // The Depositphotos searches, opened from "No picture yet?" under the drop box
+  function drawSearch(body) {
+    if (!imgSearch) {
+      var ask = el('div', 'margin-top:10px;font-size:12.5px;color:#555;display:flex;align-items:center;gap:8px;flex-wrap:wrap;');
+      ask.appendChild(el('span', '', 'No picture yet?'));
+      ask.appendChild(linkBtn('Find one on Depositphotos', function () { suggestImage(); }));
+      body.appendChild(ask);
+      return;
+    }
+    body.appendChild(el('div', 'margin:12px 0 2px;padding:8px 10px;border-radius:6px;background:#fdf6e9;color:#7a4b00;font-size:12px;line-height:1.45;',
+      'Sign in to the Production Expert Depositphotos account before downloading. Only a signed-in download is full size and licensed for the site.'));
+    (imgSearch.options || []).forEach(function (o) {
+      var item = el('div', 'padding:9px 0;border-bottom:1px solid #eceef1;');
+      item.appendChild(el('div', 'font:600 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;', o.q));
+      if (o.note) item.appendChild(el('div', 'font-size:12px;color:#777;margin-top:2px;', o.note));
+      var row = el('div', 'display:flex;gap:6px;margin-top:7px;');
+      row.appendChild(linkBtn('Open in Depositphotos ↗', function () { openStock(o.q); drawDrawer(); }, true));
+      row.appendChild(copyButton(o.q));
+      if (imgLastQ === o.q) row.appendChild(el('span', 'align-self:center;font-size:12px;color:' + C.green + ';', '✓ Opened'));
+      item.appendChild(row);
+      body.appendChild(item);
+    });
+    if (imgSearch.status === 'loading') body.appendChild(el('div', 'padding:10px 0;color:#777;', 'Writing…'));
+    if (imgSearch.local) body.appendChild(el('div', 'margin-top:8px;font-size:12px;color:#777;', 'Built from the headline. Joe’s own suggestions arrive once the Image row is added to the sheet’s Prompts tab.'));
+    if (imgSearch.error) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgSearch.error));
+    if (imgSearch.status !== 'loading') body.appendChild(actionButton('More options', function () { suggestImage(true); }));
+    body.appendChild(el('div', 'font-size:12px;color:#777;', 'In Depositphotos, set Orientation to Horizontal. Download the photo, then drop it in above.'));
+  }
+
   function drawImageTab(body) {
-    var step = !imgPick || imgPick.err ? 1 : imgPick.placed && imgPick.placed.st === 'done' ? 3 : 2;
+    var has = imgPick && !imgPick.err;
+    var step = !has ? 1 : imgPick.placed && imgPick.placed.st === 'done' ? 3 : 2;
     body.appendChild(stepBar(step));
 
-    // ---- 1 Search ----
-    body.appendChild(sub('1 Search Depositphotos'));
-    if (!imgSearch) {
-      body.appendChild(actionButton('Suggest searches', function () { suggestImage(); }, true));
-      body.appendChild(el('div', 'font-size:12px;color:#777;', 'Joe reads the headline and opening and suggests searches for a hero image. Each opens in Depositphotos in a new tab.'));
+    // ---- 1 Add image ----
+    body.appendChild(sub('1 Add image'));
+    if (!has) {
+      body.appendChild(dropZone());
+      if (imgPick && imgPick.err) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgPick.err));
+      drawSearch(body);
     } else {
-      (imgSearch.options || []).forEach(function (o) {
-        var item = el('div', 'padding:9px 0;border-bottom:1px solid #eceef1;');
-        item.appendChild(el('div', 'font:600 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;', o.q));
-        if (o.note) item.appendChild(el('div', 'font-size:12px;color:#777;margin-top:2px;', o.note));
-        var row = el('div', 'display:flex;gap:6px;margin-top:7px;');
-        row.appendChild(linkBtn('Open in Depositphotos ↗', function () { openStock(o.q); drawDrawer(); }, true));
-        row.appendChild(copyButton(o.q));
-        if (imgLastQ === o.q) row.appendChild(el('span', 'align-self:center;font-size:12px;color:' + C.green + ';', '✓ Opened'));
-        item.appendChild(row);
-        body.appendChild(item);
-      });
-      if (imgSearch.status === 'loading') body.appendChild(el('div', 'padding:10px 0;color:#777;', 'Writing…'));
-      if (imgSearch.local) body.appendChild(el('div', 'margin-top:8px;font-size:12px;color:#777;', 'Built from the headline. Joe’s own suggestions arrive once the Image row is added to the sheet’s Prompts tab.'));
-      if (imgSearch.error) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgSearch.error));
-      if (imgSearch.status !== 'loading') body.appendChild(actionButton('More options', function () { suggestImage(true); }));
-      body.appendChild(el('div', 'font-size:12px;color:#777;', 'In Depositphotos, set Orientation to Horizontal. Download the photo, then drop it in below.'));
+      body.appendChild(el('div', 'font-size:12.5px;color:' + C.green + ';', '✓ ' + imgPick.file.name + ' (' + imgPick.w + ' × ' + imgPick.h + ')'));
     }
 
     // ---- 2 Crop and name ----
     body.appendChild(sub('2 Crop and name'));
-    if (!imgPick || imgPick.err) {
-      var dz = el('div', 'padding:18px 12px;border:1.5px dashed #c9cfd6;border-radius:8px;text-align:center;font-size:13px;color:#5a6068;background:#fafbfc;');
-      dz.appendChild(el('div', 'margin-bottom:8px;', 'Drop the downloaded photo here'));
-      var pick = el('input', 'display:none;');
-      pick.type = 'file'; pick.accept = 'image/*';
-      pick.onchange = function () { takeImageFile(pick.files && pick.files[0]); };
-      dz.appendChild(pick);
-      dz.appendChild(linkBtn('Choose file', function () { pick.click(); }));
-      ['dragenter', 'dragover'].forEach(function (t) {
-        dz.addEventListener(t, function (e) { e.preventDefault(); e.stopPropagation(); dz.style.borderColor = C.blue; dz.style.background = '#eef5fb'; });
-      });
-      dz.addEventListener('dragleave', function (e) { e.stopPropagation(); dz.style.borderColor = '#c9cfd6'; dz.style.background = '#fafbfc'; });
-      dz.addEventListener('drop', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        takeImageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
-      });
-      body.appendChild(dz);
-      if (imgPick && imgPick.err) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgPick.err));
+    if (!has) {
+      body.appendChild(el('div', 'font-size:12.5px;color:#9aa0a6;', 'Add a picture first.'));
     } else {
       var P = imgPick;
-      var meta = el('div', 'display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:#777;margin-bottom:6px;');
-      meta.appendChild(el('span', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', P.file.name + ' · ' + P.w + ' × ' + P.h));
-      meta.appendChild(el('span', 'flex:0 0 auto;', 'Drag to reposition'));
-      body.appendChild(meta);
+      if (P.w < IMG_TOO_SMALL) body.appendChild(el('div', 'margin-bottom:8px;padding:8px 10px;border-radius:6px;background:#fdecea;color:' + C.red + ';font-size:12px;line-height:1.45;',
+        'This picture is only ' + P.w + 'px wide, too small for a hero. If it came from Depositphotos it’s the watermarked preview: sign in to the Production Expert account and download it again.'));
+      body.appendChild(el('div', 'text-align:right;font-size:11.5px;color:#777;margin-bottom:6px;', 'Drag to reposition'));
       body.appendChild(cropCanvas());
       var outW = Math.min(IMAGE.width, P.cw);
       body.appendChild(el('div', 'font-size:11.5px;margin-top:5px;color:' + (P.cw < IMAGE.width ? C.amber : '#777') + ';',
-        P.cw < IMAGE.width ? 'Saved at ' + outW + ' × ' + Math.round(outW / IMAGE.ratio) + ', smaller than the ' + IMAGE.width + 'px hero size. A larger download looks sharper.'
+        P.cw < IMAGE.width ? 'Saved at ' + outW + ' × ' + Math.round(outW / IMAGE.ratio) + ', smaller than the ' + IMAGE.width + 'px hero size. A larger file looks sharper.'
           : '16:9, saved at ' + outW + ' × ' + Math.round(outW / IMAGE.ratio) + '. Double-click the picture to centre the frame.'));
 
       body.appendChild(el('div', 'font-size:12px;color:#5a6068;margin:12px 0 4px;', 'File name'));
