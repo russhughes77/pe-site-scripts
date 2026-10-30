@@ -1050,7 +1050,7 @@ try {
    *                              sign-in reminder and a warning on files under 1000px wide
    *   1.4  30 Oct 2026  e05f2e9  Pixabay searched inside the Image tab; credit under the hero and Source URL
    *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs)
-   *   1.5  30 Oct 2026  (this)   Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
+   *   1.5  30 Oct 2026  5d8a225  Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
    *                              file name, credit) */
   var PE_VERSION = '1.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
