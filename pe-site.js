@@ -522,12 +522,50 @@ try {
     return wrap;
   }
 
+  /* Author photo in a circle under "Posted by" in the date column (v2.2, 30 Oct 2026).
+   * Same photo as the bio panel. Tablets and desktops only: on phones that column drops
+   * to the bottom of the page, below the comments, so the photo is hidden there.
+   * The column itself is centred by Custom CSS. Writers with no photo, and the generic
+   * "Production Expert" byline, get no circle. */
+  var PHOTO_CSS =
+    '.pe-author-photo{display:none}' +
+    '@media (min-width:641px){' +
+      '.pe-author-photo{display:block;width:120px;height:120px;margin:18px auto 0;border-radius:50%;overflow:hidden;background:#f4f6f8}' +
+      '.pe-author-photo img{display:block;width:100%;height:100%;object-fit:cover}' +
+      'html.pe-dark .pe-author-photo{background:#26292e}' +
+    '}';
+
+  function addPhoto(bio) {
+    if (!bio.img || document.querySelector('.pe-author-photo')) return;
+    if (norm(bio.name) === 'production expert') return;   // the house byline (news) gets no photo
+    var byline = document.querySelector('article.hentry > .sidebar address') ||
+                 document.querySelector('article.hentry > .sidebar .author');
+    if (!byline) return;
+    if (!document.getElementById('pe-author-photo-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-author-photo-css';
+      st.textContent = PHOTO_CSS;
+      document.head.appendChild(st);
+    }
+    var link = byline.querySelector('a[href*="?author="]');
+    var box = document.createElement(link ? 'a' : 'div');
+    box.className = 'pe-author-photo';
+    if (link) { box.href = link.getAttribute('href'); box.setAttribute('aria-label', 'More from ' + bio.name); }
+    var img = document.createElement('img');
+    img.src = bio.img.split('?')[0] + '?format=300w';   // small copy, enough for a 120px circle
+    img.alt = bio.name;
+    img.loading = 'lazy';
+    box.appendChild(img);
+    byline.parentNode.insertBefore(box, byline.nextSibling);
+  }
+
   function run() {
     if (!isArticlePage()) { log('not an article page'); return; }
-    if (document.querySelector('.pe-author-bio')) { log('already rendered'); return; }
 
     var article = document.querySelector('article') || document;
-    if (article.querySelector('a[href*="' + BIOS_PATH + '/"]')) { log('manual bio present, skipping'); return; }
+    // A hand-made bio in the article: keep it, but still add the photo by the byline
+    var manual = !!article.querySelector('a[href*="' + BIOS_PATH + '/"]');
+    if (manual) log('manual bio present, panel skipped');
 
     var author = findAuthor();
     log('author:', author || '(none)');
@@ -536,6 +574,8 @@ try {
     loadAllBios().then(function (bios) {
       var bio = findBio(bios, author);
       if (!bio) { log('no bio found for', author); return; }
+      addPhoto(bio);
+      if (manual || document.querySelector('.pe-author-bio')) return;
       var target = null;
       for (var i = 0; i < TARGETS.length && !target; i++) target = document.querySelector(TARGETS[i]);
       if (!target) { log('no insertion point'); return; }
@@ -1064,7 +1104,8 @@ try {
    *                              8 on tablet, none within 4 of the end; phones unchanged
    *   2.1  30 Oct 2026  03c1ecd  Article title on the hero picture, bottom left, large white type; tag
    *                              "Title Above" opts an article out
-   *   2.2  30 Oct 2026  (push)   Orange NEWS label on news articles in the homepage's main article grid */
+   *   2.2  30 Oct 2026  (push)   Orange NEWS label on news articles in the homepage's main article grid;
+   *                              author photo in a circle under "Posted by" (tablet and desktop) */
   var PE_VERSION = '2.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
