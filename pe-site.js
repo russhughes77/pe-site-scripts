@@ -2413,7 +2413,8 @@ try {
 
   /* ---------- Use: putting Joe's suggestions straight into Squarespace ----------
    * Every suggestion has a Use button instead of Copy. It fills the field in Squarespace's own
-   * Edit Post window (Settings in the inline editor, or Edit from the post list), then reads the
+   * Edit Post window (from the page editor it presses Settings to open it; from the post list Edit
+   * opens it anyway), then reads the
    * field back to check the value took. If it didn't, that row offers Copy instead. You still
    * press Apply or Save, and after the next save the row checks the saved post has the new value.
    * Where each field lives (confirmed in the live editor, 30 Oct 2026):
@@ -2427,27 +2428,57 @@ try {
    * setter and followed by input and change events, which React listens for. */
 
   var useDone = {};           // task|text: { st: 'busy'|'used'|'saved'|'notsaved'|'failed', why, at, field }
-  var NO_SETTINGS = 'The post’s settings aren’t open. In the page editor click Settings (or Edit from the post list), then Use again.';
+  var NO_SETTINGS = 'Click Edit on the post first, then Use again.';
 
   function visible(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+  function ours(e) { return !!(e.closest && e.closest('.pe-checklist, .pe-checklist-pill, .pe-drawer, .pe-ui')); }
 
-  // The Edit Post window, recognised by its headline field. Null when it isn't open.
+  // Leaf text on screen, matched exactly or by a pattern, outside our own panels
+  function textEl(doc, test) {
+    return Array.prototype.filter.call(doc.querySelectorAll('div, span, label, button, a, p, h1, h2, h3'), function (e) {
+      return e.children.length === 0 && !ours(e) && visible(e) && test(e.textContent.trim());
+    })[0] || null;
+  }
+
+  // The Edit Post window: its headline box exists and its tabs are on screen (the headline box
+  // itself is hidden on some tabs, so it can't be the test on its own). Null when it isn't open.
   function settingsDoc() {
     var docs = [hostDoc(), document];
     for (var i = 0; i < docs.length; i++) {
-      var t = docs[i].querySelector('input[name="title"]');
-      if (t && visible(t)) return docs[i];
+      if (docs[i].querySelector('input[name="title"]') && textEl(docs[i], function (t) { return t === 'SEO'; })) return docs[i];
     }
     return null;
   }
 
+  // In the page editor, presses its Settings button so the Edit Post window opens.
+  // Resolves with the window's document, or null if there was no way to open it.
+  function openSettings() {
+    var doc = settingsDoc();
+    if (doc) return Promise.resolve(doc);
+    var lab = Array.prototype.filter.call(document.querySelectorAll('.sqs-button-vanilla .label'), function (e) {
+      return e.textContent.trim() === 'Settings' && visible(e);
+    })[0];
+    if (!lab) return Promise.resolve(null);
+    (lab.closest('.sqs-button-vanilla') || lab).click();
+    return waitFor(settingsDoc, 3000);
+  }
+
+  // Checks find() every 100ms until it returns something, or gives up after ms
+  function waitFor(find, ms) {
+    var until = Date.now() + ms;
+    return new Promise(function (ok) {
+      (function look() {
+        var got = find();
+        if (got || Date.now() > until) return ok(got || null);
+        setTimeout(look, 100);
+      })();
+    });
+  }
+
   // Clicks one of the Edit Post window's tabs (Content, Options, SEO...)
   function settingsTab(doc, name) {
-    var tab = Array.prototype.filter.call(doc.querySelectorAll('div, button, a'), function (e) {
-      return e.children.length === 0 && e.textContent.trim() === name && visible(e);
-    })[0];
+    var tab = textEl(doc, function (t) { return t === name; });
     if (tab) tab.click();
-    return wait(500);
   }
 
   // Sets a field's value the way typing would, so YUI and React forms both take it
@@ -2458,15 +2489,29 @@ try {
     ['input', 'change', 'blur'].forEach(function (t) { f.dispatchEvent(new w.Event(t, { bubbles: true })); });
   }
 
-  // The field in the Edit Post window for each kind of suggestion
+  // The box under a label such as "SEO Title (Optional)", found by walking up from the label
+  function boxUnder(doc, labelRe) {
+    var lab = textEl(doc, function (t) { return labelRe.test(t); });
+    for (var box = lab, i = 0; box && i < 5; i++) {
+      box = box.parentElement;
+      var f = box && Array.prototype.filter.call(box.querySelectorAll('textarea, input[type="text"], input:not([type])'), function (x) { return !ours(x); })[0];
+      if (f) return f;
+    }
+    return null;
+  }
+
+  // The field in the Edit Post window for each kind of suggestion. Switches to its tab, then
+  // waits until the field is drawn and on screen.
   function fieldFor(doc, field) {
-    if (field === 'title') return settingsTab(doc, 'Content').then(function () { return doc.querySelector('input[name="title"]'); });
-    if (field === 'url') return settingsTab(doc, 'Options').then(function () { return doc.querySelector('input[name="urlId"]'); });
-    return settingsTab(doc, 'SEO').then(function () {
-      var tas = Array.prototype.filter.call(doc.querySelectorAll('textarea.u-field-textarea, textarea'), visible);
-      if (field === 'meta') return tas.filter(function (t) { return /description/i.test(t.placeholder || ''); })[0] || tas[1] || null;
-      return tas.filter(function (t) { return !/description/i.test(t.placeholder || ''); })[0] || null; // SEO title
-    });
+    var tabName = field === 'title' ? 'Content' : field === 'url' ? 'Options' : 'SEO';
+    settingsTab(doc, tabName);
+    return waitFor(function () {
+      var f = field === 'title' ? doc.querySelector('input[name="title"]')
+        : field === 'url' ? doc.querySelector('input[name="urlId"]')
+        : field === 'meta' ? boxUnder(doc, /^SEO Description/i)
+        : boxUnder(doc, /^SEO Title/i);
+      return f && visible(f) && !ours(f) ? f : null;
+    }, 3000);
   }
 
   function useLabel(field) {
@@ -2480,11 +2525,12 @@ try {
       useDone[key] = { st: 'failed', why: 'This post is live. A new URL breaks every link to it, so change it by hand and add a redirect.' };
       return drawDrawer();
     }
-    var doc = settingsDoc();
-    if (!doc) { useDone[key] = { st: 'failed', why: NO_SETTINGS }; return drawDrawer(); }
     useDone[key] = { st: 'busy' };
     drawDrawer();
-    fieldFor(doc, field).then(function (f) {
+    openSettings().then(function (doc) {
+      if (!doc) throw NO_SETTINGS;
+      return fieldFor(doc, field);
+    }).then(function (f) {
       if (!f) throw 'Couldn’t find the ' + useLabel(field) + ' box in Squarespace.';
       setField(f, value);
       return wait(150).then(function () {
