@@ -1039,10 +1039,11 @@ try {
 
   /* Version of pe-site.js, shown beside JOE in Joe's title bar, so anyone can say which copy their
    * browser is running. Raise it with every push: the second number for fixes and small changes,
-   * the first for a new feature. Each version is tagged in GitHub (v1.0, v1.1...) so a rollback is
-   * one step: put that tag's two files back on main.
-   *   0.9  30 Oct 2026  Before versions began (commit 7217ed2)
-   *   1.0  30 Oct 2026  Image tab in Joe (testing, RH only); version shown in Joe */
+   * the first for a new feature. Start the commit message with the version ("v1.1: ...") and add
+   * the commit to this list once it's pushed, so a rollback is one step: put that commit's two
+   * files back on main.
+   *   0.9  30 Oct 2026  7217ed2  Before versions began
+   *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe */
   var PE_VERSION = '1.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 

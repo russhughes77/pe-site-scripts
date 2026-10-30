@@ -28,9 +28,9 @@ The editor guard stays in the Squarespace Header box, because it has to run befo
 ## Versions and rolling back
 
 Joe shows the version beside its name (for example JOE v1.0), and the browser console logs it.
-The version history is in the comment above `PE_VERSION` in pe-site.js, and every version is a
-tag on GitHub (v1.0, v1.1...).
+The history, with the commit for each version, is in the comment above `PE_VERSION` in pe-site.js.
 
-- With every push, raise `PE_VERSION`, add a line to that history, and tag the commit.
-- To roll back, copy pe-site.js and pe-site.min.js from the tag you want back onto main and push.
-  Everyone has the old version within about 10 minutes.
+- With every push, raise `PE_VERSION`, start the commit message with the version ("v1.1: ..."),
+  and add the commit to the history once pushed.
+- To roll back, copy pe-site.js and pe-site.min.js from that version's commit back onto main and
+  push. Everyone has the old version within about 10 minutes.
