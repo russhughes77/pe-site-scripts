@@ -1057,8 +1057,10 @@ try {
    *   1.7  30 Oct 2026  c6c2348  Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
    *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs)
    *   1.8  30 Oct 2026  d5a1126  Homepage: first ad moves below the first six articles on tablets and
-   *                              desktops; stays under the hero on phones */
-  var PE_VERSION = '1.8';
+   *                              desktops; stays under the hero on phones
+   *   1.9  30 Oct 2026  (push)   Homepage ad move: finds the ad by the ad server's placeholder, as the
+   *                              banner itself loads after the script runs (v1.8 never moved it) */
+  var PE_VERSION = '1.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5301,7 +5303,7 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: people section', e); }
 
 /* ================================================================
- * Production Expert: homepage ad after the first six articles (v1.8, 30 Oct 2026)
+ * Production Expert: homepage ad after the first six articles (v1.8, fixed v1.9, 30 Oct 2026)
  * On tablets and desktops, moves the first ad (the banner directly under the
  * hero) down into the article grid, after the first six articles, so the
  * taller hero leads straight into the stories. On phones (640px and under)
@@ -5325,9 +5327,13 @@ try {
   function find() {
     var hero = document.querySelector('#container-content .sqs-block-gallery');
     if (!hero) return false;
-    // The ad is the block straight after the hero, and must be an embed with a link out
+    // The ad is the block straight after the hero: an embed holding the ad server's
+    // placeholder (.antur-ad). The banner and its link are filled in a moment later by
+    // the ad server's own script, so don't wait for them (v1.9: v1.8 looked for the
+    // link, found none yet, and left the ad where it was).
     var next = hero.nextElementSibling;
-    if (!next || !next.classList.contains('sqs-block-embed') || !next.querySelector('a[href]')) return false;
+    if (!next || !next.classList.contains('sqs-block-embed')) return false;
+    if (!next.querySelector('.antur-ad, a[href], iframe, img')) return false;
     // The first article list on the page
     var list = document.querySelector('#container-content .sqs-block-summary-v2 .summary-item-list');
     if (!list) return false;
