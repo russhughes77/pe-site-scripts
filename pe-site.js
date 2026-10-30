@@ -1063,8 +1063,9 @@ try {
    *   2.0  30 Oct 2026  d77accb  Homepage banners in the article grid: every 9 articles on desktop, every
    *                              8 on tablet, none within 4 of the end; phones unchanged
    *   2.1  30 Oct 2026  03c1ecd  Article title on the hero picture, bottom left, large white type; tag
-   *                              "Title Above" opts an article out */
-  var PE_VERSION = '2.1';
+   *                              "Title Above" opts an article out
+   *   2.2  30 Oct 2026  (push)   Orange NEWS label on news articles in the homepage's main article grid */
+  var PE_VERSION = '2.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5435,6 +5436,112 @@ try {
   });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage banners in the article grid', e); }
+
+/* ================================================================
+ * Production Expert: NEWS label on homepage cards (v2.2, 30 Oct 2026)
+ * Puts a small orange NEWS label (Production Expert orange, #E87722) in the
+ * top-left corner of the picture on every news article in the homepage's main
+ * article grid. Homepage only.
+ * The cards themselves don't say which articles are news, so the list comes
+ * from the site's own feed: anything in the News category or tagged News (the
+ * team uses both). The feed is large, so it's fetched after the page has
+ * loaded and kept in this browser for an hour.
+ * The "Latest Music And Audio Production News" section is left unlabelled,
+ * since everything in it is news; set SECTION_TOO to true to label it as well.
+ * ================================================================ */
+try {
+(function () {
+  var SECTION_TOO = false;
+  var KEY = 'pe-news-urls';
+  var KEEP_MS = 60 * 60 * 1000;      // reuse the list for an hour
+  var FEEDS = ['/production-expert-1?category=News&format=json', '/production-expert-1?tag=News&format=json'];
+
+  if (!document.body || !document.body.classList.contains('homepage')) return;
+  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+
+  var CSS =
+    '.pe-news-card{position:relative;display:block}' +
+    '.pe-news-badge{position:absolute;z-index:3;top:14px;left:14px;padding:6px 11px 5px;background:#e87722;color:#fff;' +
+      "font-family:'Open Sans',sans-serif;font-weight:800;font-size:15px;line-height:1;letter-spacing:.12em;" +
+      'text-transform:uppercase;border-radius:3px;box-shadow:0 1px 6px rgba(0,0,0,.25);pointer-events:none}' +
+    '@media (max-width:640px){.pe-news-badge{top:12px;left:12px;font-size:14px}}';
+
+  function path(u) {
+    try { return new URL(u, location.origin).pathname.replace(/\/$/, ''); } catch (e) { return ''; }
+  }
+
+  function saved() {
+    try {
+      var o = JSON.parse(localStorage.getItem(KEY) || 'null');
+      if (o && o.t && Date.now() - o.t < KEEP_MS && o.u) return o.u;
+    } catch (e) {}
+    return null;
+  }
+
+  function fetchList() {
+    return Promise.all(FEEDS.map(function (f) {
+      return fetch(f, { credentials: 'same-origin' })
+        .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+        .catch(function () { return { items: [] }; });
+    })).then(function (all) {
+      var urls = [];
+      all.forEach(function (j) {
+        (j.items || []).forEach(function (i) { if (i.fullUrl) urls.push(path(i.fullUrl)); });
+      });
+      try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), u: urls })); } catch (e) {}
+      return urls;
+    });
+  }
+
+  // The homepage article lists to label: the first summary block (the main grid), plus
+  // the rest only if SECTION_TOO is on
+  function lists() {
+    var blocks = document.querySelectorAll('#container-content .sqs-block-summary-v2');
+    var out = [];
+    for (var i = 0; i < blocks.length; i++) {
+      if (!blocks[i].querySelector('.summary-item')) continue;           // skip empty blocks
+      out.push(blocks[i]);
+      if (!SECTION_TOO) break;
+    }
+    return out;
+  }
+
+  function label(urls) {
+    if (!urls || !urls.length) return;
+    var news = {};
+    urls.forEach(function (u) { news[u] = 1; });
+    if (!document.getElementById('pe-news-badge-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-news-badge-css';
+      st.textContent = CSS;
+      document.head.appendChild(st);
+    }
+    lists().forEach(function (blk) {
+      blk.querySelectorAll('.summary-item').forEach(function (it) {
+        var a = it.querySelector('.summary-title a, a.summary-title-link');
+        var pic = it.querySelector('.summary-thumbnail-container');
+        if (!a || !pic || pic.querySelector('.pe-news-badge')) return;
+        if (!news[path(a.getAttribute('href'))]) return;
+        pic.classList.add('pe-news-card');
+        var b = document.createElement('span');
+        b.className = 'pe-news-badge';
+        b.textContent = 'News';
+        pic.appendChild(b);
+      });
+    });
+  }
+
+  function start() {
+    var s = saved();
+    if (s) { label(s); return; }
+    fetchList().then(label);
+  }
+
+  // Wait for the page to finish loading so the feed never competes with it
+  if (document.readyState === 'complete') setTimeout(start, 300);
+  else addEventListener('load', function () { setTimeout(start, 300); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS label on homepage cards', e); }
 
 /* ================================================================
  * Production Expert: article title on the hero picture (v2.1, 30 Oct 2026)
