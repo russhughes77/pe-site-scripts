@@ -3696,7 +3696,8 @@ try {
       '.pe-sp-t{display:block;font:600 15px/1.35 ' + F + '}' +
       '.pe-sp-m{display:block;margin-top:2px;font:600 11px ' + F + ';letter-spacing:.04em;text-transform:uppercase;color:#888}' +
       '.pe-sp-all{font-weight:700;border-top:1px solid #eceef1!important;margin-top:4px}' +
-      '.pe-sp-note{margin:10px 18px;font:14px ' + F + ';color:#666}'
+      '.pe-sp-note{margin:10px 18px;font:14px ' + F + ';color:#666}' +
+      '.pe-sp-tip{margin:0;padding:8px 18px 12px;font:12px ' + F + ';color:#999}'
     );
     var icon = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>';
     var btn = document.createElement('button');
@@ -3709,14 +3710,16 @@ try {
     pop.className = 'pe-sp';
     pop.setAttribute('role', 'dialog');
     pop.setAttribute('aria-label', 'Search');
-    pop.innerHTML = '<div class="pe-sp-box"><form action="/search" method="get" role="search">' +
+    // Everything chosen here opens in a new tab, so the page underneath is never lost
+    pop.innerHTML = '<div class="pe-sp-box"><form action="/search" method="get" role="search" target="_blank">' +
       '<input type="search" name="q" placeholder="Search Production Expert" aria-label="Search terms" autocomplete="off" required>' +
-      '<button type="submit">Search</button></form><div class="pe-sp-list" role="listbox"></div></div>';
+      '<button type="submit">Search</button></form><div class="pe-sp-list" role="listbox"></div>' +
+      '<p class="pe-sp-tip">Results open in a new tab, so you keep this page.</p></div>';
     var input = pop.querySelector('input'), list = pop.querySelector('.pe-sp-list');
     var timer, latest = '', cache = {};
 
     function row(href, title, meta, extra, pic) {
-      return '<a class="pe-sp-item' + (extra || '') + '" role="option" href="' + esc(href) + '"><span class="pe-sp-txt"><span class="pe-sp-t">' + esc(title) + '</span>' +
+      return '<a class="pe-sp-item' + (extra || '') + '" role="option" href="' + esc(href) + '" target="_blank" rel="noopener"><span class="pe-sp-txt"><span class="pe-sp-t">' + esc(title) + '</span>' +
         (meta ? '<span class="pe-sp-m">' + esc(meta) + '</span>' : '') + '</span>' + (pic ? '<span class="pe-sp-pic"></span>' : '') + '</a>';
     }
     function quick() {
