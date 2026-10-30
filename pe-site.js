@@ -1106,8 +1106,9 @@ try {
    *                              "Title Above" opts an article out
    *   2.2  30 Oct 2026  657cc25  Orange NEWS label on news articles in the homepage's main article grid;
    *                              author photo in a circle under "Posted by" (tablet and desktop)
-   *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage */
-  var PE_VERSION = '2.3';
+   *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage
+   *   2.4  30 Oct 2026  (pending) Author list in Edit Post, Options, sorted A to Z */
+  var PE_VERSION = '2.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5694,6 +5695,50 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: article title on the hero picture', e); }
+
+/* ================================================================
+ * Production Expert: Author list in A to Z order (team only, v2.4, 30 Oct 2026)
+ * Squarespace lists authors in Edit Post, Options, in the order their accounts were added, which
+ * made the right name hard to find among 140. This sorts that list alphabetically each time the
+ * Edit Post window opens. Only the order changes: the author already chosen stays chosen, and
+ * nothing is saved until someone presses Save as usual.
+ * The list is an ordinary dropdown (select name="authorId") in Squarespace's older editor, which
+ * lives in the editor window around the preview this script runs in. Checked live 30 Oct 2026.
+ * ================================================================ */
+try {
+(function () {
+  if (window.top === window) return; // only inside the Squarespace editor
+  var top;
+  try { top = window.top.document; if (!top || !top.body) return; } catch (e) { return; }
+  var sorter = new Intl.Collator('en-GB', { sensitivity: 'base', numeric: true });
+
+  function sortList(sel) {
+    var opts = Array.prototype.slice.call(sel.options);
+    if (opts.length < 2 || sel.getAttribute('data-pe-sorted') === String(opts.length)) return;
+    var chosen = sel.value;
+    opts.sort(function (a, b) {
+      return sorter.compare(a.text.trim(), b.text.trim()) || sorter.compare(a.value, b.value);
+    });
+    var frag = top.createDocumentFragment();
+    opts.forEach(function (o) { frag.appendChild(o); });
+    sel.appendChild(frag);
+    sel.value = chosen; // moving options can reset the choice in some browsers, so put it back
+    sel.setAttribute('data-pe-sorted', String(opts.length));
+  }
+
+  function look() {
+    try {
+      var lists = top.querySelectorAll('select[name="authorId"]');
+      for (var i = 0; i < lists.length; i++) sortList(lists[i]);
+    } catch (e) {}
+  }
+
+  // The Edit Post window can open at any moment, so look once a second (a cheap check that does
+  // nothing until the list appears, and nothing again once it has been sorted)
+  look();
+  setInterval(look, 1000);
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: Author list in A to Z order', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
