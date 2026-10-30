@@ -1058,7 +1058,7 @@ try {
    *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs)
    *   1.8  30 Oct 2026  d5a1126  Homepage: first ad moves below the first six articles on tablets and
    *                              desktops; stays under the hero on phones
-   *   1.9  30 Oct 2026  (push)   Homepage ad move: finds the ad by the ad server's placeholder, as the
+   *   1.9  30 Oct 2026  99f02ef  Homepage ad move: finds the ad by the ad server's placeholder, as the
    *                              banner itself loads after the script runs (v1.8 never moved it) */
   var PE_VERSION = '1.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
