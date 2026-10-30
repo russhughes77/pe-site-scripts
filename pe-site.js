@@ -3671,6 +3671,11 @@ try {
   }
   function best(a, b) { return b._best - a._best; }
 
+  // Readers' choice: open results in a new tab (the default) or in the same tab. Remembered in their browser.
+  function newTab() { try { return localStorage.getItem('pe-search-newtab') !== '0'; } catch (e) { return true; } }
+  function setNewTab(on) { try { localStorage.setItem('pe-search-newtab', on ? '1' : '0'); } catch (e) {} }
+  function tabAttrs() { return newTab() ? ' target="_blank" rel="noopener"' : ''; }
+
   /* 1. Search button and box, with quick links and results as you type */
   function button() {
     if (inEditor || path === '/search' || document.querySelector('.pe-search-btn')) return;
@@ -3697,7 +3702,8 @@ try {
       '.pe-sp-m{display:block;margin-top:2px;font:600 11px ' + F + ';letter-spacing:.04em;text-transform:uppercase;color:#888}' +
       '.pe-sp-all{font-weight:700;border-top:1px solid #eceef1!important;margin-top:4px}' +
       '.pe-sp-note{margin:10px 18px;font:14px ' + F + ';color:#666}' +
-      '.pe-sp-tip{margin:0;padding:8px 18px 12px;font:12px ' + F + ';color:#999}'
+      '.pe-sp-tip{display:flex;align-items:center;gap:6px;margin:0;padding:8px 18px 12px;font:12px ' + F + ';color:#888;cursor:pointer}' +
+      '.pe-sp .pe-sp-tip input{flex:none;width:auto;margin:0;padding:0;border:0;accent-color:' + I + '}'
     );
     var icon = '<svg aria-hidden="true" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><line x1="16.5" y1="16.5" x2="21" y2="21"></line></svg>';
     var btn = document.createElement('button');
@@ -3710,16 +3716,20 @@ try {
     pop.className = 'pe-sp';
     pop.setAttribute('role', 'dialog');
     pop.setAttribute('aria-label', 'Search');
-    // Everything chosen here opens in a new tab, so the page underneath is never lost
-    pop.innerHTML = '<div class="pe-sp-box"><form action="/search" method="get" role="search" target="_blank">' +
+    // Everything chosen here opens in a new tab unless the reader unticks it, so the page underneath isn't lost
+    pop.innerHTML = '<div class="pe-sp-box"><form action="/search" method="get" role="search">' +
       '<input type="search" name="q" placeholder="Search Production Expert" aria-label="Search terms" autocomplete="off" required>' +
       '<button type="submit">Search</button></form><div class="pe-sp-list" role="listbox"></div>' +
-      '<p class="pe-sp-tip">Results open in a new tab, so you keep this page.</p></div>';
-    var input = pop.querySelector('input'), list = pop.querySelector('.pe-sp-list');
+      '<label class="pe-sp-tip"><input type="checkbox"> Open results in a new tab</label></div>';
+    var input = pop.querySelector('input[type="search"]'), list = pop.querySelector('.pe-sp-list');
+    var tick = pop.querySelector('.pe-sp-tip input'), form = pop.querySelector('form');
+    function applyTab() { tick.checked = newTab(); if (newTab()) form.target = '_blank'; else form.removeAttribute('target'); }
+    applyTab();
+    tick.onchange = function () { setNewTab(tick.checked); applyTab(); lookup(); };
     var timer, latest = '', cache = {};
 
     function row(href, title, meta, extra, pic) {
-      return '<a class="pe-sp-item' + (extra || '') + '" role="option" href="' + esc(href) + '" target="_blank" rel="noopener"><span class="pe-sp-txt"><span class="pe-sp-t">' + esc(title) + '</span>' +
+      return '<a class="pe-sp-item' + (extra || '') + '" role="option" href="' + esc(href) + '"' + tabAttrs() + '><span class="pe-sp-txt"><span class="pe-sp-t">' + esc(title) + '</span>' +
         (meta ? '<span class="pe-sp-m">' + esc(meta) + '</span>' : '') + '</span>' + (pic ? '<span class="pe-sp-pic"></span>' : '') + '</a>';
     }
     function quick() {
@@ -3746,7 +3756,7 @@ try {
       search(q, 3, 1).then(function (res) { cache[q] = res; suggest(q, res); });
     }
 
-    function open() { pop.classList.add('open'); if (!input.value) quick(); setTimeout(function () { input.focus(); }, 30); }
+    function open() { applyTab(); pop.classList.add('open'); if (!input.value) quick(); else lookup(); setTimeout(function () { input.focus(); }, 30); }
     function close() { pop.classList.remove('open'); }
     btn.onclick = open;
     pop.onclick = function (e) { if (e.target === pop) close(); };
@@ -3809,6 +3819,9 @@ try {
       '@media (max-width:600px){.pe-sr-pic.vid{width:112px;height:63px}}' +
       '.pe-sr-podrow{padding:8px 0;border-bottom:1px solid #e6e8eb}' +
       '.pe-sr-bar{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:0 0 18px}' +
+      '.pe-sr-right{display:flex;align-items:center;flex-wrap:wrap;gap:14px}' +
+      '.pe-sr-nt{display:flex;align-items:center;gap:6px;margin:0;font:13px ' + F + ';color:#666;cursor:pointer}' +
+      '.pe-sr .pe-sr-nt input{flex:none;width:auto;margin:0;padding:0;border:0;accent-color:' + I + '}' +
       '.pe-sr-count{margin:0;font:600 14px ' + F + ';color:#666}' +
       '.pe-sr-sort{display:flex;gap:4px;padding:3px;background:#f1f2f4;border-radius:20px}' +
       '.pe-sr-sort button{padding:6px 14px;border:0;border-radius:16px;background:none;font:600 13px ' + F + ';color:#555;cursor:pointer}' +
@@ -3862,12 +3875,15 @@ try {
     root.className = 'pe-sr';
     root.innerHTML = '<p class="pe-sr-fix" hidden></p><form action="/search" method="get" role="search"><input type="search" name="q" placeholder="Search Production Expert" aria-label="Search terms" required><button type="submit">Search</button></form>' +
       '<div class="pe-sr-tabs" role="tablist" aria-label="Type of result" hidden></div>' +
-      '<div class="pe-sr-bar"><p class="pe-sr-count" aria-live="polite"></p><div class="pe-sr-sort" role="group" aria-label="Sort results"><button type="button" data-s="new" aria-pressed="true">Newest</button><button type="button" data-s="best" aria-pressed="false">Best match</button></div></div>' +
+      '<div class="pe-sr-bar"><p class="pe-sr-count" aria-live="polite"></p><div class="pe-sr-right"><label class="pe-sr-nt"><input type="checkbox"> Open in a new tab</label><div class="pe-sr-sort" role="group" aria-label="Sort results"><button type="button" data-s="new" aria-pressed="true">Newest</button><button type="button" data-s="best" aria-pressed="false">Best match</button></div></div></div>' +
       '<div class="pe-sr-grid"></div><button type="button" class="pe-sr-more" hidden>Show more</button>';
     var native = document.querySelector('.sqs-search-page');
     var host = native ? native.parentNode : (document.querySelector('#content, main, .content') || document.body);
     host.insertBefore(root, native ? native.nextSibling : host.firstChild);
-    root.querySelector('input').value = q;
+    root.querySelector('input[type="search"]').value = q;
+    var ntBox = root.querySelector('.pe-sr-nt input');
+    ntBox.checked = newTab();
+    ntBox.onchange = function () { setNewTab(ntBox.checked); if (items.length || vlist.length || plist.length) draw(); };
 
     var grid = root.querySelector('.pe-sr-grid'), count = root.querySelector('.pe-sr-count'), more = root.querySelector('.pe-sr-more');
     var bar = root.querySelector('.pe-sr-bar'), sorter = root.querySelector('.pe-sr-sort'), tabsEl = root.querySelector('.pe-sr-tabs');
@@ -3916,6 +3932,7 @@ try {
       var a = document.createElement('a');
       a.className = 'pe-sr-card';
       a.href = it.itemUrl;
+      if (newTab()) { a.target = '_blank'; a.rel = 'noopener'; }
       var meta = metaLine(it);
       var text = blurb(it);
       a.innerHTML = '<div class="pe-sr-txt"><p class="pe-sr-meta">' + esc(meta).replace('Partner Content', '<b>Partner Content</b>') + '</p><p class="pe-sr-title">' + esc(it.title) + '</p><p class="pe-sr-text">' + text + '</p></div><div class="pe-sr-pic"></div>';
