@@ -1044,8 +1044,9 @@ try {
    * files back on main.
    *   0.9  30 Oct 2026  7217ed2  Before versions began
    *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe
-   *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block */
-  var PE_VERSION = '1.1';
+   *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block
+   *   1.2  30 Oct 2026  (this)   Links and Image tabs, and the internal links check, on for the whole team */
+  var PE_VERSION = '1.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2811,7 +2812,7 @@ try {
    * While it's being tested only the initials in IMAGE.who see the tab. Opening any post with
    * ?image on the end of its address also turns it on in that browser. */
   var IMAGE = {
-    who: ['RH'],              // initials that see the tab, or 'all'
+    who: 'all',               // initials that see the tab, or 'all' (everyone since v1.2)
     width: 2500,              // widest Squarespace uses; the crop is saved at this width
     ratio: 16 / 9,
     quality: 0.86,            // JPEG quality for the saved crop
@@ -3203,7 +3204,7 @@ try {
   var LINKS = {
     index: 'https://pe-related-answers.pages.dev/links-index.json',
     site: 'https://www.production-expert.com',
-    who: ['RH'],              // initials that see the tab, or 'all'
+    who: 'all',               // initials that see the tab, or 'all' (everyone since v1.2)
     perWords: 200,            // about one link per this many words of article
     tiers: [[3731, 'Exceptional', 2.5, '#3b6d11', '#eaf3de'], [2361, 'Strong', 2, '#185fa5', '#e6f1fb'],
             [1269, 'Average', 1, '#5a6068', '#f1f2f4'], [0, 'Below median', 0, '#854f0b', '#faeeda']],
