@@ -1811,7 +1811,8 @@ try {
     drawProblems();
     drawChecks();
     if (stage === 'Draft' || stage === 'In review' || stage === 'Checks in progress') {
-      var hw = el('button', 'display:block;width:100%;margin-top:12px;padding:9px;border:1px solid #dde1e6;border-radius:6px;background:#f7f9fb;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Help me write');
+      var hw = el('button', 'display:block;width:100%;margin-top:12px;padding:9px;border:1px solid #dde1e6;border-radius:6px;background:#f7f9fb;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Ask Joe');
+      hw.title = 'Joe (formerly Help me write): headlines, meta descriptions, URLs, alt text and links';
       hw.type = 'button';
       hw.onclick = function () { openDrawer(); };
       list.appendChild(hw);
@@ -2279,7 +2280,14 @@ try {
     drawerHead.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     drawerChev = el('span', 'flex:0 0 auto;width:12px;color:#888;font-size:12px;', '▾');
     drawerHead.appendChild(drawerChev);
-    drawerHead.appendChild(el('span', 'flex:1;font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:inherit;', 'Help me write')); // capitals, like Squarespace's headers
+    // The window is called Joe, after Joe Meek. Wordmark in the same style as Patchbay on the
+    // site: a small glyph (a microphone) then the name in brand blue capitals, Open Sans 800
+    var joe = el('span', 'flex:1;display:flex;align-items:center;gap:7px;color:' + C.blue + ';');
+    joe.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;display:block">' +
+      '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/><path d="M12 17v4.5"/><path d="M8.5 21.5h7"/></svg>' +
+      '<span style="font-size:16px;font-weight:800;letter-spacing:.14em;line-height:1;">JOE</span>';
+    joe.setAttribute('aria-label', 'Joe, help me write');
+    drawerHead.appendChild(joe);
     var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;font-weight:400;line-height:1;cursor:pointer;color:#8a9097;padding:0 2px;', '×');
     x.type = 'button';
     x.className = 'pe-x';
