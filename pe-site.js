@@ -1051,8 +1051,10 @@ try {
    *   1.4  30 Oct 2026  e05f2e9  Pixabay searched inside the Image tab; credit under the hero and Source URL
    *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs)
    *   1.5  30 Oct 2026  5d8a225  Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
-   *                              file name, credit) */
-  var PE_VERSION = '1.5';
+   *                              file name, credit)
+   *   1.6  30 Oct 2026  (this)   Place as hero waits for the new picture's asset id before moving on (fixes
+   *                              pictures not sticking); credit waits for the caption box to be redrawn */
+  var PE_VERSION = '1.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -3068,6 +3070,7 @@ try {
     if (!block) { P.placed = { st: 'failed', why: 'There’s no image block in the post. Add an empty image block at the top, then Place as hero again.' }; return drawDrawer(); }
     P.placed = { st: 'busy' };
     drawDrawer();
+    var oldAsset = blockAsset(block);
     makeCrop().then(function (out) {
       if (!out) throw 'The browser couldn’t make the file.';
       // open the block's panel: an empty block opens on a click, a full one on a double-click
@@ -3084,16 +3087,32 @@ try {
         dt.items.add(out.file.constructor === IW.File ? out.file : new IW.File([out.blob], out.name, { type: 'image/jpeg' }));
         inp.files = dt.files;
         inp.dispatchEvent(new IW.Event('change', { bubbles: true }));
-        // uploading a large JPEG can take a while on a slow connection
-        return waitFor(function () { return panelShows(out.name); }, 30000);
+        // Done only when the block holds a new picture (a new Squarespace asset id) and the panel shows
+        // its name. The name alone isn't proof: a new photo can share the old one's name, and moving on
+        // before the upload finishes (to the Options tab, say) interrupts it (v1.6, found 30 Oct 2026).
+        // Uploading a large JPEG can take a while on a slow connection.
+        return waitFor(function () {
+          var a = blockAsset(heroBlock());
+          return a && a !== oldAsset && panelShows(out.name);
+        }, 45000);
       }).then(function (ok) {
         if (!ok) throw 'The upload didn’t show up in the panel. Check the top image, or use Save image and upload it by hand.';
         P.placed = { st: 'done', name: out.name, w: out.w, h: out.h, notes: [] };
-        return wait(400).then(function () { return creditCaption(P); }).then(function () { return creditSource(P); });
+        return wait(600).then(function () { return creditCaption(P); }).then(function () { return creditSource(P); });
       });
     }).catch(function (why) {
       P.placed = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t take the picture. Use Save image and upload it by hand.' };
     }).then(drawDrawer);
+  }
+
+  // The Squarespace asset id of the picture in an image block (the folder before the file name in
+  // its address), or '' when the block is empty
+  function blockAsset(b) {
+    var im = b && b.querySelector('img');
+    var u = im ? String(im.getAttribute('data-src') || im.getAttribute('data-image') || im.src || '') : '';
+    if (!/squarespace-cdn|static1\.squarespace/.test(u)) return '';
+    var parts = u.split('?')[0].split('/');
+    return parts.length > 1 ? parts[parts.length - 2] : '';
   }
 
   function escHtml(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
@@ -3108,7 +3127,11 @@ try {
     var c = P.credit, html = c && text === 'Photo by ' + c.user + ' on ' + c.site
       ? 'Photo by <a href="' + escHtml(c.userUrl) + '">' + escHtml(c.user) + '</a> on <a href="' + escHtml(c.page) + '">' + escHtml(c.site) + '</a>'
       : escHtml(text);
-    var block = heroBlock(), ed = block && block.querySelector('.image-caption .ProseMirror');
+    // Squarespace redraws the block as the new picture lands, so wait for the caption box to be back
+    return waitFor(function () {
+      var b = heroBlock(), e = b && b.querySelector('.image-caption .ProseMirror');
+      return e && visible(e) ? e : null;
+    }, 8000).then(function (ed) {
     if (!ed) { P.placed.notes.push({ bad: true, t: 'Couldn’t find the caption under the picture. Type the credit there: ' + text }); return; }
     var doc = ed.ownerDocument, W = doc.defaultView;
     ed.focus();
@@ -3120,6 +3143,7 @@ try {
     return wait(400).then(function () {
       var got = (ed.textContent || '').replace(/\s+/g, ' ').trim() === text.replace(/\s+/g, ' ');
       P.placed.notes.push(got ? { t: '✓ Credit added under the picture.' } : { bad: true, t: 'The credit didn’t go in. Type it under the picture: ' + text });
+    });
     });
   }
 
@@ -3141,7 +3165,7 @@ try {
         return fillAndHold(f, c.page).then(function (held) {
           P.placed.notes.push(held ? { t: '✓ Source URL filled. Press Apply in Settings, then Save.' } : { bad: true, t: 'Source URL didn’t take. Paste it by hand: ' + c.page });
         });
-      });
+      }).then(function () { settingsTab(doc, 'Content'); }); // back to the post, so the new picture is in view
     });
   }
 
