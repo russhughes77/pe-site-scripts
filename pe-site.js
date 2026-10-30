@@ -1005,12 +1005,13 @@ try {
  * - Shows only what matters: problems first, then unticked checks; ticked checks fold
  * into one line. When everything is done it shrinks to a small pill, and on published
  * posts with nothing wrong it disappears.
- * - Automatic checks: alt text, meta description, partner tag,
+ * - Automatic checks: alt text, meta description, partner tag, internal links in the article,
  * broken internal links, heading order and hero image. They warn but never block.
  * - Scheduled posts with checks missing get a red bar across the top of the page.
  * - Edits made more than 10 minutes after the last tick bring the panel back.
  * - "Help me write" opens a floating window with suggested headlines, meta descriptions, URLs and
- * alt text, written by Claude through the Google Sheet, each with a Copy button. Like the panel,
+ * alt text, written by Claude through the Google Sheet, each with a Copy button. Its Links tab
+ * suggests internal links on words already in the draft and adds them with one click. Like the panel,
  * drag its title bar to move it, click to shrink it, double-click to put it back in the corner.
  * - Reports each post's stage to the Google Sheet for the content pipeline dashboard.
  * - "Flag for author" in the Notes box emails the author a content issue; it stays a red warning
@@ -1876,7 +1877,7 @@ try {
       var t = el('span', 'flex:1;' + (r.els ? 'cursor:pointer;text-decoration:underline;text-underline-offset:2px;' : ''), r.text);
       if (r.els) { t.title = 'Show me'; t.onclick = function () { point(r.els); }; }
       row.appendChild(t);
-      var fix = /^(alt|meta|headlines)$/.test(r.kind || '') ? r.kind : null;
+      var fix = /^(alt|meta|headlines|links)$/.test(r.kind || '') ? r.kind : null;
       if (fix) {
         var b = el('button', 'flex:0 0 auto;padding:2px 8px;border:1px solid #e3c79a;border-radius:5px;background:#fff;font:600 11px/1.6 ' + F + ';color:#5a3a00;cursor:pointer;', 'Suggest');
         b.type = 'button';
@@ -1998,6 +1999,7 @@ try {
       .then(function (d) {
         var it = (d && d.item) || {};
         postData = it;
+        linksSeen(it); // after a save: did the links added from Help me write make it in?
         var t = +it.publishOn || 0;
         var was = scheduledFor, wasEdit = editedAt;
         // Squarespace keeps a post's planned date even after it goes back to draft (status 4)
@@ -2100,6 +2102,29 @@ try {
       // post goes live (pushedServices and pendingPushedServices come back empty even with the
       // slider on and text filled in, confirmed 26 Oct 2026), so this can't be checked
       // automatically. It's a reminder under the Schedule check instead (see drawChecks).
+    }
+
+    // 6d. Internal links in the article. A post of 300 words or more with no link to another
+    // Production Expert article gets a warning, with a button that opens the Links tab in Help me
+    // write. Links in the "You Might Also Find These Articles Useful" block don't count: they sit
+    // after the article. Only checked before a post goes live, and (while the Links tab is being
+    // tested) only for the people who have that tab, so nobody is warned without the tool to fix it.
+    if (linksOn() && (+postData.workflowState || 0) !== 1) {
+      var inBody = 0, past = false, words = 0;
+      Array.prototype.forEach.call(body.querySelectorAll('p, li, h1, h2, h3, h4'), function (e) {
+        if (past || !own(e)) return;
+        if (LINKS.stop.test(e.textContent)) { past = true; return; }
+        if (/^H[1-4]$/.test(e.tagName) || (e.tagName === 'LI' && e.querySelector('p'))) return;
+        words += squash(e.textContent).split(' ').filter(Boolean).length;
+        Array.prototype.forEach.call(e.querySelectorAll('a[href]'), function (l) {
+          var h = l.getAttribute('href') || '';
+          if (/^#/.test(h) || /\.(jpe?g|png|gif|webp|pdf)$/i.test(l.pathname)) return;
+          if (l.host === location.host || /(^|\.)production-expert\.com$/.test(l.hostname)) inBody++;
+        });
+      });
+      if (words >= 300) out.push(inBody
+        ? { ok: true, text: inBody + (inBody === 1 ? ' internal link' : ' internal links') + ' in the article' }
+        : { ok: false, kind: 'links', text: 'No internal links in the article' });
     }
 
     // 7. Internal links that lead nowhere (other sites can't be checked from the page)
@@ -2382,7 +2407,7 @@ try {
     drawerInner.innerHTML = '';
 
     var tabs = el('div', 'display:flex;gap:4px;flex-wrap:wrap;padding:8px 12px;border-top:1px solid #eceef1;border-bottom:1px solid #eceef1;background:#fafbfc;');
-    TABS.forEach(function (t) {
+    drawerTabs().forEach(function (t) {
       var on = t[0] === drawerTab;
       var b = el('button', 'padding:5px 11px;border:0;border-radius:999px;background:' + (on ? '#e3eef8' : 'transparent') + ';color:' + (on ? C.blue : '#5a6068') +
         ';font:' + (on ? 700 : 600) + ' 12.5px ' + F + ';cursor:pointer;', t[1]);
@@ -2394,7 +2419,8 @@ try {
 
     var body = el('div', 'flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;');
     drawerInner.appendChild(body);
-    if (drawerTab === 'alt') drawAltTab(body); else drawWriteTab(body);
+    if (drawerTab === 'links' && !linksOn()) drawerTab = 'headlines';
+    if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
   }
 
@@ -2487,6 +2513,459 @@ try {
       body.appendChild(row);
     });
     body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Paste each into the image’s alt text in Squarespace, and check it first.'));
+  }
+
+  /* ---------- Links (internal links inside the draft) ----------
+   * The pe-internal-links skill, built into Help me write. The nightly Related Answers job
+   * publishes links-index.json: every article that may be linked to (last three years or still
+   * earning Google clicks, never partner content), each with a few anchor phrases, a reason line,
+   * whether it's about one product or brand, and its first-seven-days views from the stats sheet.
+   *
+   * This tab looks for those phrases, word for word, in the post's text blocks and suggests the
+   * best few. A link only ever goes on words already in the article; the wording never changes.
+   * The skill's rules, in code:
+   *   - never in headings, quotes, captions, the opening words, the last paragraph, or after
+   *     "You Might Also Find These Articles Useful"
+   *   - never to this post, or to an article it already links to
+   *   - one link per paragraph, one per article, roughly one per 200 words
+   *   - on Partner posts, and on reviews or news about one brand's product, never to another
+   *     brand's product or to a roundup or buying guide (the competitor rule)
+   *   - better tiers win ties: Exceptional, Strong, Average, Below median, Unscored
+   *
+   * Add puts the link in for you, through Squarespace's own editor:
+   *   1. clicks into the text block so Squarespace opens it for editing
+   *   2. selects exactly those words
+   *   3. hands Squarespace the link as a paste, the way pasting by hand would
+   *      (or, if its editor ignores that, uses the browser's own Link command)
+   *   4. checks the link is there and the text around it is unchanged. If not, it undoes
+   *      whatever happened and that row falls back to Show in post and Copy link.
+   * You still press Save. After the next save the row checks the saved post really has the link.
+   *
+   * While it's being tested only the initials in LINKS.who see the tab. Change it to 'all' to
+   * give it to the team. Opening any post with ?links on the end of its address also turns it on
+   * in that browser. */
+  var LINKS = {
+    index: 'https://pe-related-answers.pages.dev/links-index.json',
+    site: 'https://www.production-expert.com',
+    who: ['RH'],              // initials that see the tab, or 'all'
+    perWords: 200,            // about one link per this many words of article
+    tiers: [[3731, 'Exceptional', 2.5, '#3b6d11', '#eaf3de'], [2361, 'Strong', 2, '#185fa5', '#e6f1fb'],
+            [1269, 'Average', 1, '#5a6068', '#f1f2f4'], [0, 'Below median', 0, '#854f0b', '#faeeda']],
+    stop: /you might(?:\s+also)?\s+find\s+th(?:ese|is)/i
+  };
+  var linkIdx = null;         // null, 'loading', 'error', or the downloaded index
+  var linkSugg = null;        // this post's suggestions, in article order
+  var linkDone = {};          // target path: { st: 'added'|'saved'|'notsaved'|'skipped'|'failed'|'busy', why, at }
+
+  if (/[?&]links\b/.test(location.search)) ls('pe-links', '1');
+  function linksOn() {
+    if (LINKS.who === 'all' || ls('pe-links') === '1') return true;
+    return LINKS.who.indexOf((ls('pe-initials') || '').toUpperCase()) !== -1;
+  }
+  function drawerTabs() { return linksOn() ? TABS.concat([['links', 'Links']]) : TABS; }
+
+  function tierOf(v) {
+    if (v == null) return null;
+    for (var i = 0; i < LINKS.tiers.length; i++) if (v >= LINKS.tiers[i][0]) return LINKS.tiers[i];
+    return null;
+  }
+  function lower(a) { return (a || []).map(function (x) { return String(x).toLowerCase().trim(); }); }
+  function pathOf(href) {
+    try { return new URL(href, LINKS.site).pathname.replace(/\/+$/, ''); } catch (e) { return ''; }
+  }
+  function squash(t) { return String(t || '').replace(/[\u200b\u200c\u200d\ufeff]/g, '').replace(/[\s\u00a0]+/g, ' ').trim(); }
+
+  function loadLinkIndex() {
+    if (linkIdx && linkIdx !== 'error') return;
+    linkIdx = 'loading';
+    drawDrawer();
+    fetch(LINKS.index, { cache: 'no-cache' })
+      .then(function (r) { if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function (d) { linkIdx = d && d.targets ? d : 'error'; if (linkIdx !== 'error') findLinks(); })
+      .catch(function () { linkIdx = 'error'; })
+      .then(drawDrawer);
+  }
+
+  // The paragraphs a link may go in: text blocks only (so Add can edit them), never headings,
+  // quotes, captions, marker lines (#H4, #expires, #people) or anything after the related block
+  function linkParas() {
+    var body = articleBody();
+    if (!body) return [];
+    var out = [], stopped = false;
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, h1, h2, h3, h4'), function (e) {
+      if (stopped) return;
+      var t = squash(e.textContent);
+      if (/^H[1-4]$/.test(e.tagName) || e.querySelector('strong:only-child, b:only-child') && squash(e.querySelector('strong, b').textContent) === t) {
+        if (LINKS.stop.test(t)) stopped = true;
+        return; // headings, and bold lines standing in for headings
+      }
+      if (LINKS.stop.test(t)) { stopped = true; return; }
+      if (!t || t.charAt(0) === '#') return;
+      if (e.tagName === 'LI' && e.querySelector('p')) return; // its paragraph is counted instead
+      if (!e.closest('.sqs-block-html, .html-block')) return;
+      if (e.closest('blockquote, figcaption, .image-caption-wrapper, .pe-ui, .pe-checklist, .pe-drawer, .pe-people, .pe-author-bio, .pe-signup')) return;
+      out.push(e);
+    });
+    return out;
+  }
+
+  // Text pieces of a paragraph that aren't already inside a link (or all of them, with inLinks)
+  function textNodes(p, inLinks) {
+    var w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null), n, out = [];
+    while ((n = w.nextNode())) if (inLinks || !(n.parentNode.closest && n.parentNode.closest('a'))) out.push(n);
+    return out;
+  }
+
+  // Every whole-word, any-case appearance of a phrase in one text piece
+  function phraseRe(ph) {
+    var body = ph.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/['’]/g, "['’]").replace(/\s+/g, '[\\s\\u00a0]+');
+    return new RegExp('(^|[^\\w-])(' + body + ')(?![\\w-])', 'gi');
+  }
+
+  // This post's brands, for the competitor rule. Partner posts and reviews or news about one
+  // brand's product protect that brand; everything else is editorial and the rule doesn't apply.
+  function protectedBrands(targets) {
+    var tags = lower(postData.tags), cats = lower(postData.categories), title = postTitle().toLowerCase();
+    var partner = tags.indexOf('partner') !== -1 || tags.indexOf('partners') !== -1;
+    var brands = {};
+    targets.forEach(function (x) {
+      var b = (x.b || '').toLowerCase();
+      if (b && x.k === 'product' && (tags.indexOf(b) !== -1 || new RegExp('(^|[^\\w])' + b.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?![\\w])').test(title))) brands[b] = 1;
+    });
+    var any = Object.keys(brands).length > 0;
+    var oneProduct = any && cats.some(function (c) { return /review|news|first look|announce/.test(c); });
+    if (partner) return { on: true, brands: brands, why: 'Partner post' };
+    // reviews or news naming a brand in the title or tags protect that brand too
+    if (oneProduct) return { on: true, brands: brands, why: 'Single-product post' };
+    return { on: false, brands: {} };
+  }
+
+  function findLinks() {
+    if (!linkIdx || !linkIdx.targets) return;
+    var paras = linkParas();
+    var words = paras.reduce(function (n, p) { return n + squash(p.textContent).split(' ').length; }, 0);
+    var here = location.pathname.replace(/\/+$/, '');
+    var linked = {};
+    var body = articleBody();
+    if (body) Array.prototype.forEach.call(body.querySelectorAll('a[href]'), function (a) { linked[pathOf(a.getAttribute('href'))] = 1; });
+    var myTags = lower(postData.tags);
+    var guard = protectedBrands(linkIdx.targets);
+    var now = Date.now(), found = [];
+
+    linkIdx.targets.forEach(function (x) {
+      if (x.u === here || linked[x.u]) return;
+      // competitor rule, on a post protecting a brand: never another brand's product, and never
+      // a roundup or buying guide, which puts that brand's competitors side by side
+      if (guard.on && (x.k === 'comparison' || (x.k === 'product' && (!x.b || !guard.brands[x.b.toLowerCase()])))) return;
+      var shared = lower(x.g).filter(function (g) { return myTags.indexOf(g) !== -1; }).length;
+      var tier = tierOf(x.v);
+      var age = x.d ? (now - Date.parse(x.d)) / 864e5 : 9999;
+      x.p.forEach(function (ph) {
+        var nw = ph.split(/\s+/).length;
+        var named = /[A-Z0-9]/.test(ph);
+        // relevance guard: a shared tag, a phrase of three words or more, or a product name
+        if (!shared && nw < 3 && !named) return;
+        var re = phraseRe(ph);
+        paras.forEach(function (p, pi) {
+          var last = pi === paras.length - 1 && paras.length > 3;
+          if (last) return; // end on the writer's voice, not a link
+          textNodes(p).forEach(function (n) {
+            re.lastIndex = 0;
+            var m;
+            while ((m = re.exec(n.data))) {
+              var start = m.index + m[1].length;
+              // not in the opening four words of the article
+              if (pi === 0 && n.data.slice(0, start).split(/\s+/).filter(Boolean).length < 4 && textNodes(p)[0] === n) continue;
+              var score = Math.min(nw, 4) + Math.min(shared, 2) * 1.5 + (tier ? tier[2] : 0.5) + (age < 365 ? 0.5 : 0);
+              // every appearance competes, so a target can still land in another paragraph
+              found.push({ score: score, para: p, paraText: p.textContent, pi: pi, anchor: m[2], target: x, tier: tier, shared: shared });
+            }
+          });
+        });
+      });
+    });
+
+    // Best first (earlier in the article on a tie), then one per paragraph and one per
+    // article linked to, about one per LINKS.perWords words
+    var cap = Math.max(2, Math.round(words / LINKS.perWords));
+    found.sort(function (a, b) { return b.score - a.score || a.pi - b.pi; });
+    var used = {}, usedTarget = {}, out = [];
+    found.forEach(function (s) {
+      if (out.length >= cap || used[s.pi] || usedTarget[s.target.u]) return;
+      used[s.pi] = 1;
+      usedTarget[s.target.u] = 1;
+      out.push(s);
+    });
+    out.sort(function (a, b) { return a.pi - b.pi; });
+    linkSugg = { list: out, guard: guard, words: words, linked: Object.keys(linked).length };
+  }
+
+  /* ----- Putting a link in ----- */
+
+  function editableRoot(n) {
+    var e = n && (n.nodeType === 1 ? n : n.parentNode);
+    if (!e || !e.isContentEditable) return null;
+    var root = e;
+    while (root.parentNode && root.parentNode.isContentEditable) root = root.parentNode;
+    return root;
+  }
+
+  // Finds the words again inside the text block, because Squarespace may redraw the block when
+  // it opens it for editing. Returns the text piece and where the words start.
+  // inLinks: look inside links too (to take out a link this tab added)
+  function locate(block, s, inLinks) {
+    var want = squash(s.paraText), hit = null;
+    Array.prototype.forEach.call(block.querySelectorAll('p, li'), function (p) {
+      if (hit || squash(p.textContent) !== want) return;
+      textNodes(p, inLinks).some(function (n) {
+        var re = phraseRe(s.anchor), m;
+        re.lastIndex = 0;
+        while ((m = re.exec(n.data))) {
+          if (m[2] === s.anchor) { hit = { node: n, start: m.index + m[1].length, para: p }; return true; }
+        }
+        return false;
+      });
+    });
+    return hit;
+  }
+
+  function selectWords(hit, len) {
+    var r = document.createRange();
+    r.setStart(hit.node, hit.start);
+    r.setEnd(hit.node, hit.start + len);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(r);
+    return r;
+  }
+
+  function wait(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
+
+  // A click inside the paragraph, the way a person would make Squarespace open the block
+  function clickInto(p) {
+    var r = p.getBoundingClientRect();
+    var o = { bubbles: true, cancelable: true, view: window, clientX: r.left + 4, clientY: r.top + 4, button: 0 };
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function (t) {
+      try { p.dispatchEvent(/^pointer/.test(t) && window.PointerEvent ? new PointerEvent(t, o) : new MouseEvent(t, o)); } catch (e) {}
+    });
+  }
+
+  // Waits (up to two seconds) for the words to sit inside an editable block
+  function openForEditing(s, inLinks) {
+    var block = (s.para.isConnected && s.para.closest('.sqs-block')) || locateBlock(s) || s.para.parentNode;
+    var hit = locate(block, s, inLinks);
+    if (hit && editableRoot(hit.node)) return Promise.resolve({ block: block, hit: hit });
+    if (!hit) return Promise.reject('The words have moved since the suggestions were made. Press Refresh.');
+    hit.para.scrollIntoView({ block: 'center' });
+    clickInto(hit.para);
+    var tries = 0;
+    return (function poll() {
+      return wait(100).then(function () {
+        block = block.isConnected ? block : (locateBlock(s) || block);
+        var h = locate(block, s, inLinks);
+        if (h && editableRoot(h.node)) return { block: block, hit: h };
+        if (++tries > 20) throw 'Squarespace didn’t open the text block for editing.';
+        return poll();
+      });
+    })();
+  }
+  function locateBlock(s) {
+    var body = articleBody(), want = squash(s.paraText), found = null;
+    if (body) Array.prototype.some.call(body.querySelectorAll('p, li'), function (p) {
+      if (squash(p.textContent) === want) { found = p.closest('.sqs-block'); return true; }
+      return false;
+    });
+    return found;
+  }
+
+  function hasLink(root, s) {
+    return Array.prototype.some.call(root.querySelectorAll('a[href]'), function (a) {
+      return pathOf(a.getAttribute('href')) === s.target.u && squash(a.textContent) === squash(s.anchor);
+    });
+  }
+
+  function addLink(s) {
+    var key = s.target.u, url = LINKS.site + s.target.u;
+    linkDone[key] = { st: 'busy' };
+    drawDrawer();
+    var root, before;
+    openForEditing(s).then(function (got) {
+      root = editableRoot(got.hit.node);
+      before = squash(root.textContent);
+      root.focus({ preventScroll: true });
+      selectWords(got.hit, s.anchor.length);
+      // 1. A paste, so Squarespace's editor makes the link itself and records the change
+      var handled = false;
+      try {
+        var dt = new DataTransfer();
+        dt.setData('text/html', '<a href="' + url + '">' + s.anchor.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a>');
+        dt.setData('text/plain', s.anchor);
+        var ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+        // Safari ignores clipboardData in the constructor; give it the data another way
+        if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt });
+        got.hit.node.parentNode.dispatchEvent(ev);
+        handled = ev.defaultPrevented;
+      } catch (e) {}
+      return wait(handled ? 250 : 0).then(function () {
+        if (hasLink(root, s)) return;
+        // 2. The editor didn't take the paste: the browser's own Link command on the same words
+        var h = locate(root, s) || locate(root.closest('.sqs-block') || root, s);
+        if (!h) return;
+        selectWords(h, s.anchor.length);
+        try { document.execCommand('createLink', false, url); } catch (e) {}
+        try { root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertLink' })); } catch (e) {}
+        return wait(150);
+      });
+    }).then(function () {
+      if (!root) throw 'Squarespace didn’t open the text block for editing.';
+      var ok = hasLink(root, s), same = squash(root.textContent) === before;
+      if (ok && same) {
+        var sel = window.getSelection();
+        if (sel.rangeCount) sel.collapseToEnd();
+        linkDone[key] = { st: 'added', at: Date.now() };
+        return;
+      }
+      // Something went wrong: put the block back as it was
+      if (!same || ok) { try { document.execCommand('undo'); } catch (e) {} }
+      throw !same ? 'Squarespace changed the text, so the change was undone.' : 'Squarespace didn’t accept the link.';
+    }).catch(function (why) {
+      linkDone[key] = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t accept the link.' };
+    }).then(drawDrawer);
+  }
+
+  // Takes a link this tab added out again
+  function removeLink(s) {
+    var key = s.target.u;
+    openForEditing(s, true).then(function (got) {
+      var root = editableRoot(got.hit.node) || got.block;
+      var a = Array.prototype.filter.call(root.querySelectorAll('a[href]'), function (x) {
+        return pathOf(x.getAttribute('href')) === s.target.u && squash(x.textContent) === squash(s.anchor);
+      })[0];
+      if (!a) { delete linkDone[key]; return; }
+      var r = document.createRange();
+      r.selectNodeContents(a);
+      var sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(r);
+      document.execCommand('unlink');
+      delete linkDone[key];
+    }).catch(function () {
+      linkDone[key] = { st: 'added', why: 'Couldn’t remove it. Select the words and remove the link by hand.' };
+    }).then(drawDrawer);
+  }
+  function showWords(s) {
+    var block = s.para.closest('.sqs-block') || locateBlock(s);
+    var hit = block && locate(block, s);
+    var p = hit ? hit.para : s.para;
+    if (!p || !p.isConnected) return;
+    p.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (hit) setTimeout(function () { selectWords(hit, s.anchor.length); }, 350);
+    point([p]);
+  }
+
+  // Copies the words as a link, for pasting over the selection by hand
+  function copyLink(s, btn) {
+    var url = LINKS.site + s.target.u;
+    var html = '<a href="' + url + '">' + s.anchor.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a>';
+    function done() { btn.textContent = 'Copied, paste over the words'; setTimeout(function () { btn.textContent = 'Copy link'; }, 2500); }
+    try {
+      navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([url], { type: 'text/plain' }) })]).then(done, function () { copyText(url, btn); });
+    } catch (e) { copyText(url, btn); }
+  }
+
+  // After a save, checks the saved post really holds each link this tab added
+  function linksSeen(it) {
+    if (typeof it.body !== 'string') return;
+    var changed = false;
+    Object.keys(linkDone).forEach(function (k) {
+      var d = linkDone[k];
+      if (d.st !== 'added' || !(+it.updatedOn > d.at)) return;
+      d.st = it.body.indexOf(k + '"') !== -1 || it.body.indexOf(k + '?') !== -1 || it.body.indexOf(k + '#') !== -1 ? 'saved' : 'notsaved';
+      changed = true;
+    });
+    if (changed && drawerTab === 'links') drawDrawer();
+  }
+
+  /* ----- The tab ----- */
+
+  function linkBtn(text, onclick, primary) {
+    var b = el('button', 'flex:0 0 auto;padding:4px 11px;border:1px solid ' + (primary ? C.blue : '#d5d9de') + ';border-radius:5px;background:' + (primary ? C.blue : '#fff') +
+      ';font:600 11.5px/1.6 ' + F + ';color:' + (primary ? '#fff' : '#333') + ';cursor:pointer;', text);
+    b.type = 'button';
+    b.onclick = function () { onclick(b); };
+    return b;
+  }
+
+  function drawLinksTab(body) {
+    if (!linkIdx) loadLinkIndex();
+    if (linkIdx === 'loading' || !linkIdx) { body.appendChild(el('div', 'padding:14px 0;color:#777;', 'Reading the archive…')); return; }
+    if (linkIdx === 'error') {
+      body.appendChild(el('div', 'padding:14px 0;color:' + C.red + ';font-size:13px;', 'The link index couldn’t be read. It’s built each night by the Related Answers job.'));
+      body.appendChild(actionButton('Try again', function () { linkIdx = null; loadLinkIndex(); }));
+      return;
+    }
+    if (!linkSugg) findLinks();
+    var sg = linkSugg, list = sg.list;
+    var added = list.filter(function (s) { var d = linkDone[s.target.u]; return d && /added|saved|notsaved/.test(d.st); }).length;
+
+    var intro = (sg.guard.on ? sg.guard.why + ': no links to other brands’ products or to roundups. ' : 'Editorial post. ') +
+      sg.words.toLocaleString() + ' words, ' + sg.linked + ' existing ' + (sg.linked === 1 ? 'link' : 'links') + ' skipped.';
+    body.appendChild(el('div', 'margin:12px 0 2px;font-size:12px;color:#5a6068;', intro));
+    body.appendChild(el('div', 'margin:0 0 6px;font-size:12px;color:#8a9097;', list.length ? added + ' of ' + list.length + ' added' : ''));
+
+    if (!list.length) {
+      body.appendChild(el('div', 'padding:12px 0;color:#555;font-size:13px;', 'No phrases in this draft match an article worth linking to.'));
+    }
+    list.forEach(function (s) {
+      var d = linkDone[s.target.u] || {};
+      var row = el('div', 'padding:11px 0;border-bottom:1px solid #eceef1;' + (d.st === 'skipped' ? 'opacity:.55;' : ''));
+      // the sentence around the words, with the words marked
+      var t = s.para.textContent, i = t.indexOf(s.anchor);
+      var ctx = el('div', 'font-size:12.5px;color:#5a6068;line-height:1.55;margin-bottom:5px;');
+      if (i === -1) ctx.textContent = s.anchor;
+      else {
+        // about 50 characters either side, starting and ending on whole words
+        var a = Math.max(0, i - 50), b = Math.min(t.length, i + s.anchor.length + 50);
+        if (a > 0) { var sp = t.indexOf(' ', a); a = sp !== -1 && sp < i ? sp + 1 : a; }
+        if (b < t.length) { var sb = t.lastIndexOf(' ', b); b = sb > i + s.anchor.length ? sb : b; }
+        ctx.appendChild(document.createTextNode((a ? '…' : '') + t.slice(a, i)));
+        ctx.appendChild(el('mark', 'background:#fff3c4;color:#222;padding:0 2px;border-radius:3px;', s.anchor));
+        ctx.appendChild(document.createTextNode(t.slice(i + s.anchor.length, b) + (b < t.length ? '…' : '')));
+      }
+      row.appendChild(ctx);
+      var ti = el('div', 'font-size:13.5px;font-weight:700;line-height:1.4;color:' + C.blue + ';' + (d.st === 'skipped' ? 'text-decoration:line-through;' : ''), s.target.t);
+      var tier = s.tier;
+      ti.appendChild(el('span', 'display:inline-block;margin-left:6px;padding:1px 7px;border-radius:999px;font-size:10.5px;font-weight:600;vertical-align:1px;' +
+        'color:' + (tier ? tier[3] : '#5a6068') + ';background:' + (tier ? tier[4] : '#f1f2f4') + ';',
+        tier ? tier[1] + ' ' + s.target.v.toLocaleString() : 'Unscored'));
+      row.appendChild(ti);
+      if (s.target.r) row.appendChild(el('div', 'font-size:12px;color:#777;margin:3px 0 0;', s.target.r));
+      var acts = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;');
+
+      if (d.st === 'busy') acts.appendChild(el('span', 'font-size:12px;color:#777;', 'Adding…'));
+      else if (d.st === 'added' || d.st === 'saved' || d.st === 'notsaved') {
+        var msg = d.st === 'saved' ? '✓ Added and saved' : d.st === 'notsaved' ? 'The saved post doesn’t have this link. Add it again, or by hand.' : d.why || '✓ Added. Press Save in Squarespace.';
+        acts.appendChild(el('span', 'font-size:12px;font-weight:600;color:' + (d.st === 'notsaved' ? C.red : C.green) + ';', msg));
+        if (d.st === 'notsaved') acts.appendChild(linkBtn('Add again', function () { addLink(s); }, true));
+        else acts.appendChild(linkBtn('Undo', function () { removeLink(s); }));
+      } else if (d.st === 'skipped') {
+        acts.appendChild(el('span', 'font-size:12px;color:#777;', 'Skipped'));
+        acts.appendChild(linkBtn('Undo', function () { delete linkDone[s.target.u]; drawDrawer(); }));
+      } else {
+        if (d.st === 'failed') {
+          acts.appendChild(el('div', 'flex:1 0 100%;font-size:12px;color:' + C.red + ';margin-bottom:2px;', d.why + ' Show in post selects the words; Copy link, then paste over them.'));
+          acts.appendChild(linkBtn('Copy link', function (b) { copyLink(s, b); }, true));
+        } else {
+          acts.appendChild(linkBtn('Add', function () { addLink(s); }, true));
+        }
+        acts.appendChild(linkBtn('Show in post', function () { showWords(s); }));
+        acts.appendChild(linkBtn('Skip', function () { linkDone[s.target.u] = { st: 'skipped' }; drawDrawer(); }));
+      }
+      row.appendChild(acts);
+      body.appendChild(row);
+    });
+
+    body.appendChild(actionButton('Refresh', function () { linkSugg = null; drawDrawer(); }));
+    body.appendChild(el('div', 'font-size:12px;color:#777;', 'Add links the words for you without changing them. Nothing goes live until you press Save in Squarespace.'));
   }
 
   /* ---------- Moving the panel ---------- */
