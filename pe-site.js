@@ -1047,8 +1047,10 @@ try {
    *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block
    *   1.2  30 Oct 2026  e9ff08a  Links and Image tabs, and the internal links check, on for the whole team
    *   1.3  30 Oct 2026  cdf8585  Image tab starts with Add image; Depositphotos search folded in, with a
-   *                              sign-in reminder and a warning on files under 1000px wide */
-  var PE_VERSION = '1.3';
+   *                              sign-in reminder and a warning on files under 1000px wide
+   *   1.4  30 Oct 2026  (this)   Pixabay searched inside the Image tab; credit under the hero and Source URL
+   *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs) */
+  var PE_VERSION = '1.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2822,7 +2824,10 @@ try {
     stock: 'https://depositphotos.com/photos/'
   };
   var imgSearch = null;       // { status, options: [{q, note}], error, local }
-  var imgPick = null;         // { img, file, w, h, x, y, name, err } once a file is dropped in
+  var imgPick = null;         // { img, file, w, h, x, y, name, err, credit } once a file is dropped in
+  var imgSource = null;       // 'pixabay' or 'deposit': which search is open under the drop box (v1.4)
+  var pxRes = null;           // Pixabay results: { status, q, page, hits, total, error }
+  var pxPicking = null;       // id of the Pixabay photo being fetched
   var imgLastQ = '';          // the search last opened, used for the file name
 
   if (/[?&]image\b/.test(location.search)) ls('pe-image', '1');
@@ -2881,7 +2886,11 @@ try {
         imgSearch = more && prev.length ? { status: 'done', options: prev, local: true, error: 'No more searches came back.' }
           : { status: 'done', options: localSearches(), local: true };
       })
-      .then(drawDrawer);
+      .then(function () {
+        // Search Pixabay was pressed before the suggestions arrived: run the first one
+        if (imgSource === 'pixabay' && !pxRes && imgSearch.options && imgSearch.options[0]) return pixabaySearch(imgSearch.options[0].q);
+        drawDrawer();
+      });
   }
 
   function openStock(q) {
@@ -2898,14 +2907,16 @@ try {
   }
 
   // Reads a dropped or chosen file into the crop step
-  function takeImageFile(file) {
-    if (!file || !/^image\//.test(file.type)) { imgPick = { err: 'That isn’t a picture. Drop in the JPEG from Depositphotos.' }; return drawDrawer(); }
+  // credit, for a Pixabay photo: { site, user, userUrl, page }, used for the caption and Source URL
+  function takeImageFile(file, credit) {
+    if (!file || !/^image\//.test(file.type)) { imgPick = { err: 'That isn’t a picture. Drop in a JPEG or PNG.' }; return drawDrawer(); }
     var url = URL.createObjectURL(file);
     var im = new Image();
     im.onload = function () {
       var w = im.naturalWidth, h = im.naturalHeight, cw, ch;
       if (w / h > IMAGE.ratio) { ch = h; cw = Math.round(h * IMAGE.ratio); } else { cw = w; ch = Math.round(w / IMAGE.ratio); }
-      imgPick = { img: im, url: url, file: file, w: w, h: h, cw: cw, ch: ch, x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), name: imgName(), auto: true };
+      imgPick = { img: im, url: url, file: file, w: w, h: h, cw: cw, ch: ch, x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), name: imgName(), auto: true,
+        credit: credit || null, creditText: credit ? 'Photo by ' + credit.user + ' on ' + credit.site : '' };
       drawDrawer();
     };
     im.onerror = function () { imgPick = { err: 'Couldn’t open that file.' }; drawDrawer(); };
@@ -3060,11 +3071,100 @@ try {
         return waitFor(function () { return panelShows(out.name); }, 30000);
       }).then(function (ok) {
         if (!ok) throw 'The upload didn’t show up in the panel. Check the top image, or use Save image and upload it by hand.';
-        P.placed = { st: 'done', name: out.name, w: out.w, h: out.h };
+        P.placed = { st: 'done', name: out.name, w: out.w, h: out.h, notes: [] };
+        return wait(400).then(function () { return creditCaption(P); }).then(function () { return creditSource(P); });
       });
     }).catch(function (why) {
       P.placed = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t take the picture. Use Save image and upload it by hand.' };
     }).then(drawDrawer);
+  }
+
+  function escHtml(t) { return String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+  /* The credit under the hero (v1.4). The image block's caption is a ProseMirror editor
+   * (.image-caption .ProseMirror, checked live 30 Oct 2026); a paste with HTML keeps the links.
+   * Untouched Pixabay credits go in as "Photo by <photographer> on <Pixabay>", both linked;
+   * anything typed or changed by hand goes in as plain text. An empty credit leaves the caption alone. */
+  function creditCaption(P) {
+    var text = String(P.creditText || '').trim();
+    if (!text) return;
+    var c = P.credit, html = c && text === 'Photo by ' + c.user + ' on ' + c.site
+      ? 'Photo by <a href="' + escHtml(c.userUrl) + '">' + escHtml(c.user) + '</a> on <a href="' + escHtml(c.page) + '">' + escHtml(c.site) + '</a>'
+      : escHtml(text);
+    var block = heroBlock(), ed = block && block.querySelector('.image-caption .ProseMirror');
+    if (!ed) { P.placed.notes.push({ bad: true, t: 'Couldn’t find the caption under the picture. Type the credit there: ' + text }); return; }
+    var doc = ed.ownerDocument, W = doc.defaultView;
+    ed.focus();
+    var r = doc.createRange(); r.selectNodeContents(ed);
+    var sel = W.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+    var dt = new W.DataTransfer();
+    dt.setData('text/html', html); dt.setData('text/plain', text);
+    ed.dispatchEvent(new W.ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+    return wait(400).then(function () {
+      var got = (ed.textContent || '').replace(/\s+/g, ' ').trim() === text.replace(/\s+/g, ' ');
+      P.placed.notes.push(got ? { t: '✓ Credit added under the picture.' } : { bad: true, t: 'The credit didn’t go in. Type it under the picture: ' + text });
+    });
+  }
+
+  /* Source URL on the Options tab (v1.4), for photos with a page to point to (Pixabay). Filled
+   * only when empty: the team sometimes puts a press page there, and that stays. Never touches
+   * "Post Title should link to Source URL". */
+  function creditSource(P) {
+    var c = P.credit;
+    if (!c || !c.page) return;
+    return openSettings().then(function (doc) {
+      if (!doc) { P.placed.notes.push({ bad: true, t: 'Source URL not filled: open Settings, Options, and paste ' + c.page }); return; }
+      settingsTab(doc, 'Options');
+      return waitFor(function () {
+        var f = doc.querySelector('input[name="sourceUrl"]');
+        return f && visible(f) ? f : null;
+      }, 3000).then(function (f) {
+        if (!f) { P.placed.notes.push({ bad: true, t: 'Couldn’t find Source URL on the Options tab. Paste it by hand: ' + c.page }); return; }
+        if (String(f.value || '').trim()) { P.placed.notes.push({ t: 'Source URL already holds ' + f.value + ', so it was left alone.' }); return; }
+        return fillAndHold(f, c.page).then(function (held) {
+          P.placed.notes.push(held ? { t: '✓ Source URL filled. Press Apply in Settings, then Save.' } : { bad: true, t: 'Source URL didn’t take. Paste it by hand: ' + c.page });
+        });
+      });
+    });
+  }
+
+  /* Pixabay search (v1.4), through the checklist Apps Script so the key stays private:
+   * ?pixabay=<words>&page=<n> answers { total, page, hits: [{ id, page, user, userUrl, thumb, w, h }] },
+   * ?pixabayimg=<id> answers the photo as base64 with its credit. Thumbnails are Pixabay's own
+   * preview addresses, shown as plain images (never drawn on a canvas, so no cross-site limits). */
+  function pixabaySearch(q, more) {
+    q = String(q || '').replace(/\s+/g, ' ').trim();
+    if (!q) return;
+    var prev = more && pxRes && pxRes.q === q ? pxRes : null;
+    pxRes = { status: 'loading', q: q, page: prev ? prev.page + 1 : 1, hits: prev ? prev.hits : [], total: prev ? prev.total : 0 };
+    imgLastQ = q;
+    drawDrawer();
+    fetch(C.store + '?pixabay=' + encodeURIComponent(q) + '&page=' + pxRes.page)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.error === 'no post') throw 'Pixabay isn’t set up in the Google Sheet yet (the new Code.gs needs deploying).';
+        if (!d || d.error) throw (d && d.error) || 'No answer from Pixabay';
+        pxRes = { status: 'done', q: q, page: d.page || pxRes.page, hits: pxRes.hits.concat(d.hits || []), total: d.total || 0 };
+      })
+      .catch(function (e) { pxRes = { status: 'error', q: q, page: pxRes.page, hits: pxRes.hits, total: pxRes.total, error: typeof e === 'string' ? e : 'Could not reach the Google Sheet' }; })
+      .then(drawDrawer);
+  }
+
+  function pixabayPick(h) {
+    if (pxPicking) return;
+    pxPicking = h.id;
+    drawDrawer();
+    fetch(C.store + '?pixabayimg=' + h.id)
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (!d || !d.data) throw (d && d.error) || 'No picture came back from Pixabay';
+        var bin = atob(d.data), arr = new Uint8Array(bin.length);
+        for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+        var file = new File([arr], 'pixabay-' + h.id + '.jpg', { type: d.mime || 'image/jpeg' });
+        takeImageFile(file, { site: 'Pixabay', user: d.user || h.user, userUrl: d.userUrl || h.userUrl, page: d.page || h.page });
+      })
+      .catch(function (e) { if (pxRes) pxRes.error = typeof e === 'string' ? e : 'Could not reach the Google Sheet'; })
+      .then(function () { pxPicking = null; drawDrawer(); });
   }
 
   // After placing: the Alt text tab, with suggestions already asked for the new picture
@@ -3113,17 +3213,75 @@ try {
     return dz;
   }
 
-  // The Depositphotos searches, opened from "No picture yet?" under the drop box
+  // "No picture yet?" under the drop box (v1.4): Pixabay searched here, with the photos shown in
+  // Joe, or Depositphotos, opened on its own site. Both start from Joe's suggested searches.
   function drawSearch(body) {
-    if (!imgSearch) {
-      var ask = el('div', 'margin-top:10px;font-size:12.5px;color:#555;display:flex;align-items:center;gap:8px;flex-wrap:wrap;');
-      ask.appendChild(el('span', '', 'No picture yet?'));
-      ask.appendChild(linkBtn('Find one on Depositphotos', function () { suggestImage(); }));
-      body.appendChild(ask);
-      return;
+    var ask = el('div', 'margin-top:10px;font-size:12.5px;color:#555;display:flex;align-items:center;gap:6px;flex-wrap:wrap;');
+    ask.appendChild(el('span', '', 'No picture yet?'));
+    ask.appendChild(linkBtn('Search Pixabay', function () {
+      imgSource = 'pixabay';
+      if (!imgSearch) suggestImage();
+      else if (!pxRes && imgSearch.options && imgSearch.options[0]) pixabaySearch(imgSearch.options[0].q);
+      drawDrawer();
+    }, imgSource === 'pixabay'));
+    ask.appendChild(linkBtn('Depositphotos', function () { imgSource = 'deposit'; if (!imgSearch) suggestImage(); drawDrawer(); }, imgSource === 'deposit'));
+    body.appendChild(ask);
+    if (imgSource === 'pixabay') drawPixabay(body);
+    else if (imgSource === 'deposit') drawDeposit(body);
+  }
+
+  function drawPixabay(body) {
+    // the searches: Joe's suggestions as chips, plus a box for your own words
+    var terms = el('div', 'display:flex;gap:5px;flex-wrap:wrap;margin-top:10px;');
+    (imgSearch && imgSearch.options || []).forEach(function (o) {
+      var on = pxRes && pxRes.q === o.q;
+      var b = el('button', 'padding:3px 9px;border-radius:999px;border:1px solid ' + (on ? C.blue : '#d5d9de') + ';background:' + (on ? '#e3eef8' : '#fff') +
+        ';color:' + (on ? C.blue : '#333') + ';font:600 11.5px ' + F + ';cursor:pointer;', o.q);
+      b.type = 'button'; b.title = o.note || '';
+      b.onclick = function () { pixabaySearch(o.q); };
+      terms.appendChild(b);
+    });
+    if (imgSearch && imgSearch.status === 'loading') terms.appendChild(el('span', 'font-size:12px;color:#777;align-self:center;', 'Writing searches…'));
+    body.appendChild(terms);
+    var own = el('div', 'display:flex;gap:6px;margin-top:8px;');
+    var box = el('input', 'flex:1;min-width:0;padding:6px 8px;border:1px solid #cfd4da;border-radius:6px;font:13px ' + F + ';color:#222;');
+    box.type = 'text'; box.placeholder = 'Your own search words';
+    box.value = pxRes ? pxRes.q : '';
+    box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); pixabaySearch(box.value); } };
+    own.appendChild(box);
+    own.appendChild(linkBtn('Search', function () { pixabaySearch(box.value); }, true));
+    body.appendChild(own);
+
+    if (!pxRes) return;
+    if (pxRes.hits.length) {
+      var grid = el('div', 'display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px;margin-top:10px;');
+      pxRes.hits.forEach(function (h) {
+        var cell = el('button', 'position:relative;padding:0;border:0;border-radius:4px;overflow:hidden;aspect-ratio:3/2;background:#eef0f3;cursor:pointer;' +
+          (pxPicking === h.id ? 'outline:2px solid ' + C.blue + ';outline-offset:1px;' : ''));
+        cell.type = 'button';
+        cell.title = (h.tags || '') + ' · ' + h.w + ' × ' + h.h + ' · by ' + h.user;
+        var im = el('img', 'display:block;width:100%;height:100%;object-fit:cover;');
+        im.src = h.thumb; im.alt = ''; im.loading = 'lazy';
+        cell.appendChild(im);
+        cell.appendChild(el('span', 'position:absolute;left:4px;bottom:2px;right:4px;font:600 10px ' + F + ';color:#fff;text-shadow:0 0 3px #000;text-align:left;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;',
+          pxPicking === h.id ? 'Fetching…' : h.user));
+        cell.onclick = function () { pixabayPick(h); };
+        grid.appendChild(cell);
+      });
+      body.appendChild(grid);
     }
+    if (pxRes.status === 'loading') body.appendChild(el('div', 'padding:8px 0;font-size:12px;color:#777;', 'Searching Pixabay…'));
+    else if (pxRes.status === 'done' && !pxRes.hits.length) body.appendChild(el('div', 'padding:8px 0;font-size:12px;color:#777;', 'Nothing on Pixabay for that. Try other words.'));
+    if (pxRes.error) body.appendChild(el('div', 'padding:6px 0;font-size:12px;color:' + C.red + ';', pxRes.error));
+    if (pxRes.status === 'done' && pxRes.hits.length && pxRes.hits.length < pxRes.total)
+      body.appendChild(actionButton('More photos', function () { pixabaySearch(pxRes.q, true); }));
+    body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:#777;line-height:1.45;', 'Click a photo to use it. Joe fetches it and fills in the credit; Place as hero then puts the credit under the picture and fills Source URL if it’s empty. Pixabay photos come at up to 1280 pixels wide.'));
+  }
+
+  function drawDeposit(body) {
     body.appendChild(el('div', 'margin:12px 0 2px;padding:8px 10px;border-radius:6px;background:#fdf6e9;color:#7a4b00;font-size:12px;line-height:1.45;',
       'Sign in to the Production Expert Depositphotos account before downloading. Only a signed-in download is full size and licensed for the site.'));
+    if (!imgSearch) return;
     (imgSearch.options || []).forEach(function (o) {
       var item = el('div', 'padding:9px 0;border-bottom:1px solid #eceef1;');
       item.appendChild(el('div', 'font:600 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;', o.q));
@@ -3136,7 +3294,6 @@ try {
       body.appendChild(item);
     });
     if (imgSearch.status === 'loading') body.appendChild(el('div', 'padding:10px 0;color:#777;', 'Writing…'));
-    if (imgSearch.local) body.appendChild(el('div', 'margin-top:8px;font-size:12px;color:#777;', 'Built from the headline. Joe’s own suggestions arrive once the Image row is added to the sheet’s Prompts tab.'));
     if (imgSearch.error) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgSearch.error));
     if (imgSearch.status !== 'loading') body.appendChild(actionButton('More options', function () { suggestImage(true); }));
     body.appendChild(el('div', 'font-size:12px;color:#777;', 'In Depositphotos, set Orientation to Horizontal. Download the photo, then drop it in above.'));
@@ -3178,6 +3335,14 @@ try {
       nm.oninput = function () { P.name = nm.value; P.auto = false; };
       body.appendChild(nm);
 
+      body.appendChild(el('div', 'font-size:12px;color:#5a6068;margin:12px 0 4px;', 'Credit under the picture' + (P.credit ? '' : ' (optional)')));
+      var cr = el('input', 'width:100%;padding:7px 9px;border:1px solid #cfd4da;border-radius:6px;font:13px ' + F + ';color:#222;');
+      cr.type = 'text'; cr.value = P.creditText || ''; cr.placeholder = 'Image courtesy of …';
+      cr.oninput = function () { P.creditText = cr.value; };
+      body.appendChild(cr);
+      if (P.credit) body.appendChild(el('div', 'font-size:11.5px;color:#777;margin-top:4px;line-height:1.45;',
+        'From ' + P.credit.site + '. Left as it is, the photographer’s name and ' + P.credit.site + ' link to their pages. Source URL: ' + P.credit.page.replace(/^https?:\/\//, '') + ', filled only if empty.'));
+
       var acts = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;');
       acts.appendChild(actionButton(P.placed && P.placed.st === 'done' ? 'Place again' : 'Place as hero', function () { placeHero(); }, true));
       acts.appendChild(actionButton(P.saved && P.saved !== 'failed' ? 'Save again' : 'Save image', function () { saveCrop(); }));
@@ -3194,6 +3359,7 @@ try {
     else if (pl && pl.st === 'failed') body.appendChild(el('div', 'font-size:12.5px;color:' + C.red + ';line-height:1.5;', pl.why));
     else if (pl && pl.st === 'done') {
       body.appendChild(el('div', 'font-size:12.5px;color:' + C.green + ';line-height:1.5;', '✓ ' + pl.name + ' is in the top image block (' + pl.w + ' × ' + pl.h + '). Write the alt text next, then Save the post.'));
+      (pl.notes || []).forEach(function (n) { body.appendChild(el('div', 'font-size:12px;line-height:1.45;margin-top:4px;color:' + (n.bad ? C.red : C.green) + ';', n.t)); });
       body.appendChild(actionButton('Write alt text', altForHero, true));
     } else body.appendChild(el('div', 'font-size:12.5px;color:#555;line-height:1.5;', 'With the post open in Edit, Place as hero puts the crop into the first image block, replacing any picture already there. Nothing goes live until you Save. Save image downloads the file instead, if you’d rather upload it by hand.'));
   }
