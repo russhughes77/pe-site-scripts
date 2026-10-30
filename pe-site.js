@@ -1044,7 +1044,7 @@ try {
    * files back on main.
    *   0.9  30 Oct 2026  7217ed2  Before versions began
    *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe
-   *   1.1  30 Oct 2026  (this)   Image tab: Place as hero puts the crop into the top image block */
+   *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block */
   var PE_VERSION = '1.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
