@@ -929,6 +929,7 @@ try {
  * - before the third section of articles with four or more sections
  * - otherwise just before "You Might Also Find These Articles Useful"
  * Never on partner posts, never twice, and never where a Kit form is already in the article.
+ * clear:both keeps the box below any floated image, so it never runs behind one (30 Oct 2026).
  * Sign-ups go to the existing Kit form (2954485) and land on the existing thank-you page.
  * ================================================================ */
 try {
@@ -965,7 +966,7 @@ try {
     box.className = 'pe-ui pe-signup';
     box.innerHTML =
       '<style>' +
-      '.pe-signup{margin:2rem 0;padding:22px 24px;background:#f4f4f4;border-radius:4px;font-family:"Open Sans",sans-serif;color:#222}' +
+      '.pe-signup{clear:both;margin:2rem 0;padding:22px 24px;background:#f4f4f4;border-radius:4px;font-family:"Open Sans",sans-serif;color:#222}' +
       '.pe-signup .pe-su-h{margin:0 0 4px;font-size:19px;font-weight:700;line-height:1.3;color:#222}' +
       '.pe-signup .pe-su-s{margin:0 0 14px;font-size:15px;line-height:1.45;color:#444}' +
       '.pe-signup form{display:flex;flex-wrap:wrap;gap:10px;margin:0}' +
