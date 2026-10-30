@@ -1010,7 +1010,7 @@ try {
  * - Scheduled posts with checks missing get a red bar across the top of the page.
  * - Edits made more than 10 minutes after the last tick bring the panel back.
  * - "Help me write" opens a floating window with suggested headlines, meta descriptions, URLs and
- * alt text, written by Claude through the Google Sheet, each with a Copy button. Its Links tab
+ * alt text, written by Claude through the Google Sheet, each with a Use button that fills it into Squarespace. Its Links tab
  * suggests internal links on words already in the draft and adds them with one click. Like the panel,
  * drag its title bar to move it, click to shrink it, double-click to put it back in the corner.
  * - Reports each post's stage to the Google Sheet for the content pipeline dashboard.
@@ -2001,6 +2001,7 @@ try {
         var it = (d && d.item) || {};
         postData = it;
         linksSeen(it); // after a save: did the links added from Help me write make it in?
+        usesSeen(it);  // and the headlines, SEO titles, meta descriptions and URLs filled in by Use?
         var t = +it.publishOn || 0;
         var was = scheduledFor, wasEdit = editedAt;
         // Squarespace keeps a post's planned date even after it goes back to draft (status 4)
@@ -2400,6 +2401,178 @@ try {
     return b;
   }
 
+  /* ---------- Use: putting Joe's suggestions straight into Squarespace ----------
+   * Every suggestion has a Use button instead of Copy. It fills the field in Squarespace's own
+   * Edit Post window (Settings in the inline editor, or Edit from the post list), then reads the
+   * field back to check the value took. If it didn't, that row offers Copy instead. You still
+   * press Apply or Save, and after the next save the row checks the saved post has the new value.
+   * Where each field lives (confirmed in the live editor, 30 Oct 2026):
+   *   headline          Content tab, input[name=title] (Squarespace's older YUI forms)
+   *   SEO title         SEO tab, first textarea.u-field-textarea (a React field)
+   *   meta description  SEO tab, second textarea.u-field-textarea, placeholder "Enter a description…"
+   *   URL               Options tab, input[name=urlId]
+   *   alt text          the image's own panel, opened by double-clicking the image in the editor,
+   *                     field under the "Image Alt Text" label (a React field)
+   * React fields ignore a plain value change, so values are set through the browser's own value
+   * setter and followed by input and change events, which React listens for. */
+
+  var useDone = {};           // task|text: { st: 'busy'|'used'|'saved'|'notsaved'|'failed', why, at, field }
+  var NO_SETTINGS = 'The post’s settings aren’t open. In the page editor click Settings (or Edit from the post list), then Use again.';
+
+  function visible(e) { var r = e.getBoundingClientRect(); return r.width > 0 && r.height > 0; }
+
+  // The Edit Post window, recognised by its headline field. Null when it isn't open.
+  function settingsDoc() {
+    var docs = [hostDoc(), document];
+    for (var i = 0; i < docs.length; i++) {
+      var t = docs[i].querySelector('input[name="title"]');
+      if (t && visible(t)) return docs[i];
+    }
+    return null;
+  }
+
+  // Clicks one of the Edit Post window's tabs (Content, Options, SEO...)
+  function settingsTab(doc, name) {
+    var tab = Array.prototype.filter.call(doc.querySelectorAll('div, button, a'), function (e) {
+      return e.children.length === 0 && e.textContent.trim() === name && visible(e);
+    })[0];
+    if (tab) tab.click();
+    return wait(500);
+  }
+
+  // Sets a field's value the way typing would, so YUI and React forms both take it
+  function setField(f, v) {
+    var w = f.ownerDocument.defaultView;
+    var proto = f.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype;
+    Object.getOwnPropertyDescriptor(proto, 'value').set.call(f, v);
+    ['input', 'change', 'blur'].forEach(function (t) { f.dispatchEvent(new w.Event(t, { bubbles: true })); });
+  }
+
+  // The field in the Edit Post window for each kind of suggestion
+  function fieldFor(doc, field) {
+    if (field === 'title') return settingsTab(doc, 'Content').then(function () { return doc.querySelector('input[name="title"]'); });
+    if (field === 'url') return settingsTab(doc, 'Options').then(function () { return doc.querySelector('input[name="urlId"]'); });
+    return settingsTab(doc, 'SEO').then(function () {
+      var tas = Array.prototype.filter.call(doc.querySelectorAll('textarea.u-field-textarea, textarea'), visible);
+      if (field === 'meta') return tas.filter(function (t) { return /description/i.test(t.placeholder || ''); })[0] || tas[1] || null;
+      return tas.filter(function (t) { return !/description/i.test(t.placeholder || ''); })[0] || null; // SEO title
+    });
+  }
+
+  function useLabel(field) {
+    return { title: 'headline', seotitle: 'SEO title', meta: 'meta description', url: 'URL', alt: 'alt text' }[field];
+  }
+
+  // Fills one field with one suggestion. key identifies the row; text is the suggestion.
+  function useText(key, field, text) {
+    var value = field === 'url' ? text.replace(/^https?:\/\/[^/]+/, '').replace(/^\/+/, '').split('/').pop() : text;
+    if (field === 'url' && (+postData.workflowState || 0) === 1) {
+      useDone[key] = { st: 'failed', why: 'This post is live. A new URL breaks every link to it, so change it by hand and add a redirect.' };
+      return drawDrawer();
+    }
+    var doc = settingsDoc();
+    if (!doc) { useDone[key] = { st: 'failed', why: NO_SETTINGS }; return drawDrawer(); }
+    useDone[key] = { st: 'busy' };
+    drawDrawer();
+    fieldFor(doc, field).then(function (f) {
+      if (!f) throw 'Couldn’t find the ' + useLabel(field) + ' box in Squarespace.';
+      setField(f, value);
+      return wait(150).then(function () {
+        if (f.value !== value) throw 'Squarespace didn’t take the new ' + useLabel(field) + '.';
+        // set every other row for this field back to its plain state
+        Object.keys(useDone).forEach(function (k) { if (k !== key && useDone[k].field === field && useDone[k].st === 'used') delete useDone[k]; });
+        useDone[key] = { st: 'used', at: Date.now(), field: field, value: value };
+      });
+    }).catch(function (why) {
+      useDone[key] = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t take it.' };
+    }).then(drawDrawer);
+  }
+
+  // Alt text: opens the image's panel in the editor and fills its alt text box
+  function editorImage(src) {
+    var docs = [document], host = hostDoc(), found = null;
+    if (host !== document) docs.push(host);
+    docs.some(function (doc) {
+      found = Array.prototype.filter.call(doc.querySelectorAll('.sqs-layout.sqs-editing img'), function (i) {
+        return imgSrc(i) === src && visible(i);
+      })[0] || null;
+      return !!found;
+    });
+    return found;
+  }
+  function altField() {
+    var docs = [hostDoc(), document], out = null;
+    docs.some(function (doc) {
+      var lab = Array.prototype.filter.call(doc.querySelectorAll('*'), function (e) {
+        return e.children.length === 0 && /^image alt text$/i.test(e.textContent.trim()) && visible(e);
+      })[0];
+      for (var box = lab, i = 0; box && i < 5 && !out; i++) { box = box.parentElement; out = box && box.querySelector('input, textarea'); }
+      return !!out;
+    });
+    return out;
+  }
+  function useAlt(key, src, text) {
+    var img = editorImage(src);
+    if (!img) { useDone[key] = { st: 'failed', why: 'That picture isn’t open for editing. Click Edit, then Use again.' }; return drawDrawer(); }
+    useDone[key] = { st: 'busy' };
+    drawDrawer();
+    img.scrollIntoView({ block: 'center' });
+    var r = img.getBoundingClientRect(), w = img.ownerDocument.defaultView;
+    img.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, cancelable: true, view: w, detail: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+    var tries = 0;
+    (function look() {
+      var f = altField();
+      if (!f && ++tries < 12) return setTimeout(look, 150);
+      if (!f) { useDone[key] = { st: 'failed', why: 'Squarespace didn’t open the picture’s settings.' }; return drawDrawer(); }
+      setField(f, text);
+      setTimeout(function () {
+        useDone[key] = f.value === text
+          ? { st: 'used', at: Date.now(), field: 'alt', value: text, why: '✓ Filled in. Click away from the picture panel, then Save.' }
+          : { st: 'failed', why: 'Squarespace didn’t take the alt text.' };
+        drawDrawer();
+      }, 150);
+    })();
+  }
+
+  // The buttons for one suggestion: Use (one per field), then its state
+  function useButtons(task, text, fields, onUse) {
+    var box = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:7px;');
+    var anyFailed = false;
+    fields.forEach(function (field) {
+      var key = task + '|' + field + '|' + text, d = useDone[key] || {};
+      if (d.st === 'busy') { box.appendChild(el('span', 'font-size:12px;color:#777;', 'Filling in…')); return; }
+      if (d.st === 'used' || d.st === 'saved') {
+        box.appendChild(el('span', 'font-size:12px;font-weight:600;color:' + C.green + ';',
+          d.st === 'saved' ? '✓ ' + useLabel(field).charAt(0).toUpperCase() + useLabel(field).slice(1) + ' saved' : d.why || '✓ Filled in. Press Apply or Save in Squarespace.'));
+        return;
+      }
+      if (d.st === 'notsaved') box.appendChild(el('span', 'flex:1 0 100%;font-size:12px;color:' + C.red + ';', 'The saved post doesn’t have this ' + useLabel(field) + '. Use it again.'));
+      if (d.st === 'failed') { anyFailed = true; box.appendChild(el('span', 'flex:1 0 100%;font-size:12px;color:' + C.red + ';', d.why)); }
+      var label = fields.length > 1 ? 'Use as ' + useLabel(field) : 'Use';
+      box.appendChild(linkBtn(label, function () { onUse(key, field); }, true));
+    });
+    if (anyFailed) {
+      var c = copyButton(text);
+      box.appendChild(c);
+    }
+    return box;
+  }
+
+  // After a save, checks the saved post holds each value Use filled in
+  function usesSeen(it) {
+    var seo = it.seoData || {}, changed = false;
+    Object.keys(useDone).forEach(function (k) {
+      var d = useDone[k];
+      if (d.st !== 'used' || !(+it.updatedOn > d.at)) return;
+      var saved = d.field === 'title' ? it.title : d.field === 'seotitle' ? seo.seoTitle : d.field === 'meta' ? seo.seoDescription :
+        d.field === 'url' ? String(it.urlId || '').split('/').pop() : null;
+      if (saved == null) return; // alt text isn't in the post data, so it's left as filled in
+      d.st = String(saved).trim() === String(d.value).trim() ? 'saved' : 'notsaved';
+      changed = true;
+    });
+    if (changed && drawer) drawDrawer();
+  }
+
   function actionButton(text, onclick, primary) {
     var b = el('button', 'margin:12px 0;padding:8px 14px;border:' + (primary ? '1px solid ' + C.blue : '1px solid #d5d9de') + ';border-radius:6px;background:' +
       (primary ? C.blue : '#fff') + ';color:' + (primary ? '#fff' : '#222') + ';font:700 13px ' + F + ';cursor:pointer;', text);
@@ -2445,22 +2618,26 @@ try {
     if (!sg.status) {
       var what = task === 'headlines' ? 'Suggest headlines' : task === 'meta' ? 'Suggest meta descriptions' : 'Suggest URLs';
       body.appendChild(actionButton(what, function () { suggestWrite(task); }, true));
-      body.appendChild(el('div', 'font-size:12px;color:#777;', 'Claude reads this article and suggests options using the house SEO rules. Nothing changes until you paste one into Squarespace.'));
+      body.appendChild(el('div', 'font-size:12px;color:#777;', 'Claude reads this article and suggests options using the house SEO rules. Use fills your choice into Squarespace; nothing goes live until you press Apply or Save.'));
       return;
     }
+    // headlines can go in as the headline or the SEO title; the rest have one home each
+    var fields = task === 'headlines' ? ['title', 'seotitle'] : task === 'meta' ? ['meta'] : ['url'];
     (sg.options || []).forEach(function (o) {
-      var row = el('div', 'display:flex;gap:10px;align-items:flex-start;padding:11px 0;border-bottom:1px solid #eceef1;');
+      var item = el('div', 'padding:11px 0;border-bottom:1px solid #eceef1;');
+      var row = el('div', 'display:flex;gap:10px;align-items:flex-start;');
       row.appendChild(el('span', 'flex:1;line-height:1.5;', o));
       if (task !== 'url') row.appendChild(lengthNote(o, cur.min, cur.max));
-      row.appendChild(copyButton(o));
-      body.appendChild(row);
+      item.appendChild(row);
+      item.appendChild(useButtons(task, o, fields, function (key, field) { useText(key, field, o); }));
+      body.appendChild(item);
     });
     if (sg.status === 'loading') body.appendChild(el('div', 'padding:12px 0;color:#777;', 'Writing…'));
     if (sg.status === 'error') body.appendChild(el('div', 'padding:10px 0;color:' + C.red + ';font-size:13px;', sg.error));
     if (sg.status !== 'loading') body.appendChild(actionButton('More options', function () { suggestWrite(task, true); }));
     body.appendChild(el('div', 'font-size:12px;color:#777;', task === 'url'
-      ? 'Changing the URL of a published post breaks existing links to it, so only change it before publishing.'
-      : 'Paste your choice into the post’s SEO settings in Squarespace.'));
+      ? 'Changing the URL of a published post breaks existing links to it, so Use only works before publishing.'
+      : 'Use fills it into the post’s settings. Open Settings (or Edit from the post list) first, then press Apply or Save.'));
   }
 
   /* ---------- Alt text ---------- */
@@ -2515,12 +2692,14 @@ try {
       th.title = 'Show me';
       th.onclick = function () { point([i]); };
       row.appendChild(th);
-      row.appendChild(el('span', 'flex:1;font-size:13px;color:' + (sg.status === 'error' ? C.red : '#222') + ';',
+      var txt = el('div', 'flex:1;min-width:0;');
+      txt.appendChild(el('span', 'font-size:13px;color:' + (sg.status === 'error' ? C.red : '#222') + ';',
         sg.status === 'loading' ? 'Writing…' : sg.text || 'Not asked yet'));
-      if (sg.status === 'done') row.appendChild(copyButton(sg.text));
+      if (sg.status === 'done') txt.appendChild(useButtons('alt|' + imgSrc(i), sg.text, ['alt'], function (key) { useAlt(key, imgSrc(i), sg.text); }));
+      row.appendChild(txt);
       body.appendChild(row);
     });
-    body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Paste each into the image’s alt text in Squarespace, and check it first.'));
+    body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Read each one first. Use opens the picture’s panel in the editor and fills in its alt text; then Save.'));
   }
 
   /* ---------- Links (internal links inside the draft) ----------
