@@ -1054,7 +1054,7 @@ try {
    *                              file name, credit)
    *   1.6  30 Oct 2026  4e57de0  Place as hero waits for the new picture's asset id before moving on (fixes
    *                              pictures not sticking); credit waits for the caption box to be redrawn
-   *   1.7  30 Oct 2026  (this)   Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
+   *   1.7  30 Oct 2026  c6c2348  Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
    *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs) */
   var PE_VERSION = '1.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
