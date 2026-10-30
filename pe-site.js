@@ -2540,11 +2540,10 @@ try {
    *     brand's product or to a roundup or buying guide (the competitor rule)
    *   - better tiers win ties: Exceptional, Strong, Average, Below median, Unscored
    *
-   * Add puts the link in for you, through Squarespace's own editor:
-   *   1. clicks into the text block so Squarespace opens it for editing
+   * Add puts the link in for you, through Squarespace's own editor, with the post open in Edit:
+   *   1. finds the same paragraph in the Edit Post window
    *   2. selects exactly those words
-   *   3. hands Squarespace the link as a paste, the way pasting by hand would
-   *      (or, if its editor ignores that, uses the browser's own Link command)
+   *   3. hands Squarespace's editor the link as a paste, the way pasting by hand would
    *   4. checks the link is there and the text around it is unchanged. If not, it undoes
    *      whatever happened and that row falls back to Show in post and Copy link.
    * You still press Save. After the next save the row checks the saved post really has the link.
@@ -2619,7 +2618,7 @@ try {
 
   // Text pieces of a paragraph that aren't already inside a link (or all of them, with inLinks)
   function textNodes(p, inLinks) {
-    var w = document.createTreeWalker(p, NodeFilter.SHOW_TEXT, null), n, out = [];
+    var w = p.ownerDocument.createTreeWalker(p, NodeFilter.SHOW_TEXT, null), n, out = [];
     while ((n = w.nextNode())) if (inLinks || !(n.parentNode.closest && n.parentNode.closest('a'))) out.push(n);
     return out;
   }
@@ -2708,40 +2707,56 @@ try {
     linkSugg = { list: out, guard: guard, words: words, linked: Object.keys(linked).length };
   }
 
-  /* ----- Putting a link in ----- */
+  /* ----- Putting a link in -----
+   * Squarespace edits a post in the Edit Post window (the editor window, not the preview frame
+   * the checklist reads). Each text block there is a ProseMirror editor (.sqs-html-content), always
+   * open for editing. Add finds the same paragraph there by its text, selects the words, and hands
+   * ProseMirror the link as a paste, so Squarespace makes the link itself and knows the post has
+   * changed. Confirmed in the live editor, 30 Oct 2026. */
 
-  function editableRoot(n) {
-    var e = n && (n.nodeType === 1 ? n : n.parentNode);
-    if (!e || !e.isContentEditable) return null;
-    var root = e;
-    while (root.parentNode && root.parentNode.isContentEditable) root = root.parentNode;
-    return root;
+  // The editable text blocks in the Edit Post window (empty when it isn't open)
+  function editorRoots() {
+    var doc = hostDoc(), roots = [];
+    try {
+      roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-layout.sqs-editing .sqs-html-content.ProseMirror'));
+      if (!roots.length) roots = Array.prototype.slice.call(doc.querySelectorAll('.sqs-html-content[contenteditable="true"]'));
+    } catch (e) {}
+    return roots;
   }
 
-  // Finds the words again inside the text block, because Squarespace may redraw the block when
-  // it opens it for editing. Returns the text piece and where the words start.
-  // inLinks: look inside links too (to take out a link this tab added)
-  function locate(block, s, inLinks) {
-    var want = squash(s.paraText), hit = null;
-    Array.prototype.forEach.call(block.querySelectorAll('p, li'), function (p) {
-      if (hit || squash(p.textContent) !== want) return;
-      textNodes(p, inLinks).some(function (n) {
-        var re = phraseRe(s.anchor), m;
-        re.lastIndex = 0;
-        while ((m = re.exec(n.data))) {
-          if (m[2] === s.anchor) { hit = { node: n, start: m.index + m[1].length, para: p }; return true; }
-        }
+  // Finds the paragraph and the words in the Edit Post window. inLinks also looks inside links,
+  // to take out a link this tab added.
+  function locate(s, inLinks) {
+    var want = squash(s.paraText), opening = want.slice(0, 40), hit = null, loose = null;
+    editorRoots().some(function (root) {
+      Array.prototype.some.call(root.querySelectorAll('p, li'), function (p) {
+        var t = squash(p.textContent);
+        var exact = t === want;
+        if (!exact && (loose || t.slice(0, 40) !== opening)) return false; // a lightly edited paragraph still counts
+        var found = null;
+        textNodes(p, inLinks).some(function (n) {
+          var re = phraseRe(s.anchor), m;
+          re.lastIndex = 0;
+          while ((m = re.exec(n.data))) {
+            if (m[2] === s.anchor) { found = { node: n, start: m.index + m[1].length, para: p, root: root }; return true; }
+          }
+          return false;
+        });
+        if (found && exact) { hit = found; return true; }
+        if (found) loose = found;
         return false;
       });
+      return !!hit;
     });
-    return hit;
+    return hit || loose;
   }
 
   function selectWords(hit, len) {
-    var r = document.createRange();
+    var doc = hit.node.ownerDocument;
+    var r = doc.createRange();
     r.setStart(hit.node, hit.start);
     r.setEnd(hit.node, hit.start + len);
-    var sel = window.getSelection();
+    var sel = doc.defaultView.getSelection();
     sel.removeAllRanges();
     sel.addRange(r);
     return r;
@@ -2749,41 +2764,20 @@ try {
 
   function wait(ms) { return new Promise(function (ok) { setTimeout(ok, ms); }); }
 
-  // A click inside the paragraph, the way a person would make Squarespace open the block
-  function clickInto(p) {
-    var r = p.getBoundingClientRect();
-    var o = { bubbles: true, cancelable: true, view: window, clientX: r.left + 4, clientY: r.top + 4, button: 0 };
-    ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'].forEach(function (t) {
-      try { p.dispatchEvent(/^pointer/.test(t) && window.PointerEvent ? new PointerEvent(t, o) : new MouseEvent(t, o)); } catch (e) {}
-    });
+  // Hands the editor a paste, built in the editor window's own terms. Returns true if it took it.
+  function pasteInto(root, html, text) {
+    var w = root.ownerDocument.defaultView;
+    var dt = new w.DataTransfer();
+    if (html) dt.setData('text/html', html);
+    dt.setData('text/plain', text);
+    var ev = new w.ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
+    if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt }); // older Safari
+    root.dispatchEvent(ev);
+    return ev.defaultPrevented;
   }
 
-  // Waits (up to two seconds) for the words to sit inside an editable block
-  function openForEditing(s, inLinks) {
-    var block = (s.para.isConnected && s.para.closest('.sqs-block')) || locateBlock(s) || s.para.parentNode;
-    var hit = locate(block, s, inLinks);
-    if (hit && editableRoot(hit.node)) return Promise.resolve({ block: block, hit: hit });
-    if (!hit) return Promise.reject('The words have moved since the suggestions were made. Press Refresh.');
-    hit.para.scrollIntoView({ block: 'center' });
-    clickInto(hit.para);
-    var tries = 0;
-    return (function poll() {
-      return wait(100).then(function () {
-        block = block.isConnected ? block : (locateBlock(s) || block);
-        var h = locate(block, s, inLinks);
-        if (h && editableRoot(h.node)) return { block: block, hit: h };
-        if (++tries > 20) throw 'Squarespace didn’t open the text block for editing.';
-        return poll();
-      });
-    })();
-  }
-  function locateBlock(s) {
-    var body = articleBody(), want = squash(s.paraText), found = null;
-    if (body) Array.prototype.some.call(body.querySelectorAll('p, li'), function (p) {
-      if (squash(p.textContent) === want) { found = p.closest('.sqs-block'); return true; }
-      return false;
-    });
-    return found;
+  function linkHtml(url, words) {
+    return '<a href="' + url + '">' + words.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a>';
   }
 
   function hasLink(root, s) {
@@ -2792,88 +2786,82 @@ try {
     });
   }
 
+  var NOT_OPEN = 'The post isn’t open for editing. Click Edit on the post, then Add again.';
+
   function addLink(s) {
     var key = s.target.u, url = LINKS.site + s.target.u;
+    if (!editorRoots().length) { linkDone[key] = { st: 'failed', why: NOT_OPEN }; drawDrawer(); return; }
+    var hit = locate(s);
+    if (!hit) { linkDone[key] = { st: 'failed', why: 'Those words aren’t in the Edit Post window any more. Press Refresh.' }; drawDrawer(); return; }
     linkDone[key] = { st: 'busy' };
     drawDrawer();
-    var root, before;
-    openForEditing(s).then(function (got) {
-      root = editableRoot(got.hit.node);
-      before = squash(root.textContent);
-      root.focus({ preventScroll: true });
-      selectWords(got.hit, s.anchor.length);
-      // 1. A paste, so Squarespace's editor makes the link itself and records the change
-      var handled = false;
-      try {
-        var dt = new DataTransfer();
-        dt.setData('text/html', '<a href="' + url + '">' + s.anchor.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a>');
-        dt.setData('text/plain', s.anchor);
-        var ev = new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true });
-        // Safari ignores clipboardData in the constructor; give it the data another way
-        if (!ev.clipboardData) Object.defineProperty(ev, 'clipboardData', { value: dt });
-        got.hit.node.parentNode.dispatchEvent(ev);
-        handled = ev.defaultPrevented;
-      } catch (e) {}
-      return wait(handled ? 250 : 0).then(function () {
-        if (hasLink(root, s)) return;
-        // 2. The editor didn't take the paste: the browser's own Link command on the same words
-        var h = locate(root, s) || locate(root.closest('.sqs-block') || root, s);
-        if (!h) return;
-        selectWords(h, s.anchor.length);
-        try { document.execCommand('createLink', false, url); } catch (e) {}
-        try { root.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertLink' })); } catch (e) {}
-        return wait(150);
-      });
+    var root = hit.root, before = squash(root.textContent);
+    hit.para.scrollIntoView({ block: 'center' });
+    root.focus({ preventScroll: true });
+    selectWords(hit, s.anchor.length);
+    // a moment for the editor to notice the new selection before the paste arrives
+    wait(80).then(function () {
+      pasteInto(root, linkHtml(url, s.anchor), s.anchor);
+      return wait(300);
     }).then(function () {
-      if (!root) throw 'Squarespace didn’t open the text block for editing.';
       var ok = hasLink(root, s), same = squash(root.textContent) === before;
       if (ok && same) {
-        var sel = window.getSelection();
+        var sel = root.ownerDocument.defaultView.getSelection();
         if (sel.rangeCount) sel.collapseToEnd();
         linkDone[key] = { st: 'added', at: Date.now() };
         return;
       }
-      // Something went wrong: put the block back as it was
-      if (!same || ok) { try { document.execCommand('undo'); } catch (e) {} }
+      // Something went wrong: put the block back as it was with the editor's own undo
+      if (!same || ok) { try { root.ownerDocument.execCommand('undo'); } catch (e) {} }
       throw !same ? 'Squarespace changed the text, so the change was undone.' : 'Squarespace didn’t accept the link.';
     }).catch(function (why) {
       linkDone[key] = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t accept the link.' };
     }).then(drawDrawer);
   }
 
-  // Takes a link this tab added out again
+  // Takes a link this tab added out again, by pasting the plain words back over it
   function removeLink(s) {
     var key = s.target.u;
-    openForEditing(s, true).then(function (got) {
-      var root = editableRoot(got.hit.node) || got.block;
-      var a = Array.prototype.filter.call(root.querySelectorAll('a[href]'), function (x) {
-        return pathOf(x.getAttribute('href')) === s.target.u && squash(x.textContent) === squash(s.anchor);
-      })[0];
-      if (!a) { delete linkDone[key]; return; }
-      var r = document.createRange();
-      r.selectNodeContents(a);
-      var sel = window.getSelection();
-      sel.removeAllRanges(); sel.addRange(r);
-      document.execCommand('unlink');
-      delete linkDone[key];
-    }).catch(function () {
-      linkDone[key] = { st: 'added', why: 'Couldn’t remove it. Select the words and remove the link by hand.' };
-    }).then(drawDrawer);
+    var hit = locate(s, true);
+    var a = hit && hit.node.parentNode.closest && hit.node.parentNode.closest('a[href]');
+    if (!a || pathOf(a.getAttribute('href')) !== s.target.u) {
+      if (!editorRoots().length) { linkDone[key] = { st: 'added', why: NOT_OPEN }; drawDrawer(); return; }
+      delete linkDone[key]; drawDrawer(); return; // already gone
+    }
+    var root = hit.root, doc = root.ownerDocument;
+    root.focus({ preventScroll: true });
+    var r = doc.createRange();
+    r.selectNodeContents(a);
+    var sel = doc.defaultView.getSelection();
+    sel.removeAllRanges(); sel.addRange(r);
+    wait(80).then(function () {
+      pasteInto(root, '', a.textContent);
+      return wait(300);
+    }).then(function () {
+      if (hasLink(root, s)) linkDone[key] = { st: 'added', why: 'Couldn’t remove it. Select the words and remove the link by hand.' };
+      else delete linkDone[key];
+      drawDrawer();
+    });
   }
+
+  // Scrolls to the words in the Edit Post window (or the preview, if that isn't open) and selects them
   function showWords(s) {
-    var block = s.para.closest('.sqs-block') || locateBlock(s);
-    var hit = block && locate(block, s);
-    var p = hit ? hit.para : s.para;
-    if (!p || !p.isConnected) return;
-    p.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    if (hit) setTimeout(function () { selectWords(hit, s.anchor.length); }, 350);
-    point([p]);
+    var hit = locate(s, true);
+    if (hit) {
+      hit.para.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      setTimeout(function () { hit.root.focus({ preventScroll: true }); selectWords(hit, s.anchor.length); }, 350);
+      return;
+    }
+    if (s.para && s.para.isConnected) {
+      s.para.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      point([s.para]);
+    }
   }
 
   // Copies the words as a link, for pasting over the selection by hand
   function copyLink(s, btn) {
     var url = LINKS.site + s.target.u;
-    var html = '<a href="' + url + '">' + s.anchor.replace(/&/g, '&amp;').replace(/</g, '&lt;') + '</a>';
+    var html = linkHtml(url, s.anchor);
     function done() { btn.textContent = 'Copied, paste over the words'; setTimeout(function () { btn.textContent = 'Copy link'; }, 2500); }
     try {
       navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([html], { type: 'text/html' }), 'text/plain': new Blob([url], { type: 'text/plain' }) })]).then(done, function () { copyText(url, btn); });
