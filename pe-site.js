@@ -1059,8 +1059,10 @@ try {
    *   1.8  30 Oct 2026  d5a1126  Homepage: first ad moves below the first six articles on tablets and
    *                              desktops; stays under the hero on phones
    *   1.9  30 Oct 2026  99f02ef  Homepage ad move: finds the ad by the ad server's placeholder, as the
-   *                              banner itself loads after the script runs (v1.8 never moved it) */
-  var PE_VERSION = '1.9';
+   *                              banner itself loads after the script runs (v1.8 never moved it)
+   *   2.0  30 Oct 2026  (push)   Homepage banners in the article grid: every 9 articles on desktop, every
+   *                              8 on tablet, none within 4 of the end; phones unchanged */
+  var PE_VERSION = '2.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5303,68 +5305,114 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: people section', e); }
 
 /* ================================================================
- * Production Expert: homepage ad after the first six articles (v1.8, fixed v1.9, 30 Oct 2026)
- * On tablets and desktops, moves the first ad (the banner directly under the
- * hero) down into the article grid, after the first six articles, so the
- * taller hero leads straight into the stories. On phones (640px and under)
- * the ad stays under the hero. Turning a tablet or resizing a window across
- * that width moves it back and forth.
- * The ad is found by position (the first block after the hero), not by its
- * block ID, so it keeps working if the block is rebuilt in the editor. If
- * anything is missing (no hero, no ad, fewer than seven articles) the page
- * is left exactly as Squarespace built it.
+ * Production Expert: homepage banners in the article grid (v2.0, 30 Oct 2026;
+ * began as v1.8/v1.9 "ad after the first six articles")
+ * On desktops (rows of three) a banner after every 9 articles; on tablets
+ * (rows of two) after every 8, so each banner lands on a clean row break.
+ * The first is the existing ad from under the hero, moved down; the rest are
+ * new placeholders the ad server fills from the same zone.
+ * No banner goes within 4 articles of the end of the grid, because a manual
+ * banner already sits just below it (after "Older articles archive"); with 30
+ * articles that means banners after 9 and 18 on desktop, 8, 16 and 24 on tablet.
+ * Phones (640px and under, one article per row) are left as Squarespace built
+ * them: the ad stays under the hero and no banners are added.
+ * The ad is found by the ad server's placeholder (.antur-ad), since the banner
+ * itself loads after this runs. If the hero, the ad or the grid is missing, the
+ * page is left untouched.
  * ================================================================ */
 try {
 (function () {
-  var AFTER = 6;                          // articles before the ad on tablets and desktops
-  var PHONE = '(max-width: 640px)';       // same width the homepage hero CSS uses for phones
+  var PHONE = '(max-width: 640px)';  // same width the homepage hero CSS uses for phones
+  var EVERY = { 3: 9, 2: 8 };        // articles per banner, by articles per row
+  var CLEAR_OF_END = 4;              // no banner this close to the end of the grid
+  var SLOT_CSS = 'clear:both;float:none;width:100%;padding:8px 0 calc(0.877193% + 8px);';
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
   try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
 
-  var ad, home, slot;
+  var ad, home, list, zone, slots = [];
 
   function find() {
     var hero = document.querySelector('#container-content .sqs-block-gallery');
     if (!hero) return false;
-    // The ad is the block straight after the hero: an embed holding the ad server's
-    // placeholder (.antur-ad). The banner and its link are filled in a moment later by
-    // the ad server's own script, so don't wait for them (v1.9: v1.8 looked for the
-    // link, found none yet, and left the ad where it was).
     var next = hero.nextElementSibling;
     if (!next || !next.classList.contains('sqs-block-embed')) return false;
-    if (!next.querySelector('.antur-ad, a[href], iframe, img')) return false;
-    // The first article list on the page
-    var list = document.querySelector('#container-content .sqs-block-summary-v2 .summary-item-list');
+    var ph = next.querySelector('.antur-ad');
+    if (!ph && !next.querySelector('a[href], iframe, img')) return false;
+    list = document.querySelector('#container-content .sqs-block-summary-v2 .summary-item-list');
     if (!list) return false;
-    var items = list.querySelectorAll(':scope > .summary-item');
-    if (items.length <= AFTER) return false;
     ad = next;
+    zone = (ph && ph.getAttribute('data-zone')) || 'pe-leaderboard';
     // A marker where the ad came from, so it can go back on phones
     home = document.createElement('div');
     home.className = 'pe-ad-home';
     home.style.display = 'none';
     ad.parentNode.insertBefore(home, ad);
-    // A full-width row after article six. The articles are floated in rows of three,
-    // so clearing both sides drops the ad below the tallest of the row above.
-    slot = document.createElement('div');
-    slot.className = 'pe-ad-slot';
-    slot.style.cssText = 'clear:both;float:none;width:100%;padding:8px 0 calc(0.877193% + 8px);';
-    items[AFTER - 1].parentNode.insertBefore(slot, items[AFTER - 1].nextSibling);
     return true;
+  }
+
+  function articles() {
+    return Array.prototype.slice.call(list.querySelectorAll(':scope > .summary-item'));
+  }
+
+  // Articles per row, measured from the layout rather than guessed from the width
+  function perRow(items) {
+    if (items.length < 2) return 1;
+    var top = Math.round(items[0].getBoundingClientRect().top), n = 1;
+    while (n < items.length && Math.round(items[n].getBoundingClientRect().top) === top) n++;
+    return n;
+  }
+
+  function makeSlot(i) {
+    var slot = document.createElement('div');
+    slot.className = 'pe-ad-slot';
+    slot.style.cssText = SLOT_CSS;
+    if (i > 0) {
+      // A fresh placeholder for the ad server, same zone as the moved ad
+      slot.innerHTML = '<div class="sqs-block-content"><div class="antur-ad" data-zone="' + zone +
+        '" style="max-width:1140px;margin:0 auto;"></div></div>';
+    }
+    return slot;
+  }
+
+  function putAdHome() {
+    if (ad.previousSibling !== home) home.parentNode.insertBefore(ad, home.nextSibling);
+    ad.style.padding = '';
+    ad.style.margin = '';
   }
 
   function place() {
     if (!ad) return;
     var phone = window.matchMedia && window.matchMedia(PHONE).matches;
-    if (phone) {
-      if (ad.parentNode !== home.parentNode || ad.previousSibling !== home) home.parentNode.insertBefore(ad, home.nextSibling);
-      slot.style.display = 'none';
-      ad.style.padding = '';
-    } else {
-      if (ad.parentNode !== slot) slot.appendChild(ad);
+    var items = articles();
+    var every = phone ? 0 : EVERY[perRow(items)];
+    // Where the banners go: after article 9, 18 ... (or 8, 16 ...), clear of the end
+    var after = [];
+    if (every) for (var n = every; n <= items.length - CLEAR_OF_END; n += every) after.push(n);
+
+    if (!after.length) {
+      // Phones, or a grid too short: ad back under the hero, added banners hidden
+      putAdHome();
+      slots.forEach(function (s) { s.style.display = 'none'; });
+      return;
+    }
+    var added = false;
+    after.forEach(function (n, i) {
+      if (!slots[i]) { slots[i] = makeSlot(i); added = added || i > 0; }
+      var slot = slots[i];
       slot.style.display = '';
-      ad.style.padding = '0';
+      if (items[n - 1].nextSibling !== slot) items[n - 1].parentNode.insertBefore(slot, items[n - 1].nextSibling);
+    });
+    // Any slots beyond what this layout needs are hidden
+    for (var j = after.length; j < slots.length; j++) slots[j].style.display = 'none';
+    // The first slot holds the moved ad
+    if (ad.parentNode !== slots[0]) slots[0].appendChild(ad);
+    ad.style.padding = '0';
+    ad.style.margin = '0';
+    // Ask the ad server to fill any new placeholders (if its script has loaded;
+    // if not, it fills them itself when it does)
+    if (added && window.AnturAd && typeof window.AnturAd.init === 'function') {
+      try { window.AnturAd.init(); } catch (e) {}
     }
   }
 
@@ -5375,10 +5423,16 @@ try {
 
   run();
   document.addEventListener('DOMContentLoaded', run);
-  var m = window.matchMedia && window.matchMedia(PHONE);
-  if (m) { if (m.addEventListener) m.addEventListener('change', place); else if (m.addListener) m.addListener(place); }
+  addEventListener('load', run);
+  // Re-place when the grid changes shape (window resized, tablet turned). Squarespace
+  // re-flows the rows on resize, so wait for it to finish first.
+  var timer;
+  addEventListener('resize', function () {
+    clearTimeout(timer);
+    timer = setTimeout(place, 250);
+  });
 })();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: homepage ad after six articles', e); }
+} catch (e) { if (window.console) console.warn('Production Expert script failed: homepage banners in the article grid', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
