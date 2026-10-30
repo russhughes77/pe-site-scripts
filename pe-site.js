@@ -1052,7 +1052,7 @@ try {
    *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs)
    *   1.5  30 Oct 2026  5d8a225  Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
    *                              file name, credit)
-   *   1.6  30 Oct 2026  (this)   Place as hero waits for the new picture's asset id before moving on (fixes
+   *   1.6  30 Oct 2026  4e57de0  Place as hero waits for the new picture's asset id before moving on (fixes
    *                              pictures not sticking); credit waits for the caption box to be redrawn */
   var PE_VERSION = '1.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
