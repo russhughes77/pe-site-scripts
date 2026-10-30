@@ -1056,7 +1056,7 @@ try {
    *                              pictures not sticking); credit waits for the caption box to be redrawn
    *   1.7  30 Oct 2026  c6c2348  Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
    *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs)
-   *   1.8  30 Oct 2026  (push)   Homepage: first ad moves below the first six articles on tablets and
+   *   1.8  30 Oct 2026  d5a1126  Homepage: first ad moves below the first six articles on tablets and
    *                              desktops; stays under the hero on phones */
   var PE_VERSION = '1.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
