@@ -2673,7 +2673,9 @@ try {
     var body = el('div', 'flex:1;min-height:0;overflow:auto;padding:4px 16px 16px;');
     drawerInner.appendChild(body);
     if (drawerTab === 'links' && !linksOn()) drawerTab = 'headlines';
-    if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body); else drawWriteTab(body);
+    if (drawerTab === 'image' && !imageOn()) drawerTab = 'headlines';
+    if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
+    else if (drawerTab === 'image') drawImageTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
   }
 
@@ -2774,6 +2776,276 @@ try {
     body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Read each one first. Use opens the picture’s panel in the editor and fills in its alt text; then Save.'));
   }
 
+  /* ---------- Image (hero image from Depositphotos) ----------
+   * Three steps, all in this tab:
+   *   1 Search: Joe suggests three Depositphotos searches for the draft (the pe-image-search
+   *     rules, asked of the sheet as task 'image'). If the sheet has no Image prompt yet, three
+   *     searches are built from the headline instead, so the tab still works. Open in
+   *     Depositphotos opens that search in a new browser tab, on the team member's own login.
+   *     Depositphotos keeps its filters in a scrambled code in the address (?sh=...), so the link
+   *     can't pre-set Horizontal; set it once in Depositphotos (checked 30 Oct 2026).
+   *   2 Crop and name: drop the downloaded file in (or choose it). A 16:9 frame sits over it and
+   *     drags to keep the right part in shot. The file name comes from the search used, editable.
+   *     Save image downloads the crop at up to 2500px wide as a JPEG under that name. Nothing is
+   *     uploaded anywhere; it all happens in the browser.
+   *   3 Place: upload it as the hero in Squarespace, Save, then the Alt text tab writes the alt
+   *     text from the placed picture and Use fills it in.
+   * While it's being tested only the initials in IMAGE.who see the tab. Opening any post with
+   * ?image on the end of its address also turns it on in that browser. */
+  var IMAGE = {
+    who: ['RH'],              // initials that see the tab, or 'all'
+    width: 2500,              // widest Squarespace uses; the crop is saved at this width
+    ratio: 16 / 9,
+    quality: 0.86,            // JPEG quality for the saved crop
+    stock: 'https://depositphotos.com/photos/'
+  };
+  var imgSearch = null;       // { status, options: [{q, note}], error, local }
+  var imgPick = null;         // { img, file, w, h, x, y, name, err } once a file is dropped in
+  var imgLastQ = '';          // the search last opened, used for the file name
+
+  if (/[?&]image\b/.test(location.search)) ls('pe-image', '1');
+  function imageOn() {
+    if (IMAGE.who === 'all' || ls('pe-image') === '1') return true;
+    return IMAGE.who.indexOf((ls('pe-initials') || '').toUpperCase()) !== -1;
+  }
+
+  // file-name style: lower case words joined by hyphens, nothing else
+  function slugWords(t, max) {
+    var w = String(t || '').toLowerCase().replace(/['’]/g, '').replace(/[^a-z0-9]+/g, ' ').trim().split(/\s+/).filter(Boolean);
+    return w.slice(0, max || 8).join('-');
+  }
+
+  // Searches built from the headline, for when the sheet has no Image prompt
+  var IMG_STOP = /^(a|an|the|and|or|but|for|to|of|in|on|at|by|with|from|into|is|are|was|were|be|it|its|this|that|these|those|what|why|how|when|who|which|your|you|we|our|still|now|new|vs|versus|best|top|review|reviewed|explained|guide|need|needs|watch|really|actually|just|more|most|than|can|could|should|will|about|after|before|every|all|any|do|does|get|gets|make|makes|use|using|2024|2025|2026|2027)$/;
+  function localSearches() {
+    var words = postTitle().replace(/[^A-Za-z0-9\s'-]/g, ' ').split(/\s+/).filter(function (w) { return w && !IMG_STOP.test(w.toLowerCase()); })
+      .map(function (w) { return w.toLowerCase(); });
+    var core = words.slice(0, 4).join(' ');
+    var two = words.slice(0, 2).join(' ');
+    var out = [];
+    if (core) out.push({ q: core, note: 'Straight from the headline' });
+    if (two) out.push({ q: two + ' recording studio', note: 'The subject in a working room' });
+    out.push({ q: (two ? two + ' ' : '') + 'audio engineer', note: 'A person at work, wider choice of shots' });
+    return out;
+  }
+
+  // The sheet's answer: one search per line, optionally "search | why"
+  function parseSearches(opts) {
+    return (opts || []).map(function (o) {
+      var bits = String(o).split(/\s+\|\s+|\s+[–—-]\s+/);
+      return { q: bits[0].replace(/^["'\d.\s]+|["']$/g, '').trim(), note: (bits[1] || '').trim() };
+    }).filter(function (x) { return x.q; }).slice(0, 6);
+  }
+
+  function suggestImage(more) {
+    var prev = imgSearch && imgSearch.options || [];
+    imgSearch = { status: 'loading', options: more ? prev : [] };
+    drawDrawer();
+    var payload = {
+      action: 'write', task: 'image', title: postTitle(), seoTitle: seo().seoTitle || '',
+      meta: seo().seoDescription || '', url: postData.urlId || '', text: articleText().slice(0, 4000),
+      tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', '),
+      avoid: more ? prev.map(function (x) { return x.q; }).join('\n') : ''
+    };
+    fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        var got = d && d.options ? parseSearches(d.options) : [];
+        if (got.length) imgSearch = { status: 'done', options: (more ? prev : []).concat(got) };
+        else throw (d && d.error) || 'none';
+      })
+      .catch(function () {
+        // no Image prompt in the sheet yet (or no answer): fall back to the headline
+        imgSearch = more && prev.length ? { status: 'done', options: prev, local: true, error: 'No more searches came back.' }
+          : { status: 'done', options: localSearches(), local: true };
+      })
+      .then(drawDrawer);
+  }
+
+  function openStock(q) {
+    imgLastQ = q;
+    var url = IMAGE.stock + encodeURIComponent(slugWords(q, 10)) + '.html';
+    var w = hostDoc().defaultView || window;
+    w.open(url, '_blank', 'noopener');
+    if (imgPick && imgPick.auto) imgPick.name = imgName();
+  }
+
+  function imgName() {
+    var base = slugWords(imgLastQ, 6) || slugWords(postTitle(), 6) || 'hero-image';
+    return base + '.jpg';
+  }
+
+  // Reads a dropped or chosen file into the crop step
+  function takeImageFile(file) {
+    if (!file || !/^image\//.test(file.type)) { imgPick = { err: 'That isn’t a picture. Drop in the JPEG from Depositphotos.' }; return drawDrawer(); }
+    var url = URL.createObjectURL(file);
+    var im = new Image();
+    im.onload = function () {
+      var w = im.naturalWidth, h = im.naturalHeight, cw, ch;
+      if (w / h > IMAGE.ratio) { ch = h; cw = Math.round(h * IMAGE.ratio); } else { cw = w; ch = Math.round(w / IMAGE.ratio); }
+      imgPick = { img: im, url: url, file: file, w: w, h: h, cw: cw, ch: ch, x: Math.round((w - cw) / 2), y: Math.round((h - ch) / 2), name: imgName(), auto: true };
+      drawDrawer();
+    };
+    im.onerror = function () { imgPick = { err: 'Couldn’t open that file.' }; drawDrawer(); };
+    im.src = url;
+  }
+
+  // The crop preview: the picture, darkened outside the 16:9 frame, which drags
+  function cropCanvas() {
+    var P = imgPick, cv = el('canvas', 'display:block;width:100%;border-radius:6px;background:#eee;cursor:grab;touch-action:none;');
+    var dw = 344, dh = Math.round(dw * P.h / P.w);
+    var dpr = (hostDoc().defaultView || window).devicePixelRatio || 1;
+    cv.width = dw * dpr; cv.height = dh * dpr;
+    cv.style.aspectRatio = P.w + ' / ' + P.h;
+    var g = cv.getContext('2d'), k = dw / P.w;
+    function paint() {
+      g.setTransform(dpr, 0, 0, dpr, 0, 0);
+      g.drawImage(P.img, 0, 0, dw, dh);
+      g.fillStyle = 'rgba(0,0,0,.55)';
+      var fx = P.x * k, fy = P.y * k, fw = P.cw * k, fh = P.ch * k;
+      g.fillRect(0, 0, dw, fy); g.fillRect(0, fy + fh, dw, dh - fy - fh);
+      g.fillRect(0, fy, fx, fh); g.fillRect(fx + fw, fy, dw - fx - fw, fh);
+      g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(fx + 1, fy + 1, fw - 2, fh - 2);
+      // rule-of-thirds guides, faint
+      g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 1;
+      [1, 2].forEach(function (i) {
+        g.beginPath(); g.moveTo(fx + fw * i / 3, fy); g.lineTo(fx + fw * i / 3, fy + fh); g.stroke();
+        g.beginPath(); g.moveTo(fx, fy + fh * i / 3); g.lineTo(fx + fw, fy + fh * i / 3); g.stroke();
+      });
+    }
+    paint();
+    var drag = null;
+    cv.addEventListener('pointerdown', function (e) {
+      drag = { x: e.clientX, y: e.clientY, px: P.x, py: P.y };
+      cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing';
+      e.preventDefault(); e.stopPropagation();
+    });
+    cv.addEventListener('pointermove', function (e) {
+      if (!drag) return;
+      var scale = P.w / cv.getBoundingClientRect().width;
+      P.x = Math.round(Math.max(0, Math.min(P.w - P.cw, drag.px + (e.clientX - drag.x) * scale)));
+      P.y = Math.round(Math.max(0, Math.min(P.h - P.ch, drag.py + (e.clientY - drag.y) * scale)));
+      paint();
+    });
+    function end() { drag = null; cv.style.cursor = 'grab'; }
+    cv.addEventListener('pointerup', end);
+    cv.addEventListener('pointercancel', end);
+    cv.addEventListener('dblclick', function () { P.x = Math.round((P.w - P.cw) / 2); P.y = Math.round((P.h - P.ch) / 2); paint(); });
+    return cv;
+  }
+
+  function saveCrop(btn) {
+    var P = imgPick, outW = Math.min(IMAGE.width, P.cw), outH = Math.round(outW / IMAGE.ratio);
+    var doc = hostDoc(), c = doc.createElement('canvas');
+    c.width = outW; c.height = outH;
+    var g = c.getContext('2d');
+    g.imageSmoothingQuality = 'high';
+    g.drawImage(P.img, P.x, P.y, P.cw, P.ch, 0, 0, outW, outH);
+    var name = (slugWords(String(P.name).replace(/\.(jpe?g|png|webp)$/i, ''), 12) || 'hero-image') + '.jpg';
+    P.name = name;
+    c.toBlob(function (blob) {
+      if (!blob) { P.saved = 'failed'; return drawDrawer(); }
+      var a = doc.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = name;
+      doc.body.appendChild(a); a.click(); a.remove();
+      setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
+      P.saved = { w: outW, h: outH, kb: Math.round(blob.size / 1024) };
+      drawDrawer();
+    }, 'image/jpeg', IMAGE.quality);
+  }
+
+  function stepBar(n) {
+    var bar = el('div', 'display:flex;gap:4px;margin:12px 0 4px;');
+    ['Search', 'Crop and name', 'Place'].forEach(function (t, i) {
+      var on = i + 1 === n, done = i + 1 < n;
+      bar.appendChild(el('span', 'flex:1;text-align:center;padding:4px 0;border-radius:4px;font:600 11px ' + F + ';background:' + (on ? '#e3eef8' : '#f4f5f7') +
+        ';color:' + (on ? C.blue : done ? '#5a6068' : '#9aa0a6') + ';', (done ? '✓ ' : (i + 1) + ' ') + t));
+    });
+    return bar;
+  }
+
+  function sub(text) { return el('div', 'font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;margin:14px 0 6px;', text); }
+
+  function drawImageTab(body) {
+    var step = !imgPick || imgPick.err ? 1 : imgPick.saved && imgPick.saved !== 'failed' ? 3 : 2;
+    body.appendChild(stepBar(step));
+
+    // ---- 1 Search ----
+    body.appendChild(sub('1 Search Depositphotos'));
+    if (!imgSearch) {
+      body.appendChild(actionButton('Suggest searches', function () { suggestImage(); }, true));
+      body.appendChild(el('div', 'font-size:12px;color:#777;', 'Joe reads the headline and opening and suggests searches for a hero image. Each opens in Depositphotos in a new tab.'));
+    } else {
+      (imgSearch.options || []).forEach(function (o) {
+        var item = el('div', 'padding:9px 0;border-bottom:1px solid #eceef1;');
+        item.appendChild(el('div', 'font:600 13px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;', o.q));
+        if (o.note) item.appendChild(el('div', 'font-size:12px;color:#777;margin-top:2px;', o.note));
+        var row = el('div', 'display:flex;gap:6px;margin-top:7px;');
+        row.appendChild(linkBtn('Open in Depositphotos ↗', function () { openStock(o.q); drawDrawer(); }, true));
+        row.appendChild(copyButton(o.q));
+        if (imgLastQ === o.q) row.appendChild(el('span', 'align-self:center;font-size:12px;color:' + C.green + ';', '✓ Opened'));
+        item.appendChild(row);
+        body.appendChild(item);
+      });
+      if (imgSearch.status === 'loading') body.appendChild(el('div', 'padding:10px 0;color:#777;', 'Writing…'));
+      if (imgSearch.local) body.appendChild(el('div', 'margin-top:8px;font-size:12px;color:#777;', 'Built from the headline. Joe’s own suggestions arrive once the Image row is added to the sheet’s Prompts tab.'));
+      if (imgSearch.error) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgSearch.error));
+      if (imgSearch.status !== 'loading') body.appendChild(actionButton('More options', function () { suggestImage(true); }));
+      body.appendChild(el('div', 'font-size:12px;color:#777;', 'In Depositphotos, set Orientation to Horizontal. Download the photo, then drop it in below.'));
+    }
+
+    // ---- 2 Crop and name ----
+    body.appendChild(sub('2 Crop and name'));
+    if (!imgPick || imgPick.err) {
+      var dz = el('div', 'padding:18px 12px;border:1.5px dashed #c9cfd6;border-radius:8px;text-align:center;font-size:13px;color:#5a6068;background:#fafbfc;');
+      dz.appendChild(el('div', 'margin-bottom:8px;', 'Drop the downloaded photo here'));
+      var pick = el('input', 'display:none;');
+      pick.type = 'file'; pick.accept = 'image/*';
+      pick.onchange = function () { takeImageFile(pick.files && pick.files[0]); };
+      dz.appendChild(pick);
+      dz.appendChild(linkBtn('Choose file', function () { pick.click(); }));
+      ['dragenter', 'dragover'].forEach(function (t) {
+        dz.addEventListener(t, function (e) { e.preventDefault(); e.stopPropagation(); dz.style.borderColor = C.blue; dz.style.background = '#eef5fb'; });
+      });
+      dz.addEventListener('dragleave', function (e) { e.stopPropagation(); dz.style.borderColor = '#c9cfd6'; dz.style.background = '#fafbfc'; });
+      dz.addEventListener('drop', function (e) {
+        e.preventDefault(); e.stopPropagation();
+        takeImageFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+      });
+      body.appendChild(dz);
+      if (imgPick && imgPick.err) body.appendChild(el('div', 'margin-top:6px;font-size:12px;color:' + C.red + ';', imgPick.err));
+    } else {
+      var P = imgPick;
+      var meta = el('div', 'display:flex;justify-content:space-between;gap:8px;font-size:11.5px;color:#777;margin-bottom:6px;');
+      meta.appendChild(el('span', 'min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;', P.file.name + ' · ' + P.w + ' × ' + P.h));
+      meta.appendChild(el('span', 'flex:0 0 auto;', 'Drag to reposition'));
+      body.appendChild(meta);
+      body.appendChild(cropCanvas());
+      var outW = Math.min(IMAGE.width, P.cw);
+      body.appendChild(el('div', 'font-size:11.5px;margin-top:5px;color:' + (P.cw < IMAGE.width ? C.amber : '#777') + ';',
+        P.cw < IMAGE.width ? 'Saved at ' + outW + ' × ' + Math.round(outW / IMAGE.ratio) + ', smaller than the ' + IMAGE.width + 'px hero size. A larger download looks sharper.'
+          : '16:9, saved at ' + outW + ' × ' + Math.round(outW / IMAGE.ratio) + '. Double-click the picture to centre the frame.'));
+
+      body.appendChild(el('div', 'font-size:12px;color:#5a6068;margin:12px 0 4px;', 'File name'));
+      var nm = el('input', 'width:100%;padding:7px 9px;border:1px solid #cfd4da;border-radius:6px;font:13px ui-monospace,SFMono-Regular,Menlo,monospace;color:#222;');
+      nm.type = 'text'; nm.value = P.name;
+      nm.oninput = function () { P.name = nm.value; P.auto = false; };
+      body.appendChild(nm);
+
+      var acts = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;');
+      acts.appendChild(actionButton(P.saved && P.saved !== 'failed' ? 'Save again' : 'Save image', function () { saveCrop(); }, true));
+      acts.appendChild(actionButton('Different file', function () { if (P.url) URL.revokeObjectURL(P.url); imgPick = null; drawDrawer(); }));
+      body.appendChild(acts);
+      if (P.saved === 'failed') body.appendChild(el('div', 'font-size:12px;color:' + C.red + ';', 'The browser couldn’t make the file. Try Save image again.'));
+      else if (P.saved) body.appendChild(el('div', 'font-size:12px;color:' + C.green + ';', '✓ Saved ' + P.name + ' (' + P.saved.w + ' × ' + P.saved.h + ', ' + P.saved.kb + ' KB) to your downloads.'));
+    }
+
+    // ---- 3 Place ----
+    body.appendChild(sub('3 Place'));
+    body.appendChild(el('div', 'font-size:12.5px;color:#555;line-height:1.5;', 'Upload the saved file as the hero image in Squarespace and Save. The Alt text tab then writes alt text from the picture itself, and Use fills it in.'));
+    if (step === 3) body.appendChild(actionButton('Go to Alt text', function () { drawerTab = 'alt'; refreshAuto().then(drawDrawer); drawDrawer(); }));
+  }
+
   /* ---------- Links (internal links inside the draft) ----------
    * The pe-internal-links skill, built into Help me write. The nightly Related Answers job
    * publishes links-index.json: every article that may be linked to (last three years or still
@@ -2821,7 +3093,10 @@ try {
     if (LINKS.who === 'all' || ls('pe-links') === '1') return true;
     return LINKS.who.indexOf((ls('pe-initials') || '').toUpperCase()) !== -1;
   }
-  function drawerTabs() { return linksOn() ? TABS.concat([['links', 'Links']]) : TABS; }
+  function drawerTabs() {
+    var t = linksOn() ? TABS.concat([['links', 'Links']]) : TABS;
+    return imageOn() ? t.concat([['image', 'Image']]) : t;
+  }
 
   function tierOf(v) {
     if (v == null) return null;
