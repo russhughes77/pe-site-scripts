@@ -1104,7 +1104,7 @@ try {
    *                              8 on tablet, none within 4 of the end; phones unchanged
    *   2.1  30 Oct 2026  03c1ecd  Article title on the hero picture, bottom left, large white type; tag
    *                              "Title Above" opts an article out
-   *   2.2  30 Oct 2026  (push)   Orange NEWS label on news articles in the homepage's main article grid;
+   *   2.2  30 Oct 2026  657cc25  Orange NEWS label on news articles in the homepage's main article grid;
    *                              author photo in a circle under "Posted by" (tablet and desktop) */
   var PE_VERSION = '2.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
