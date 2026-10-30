@@ -1105,8 +1105,9 @@ try {
    *   2.1  30 Oct 2026  03c1ecd  Article title on the hero picture, bottom left, large white type; tag
    *                              "Title Above" opts an article out
    *   2.2  30 Oct 2026  657cc25  Orange NEWS label on news articles in the homepage's main article grid;
-   *                              author photo in a circle under "Posted by" (tablet and desktop) */
-  var PE_VERSION = '2.2';
+   *                              author photo in a circle under "Posted by" (tablet and desktop)
+   *   2.3  30 Oct 2026  (push)   NEWS label also on the news section further down the homepage */
+  var PE_VERSION = '2.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5487,12 +5488,13 @@ try {
  * from the site's own feed: anything in the News category or tagged News (the
  * team uses both). The feed is large, so it's fetched after the page has
  * loaded and kept in this browser for an hour.
- * The "Latest Music And Audio Production News" section is left unlabelled,
- * since everything in it is news; set SECTION_TOO to true to label it as well.
+ * News articles in the other lists further down the homepage (the "Latest Music
+ * And Audio Production News" section) are labelled too (v2.3); set SECTION_TOO to
+ * false to label the main grid only.
  * ================================================================ */
 try {
 (function () {
-  var SECTION_TOO = false;
+  var SECTION_TOO = true;    // label the news section further down too (on since v2.3)
   var KEY = 'pe-news-urls';
   var KEEP_MS = 60 * 60 * 1000;      // reuse the list for an hour
   var FEEDS = ['/production-expert-1?category=News&format=json', '/production-expert-1?tag=News&format=json'];
