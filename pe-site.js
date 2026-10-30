@@ -1107,7 +1107,7 @@ try {
    *   2.2  30 Oct 2026  657cc25  Orange NEWS label on news articles in the homepage's main article grid;
    *                              author photo in a circle under "Posted by" (tablet and desktop)
    *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage
-   *   2.4  30 Oct 2026  (pending) Author list in Edit Post, Options, sorted A to Z */
+   *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z */
   var PE_VERSION = '2.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
