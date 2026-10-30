@@ -1043,8 +1043,9 @@ try {
    * the commit to this list once it's pushed, so a rollback is one step: put that commit's two
    * files back on main.
    *   0.9  30 Oct 2026  7217ed2  Before versions began
-   *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe */
-  var PE_VERSION = '1.0';
+   *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe
+   *   1.1  30 Oct 2026  (this)   Image tab: Place as hero puts the crop into the top image block */
+  var PE_VERSION = '1.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2797,10 +2798,16 @@ try {
    *     can't pre-set Horizontal; set it once in Depositphotos (checked 30 Oct 2026).
    *   2 Crop and name: drop the downloaded file in (or choose it). A 16:9 frame sits over it and
    *     drags to keep the right part in shot. The file name comes from the search used, editable.
-   *     Save image downloads the crop at up to 2500px wide as a JPEG under that name. Nothing is
-   *     uploaded anywhere; it all happens in the browser.
-   *   3 Place: upload it as the hero in Squarespace, Save, then the Alt text tab writes the alt
-   *     text from the placed picture and Use fills it in.
+   *     Save image downloads the crop at up to 2500px wide as a JPEG under that name.
+   *   3 Place: Place as hero puts the crop into the first image block in the post, the way
+   *     dragging it into that block would: it opens the block's panel (double-click), hands the
+   *     file to the panel's own upload box (Add an Image on an empty block, Replace on a full one)
+   *     and waits until the panel shows the new file name. Then Write alt text moves to the Alt
+   *     text tab for the new picture. Nothing goes live until Save.
+   *     How the panel works was checked in the live Edit Post window on 30 Oct 2026: the panel has
+   *     an ordinary file input (accept image/jpeg, png, gif, webp) beside "Add an Image" or
+   *     "Replace", and setting its files and firing change uploads the picture; "Alternate
+   *     Filename" then reads the file's name and "Image alt text" takes a typed value.
    * While it's being tested only the initials in IMAGE.who see the tab. Opening any post with
    * ?image on the end of its address also turns it on in that browser. */
   var IMAGE = {
@@ -2945,7 +2952,8 @@ try {
     return cv;
   }
 
-  function saveCrop(btn) {
+  // The crop as a JPEG file under the chosen name. Resolves { file, w, h } or null.
+  function makeCrop() {
     var P = imgPick, outW = Math.min(IMAGE.width, P.cw), outH = Math.round(outW / IMAGE.ratio);
     var doc = hostDoc(), c = doc.createElement('canvas');
     c.width = outW; c.height = outH;
@@ -2954,15 +2962,115 @@ try {
     g.drawImage(P.img, P.x, P.y, P.cw, P.ch, 0, 0, outW, outH);
     var name = (slugWords(String(P.name).replace(/\.(jpe?g|png|webp)$/i, ''), 12) || 'hero-image') + '.jpg';
     P.name = name;
-    c.toBlob(function (blob) {
-      if (!blob) { P.saved = 'failed'; return drawDrawer(); }
+    return new Promise(function (ok) {
+      c.toBlob(function (blob) {
+        if (!blob) return ok(null);
+        var W = doc.defaultView || window;
+        ok({ blob: blob, file: new W.File([blob], name, { type: 'image/jpeg' }), w: outW, h: outH, name: name });
+      }, 'image/jpeg', IMAGE.quality);
+    });
+  }
+
+  function saveCrop() {
+    var P = imgPick, doc = hostDoc();
+    makeCrop().then(function (out) {
+      if (!out) { P.saved = 'failed'; return drawDrawer(); }
+      var blob = out.blob, outW = out.w, outH = out.h, name = out.name;
       var a = doc.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = name;
       doc.body.appendChild(a); a.click(); a.remove();
       setTimeout(function () { URL.revokeObjectURL(a.href); }, 5000);
       P.saved = { w: outW, h: outH, kb: Math.round(blob.size / 1024) };
       drawDrawer();
-    }, 'image/jpeg', IMAGE.quality);
+    });
+  }
+
+  /* Place as hero. The post must be open for editing (Edit on the page, or Edit Post from the
+   * post list). Works in whichever window holds the editing text blocks, like Links' Add. */
+  function editDocs() { var d = [document], h = hostDoc(); if (h !== document) d.push(h); return d; }
+
+  // The first image block in the post being edited, or null
+  function heroBlock() {
+    var found = null;
+    editDocs().some(function (doc) {
+      var layout = doc.querySelector('.sqs-layout.sqs-editing');
+      found = layout && Array.prototype.filter.call(layout.querySelectorAll('.sqs-block-image'), function (b) { return !ours(b) && visible(b); })[0] || null;
+      return !!found;
+    });
+    return found;
+  }
+  function editingOpen() { return editDocs().some(function (doc) { return !!doc.querySelector('.sqs-layout.sqs-editing'); }); }
+
+  // The upload box in an open image panel: the file input next to "Add an Image" or "Replace"
+  function panelUpload() {
+    var out = null;
+    editDocs().some(function (doc) {
+      var lab = Array.prototype.filter.call(doc.querySelectorAll('div, span, button, p'), function (e) {
+        return e.children.length === 0 && !ours(e) && visible(e) && /^(add an image|replace)$/i.test(e.textContent.trim());
+      })[0];
+      for (var box = lab, i = 0; box && i < 8 && !out; i++) {
+        box = box.parentElement;
+        out = box && box.querySelector('input[type="file"]');
+      }
+      return !!out;
+    });
+    return out;
+  }
+
+  // The file name the open panel shows (its "Alternate Filename" box, or the text beside Replace)
+  function panelShows(name) {
+    return editDocs().some(function (doc) {
+      var hit = false;
+      Array.prototype.forEach.call(doc.querySelectorAll('input:not([type="file"])'), function (f) { if (!ours(f) && f.value === name) hit = true; });
+      if (!hit) hit = !!Array.prototype.filter.call(doc.querySelectorAll('div, span, p'), function (e) {
+        return e.children.length === 0 && !ours(e) && e.textContent.trim() === name && visible(e);
+      })[0];
+      return hit;
+    });
+  }
+
+  function placeHero() {
+    var P = imgPick;
+    if (!editingOpen()) { P.placed = { st: 'failed', why: 'Click Edit on the post first, then Place as hero again.' }; return drawDrawer(); }
+    var block = heroBlock();
+    if (!block) { P.placed = { st: 'failed', why: 'There’s no image block in the post. Add an empty image block at the top, then Place as hero again.' }; return drawDrawer(); }
+    P.placed = { st: 'busy' };
+    drawDrawer();
+    makeCrop().then(function (out) {
+      if (!out) throw 'The browser couldn’t make the file.';
+      // open the block's panel: an empty block opens on a click, a full one on a double-click
+      block.scrollIntoView({ block: 'center' });
+      var w = block.ownerDocument.defaultView, r = block.getBoundingClientRect();
+      var at = { bubbles: true, cancelable: true, view: w, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 };
+      block.dispatchEvent(new w.MouseEvent('click', at));
+      at.detail = 2;
+      (block.querySelector('img') || block).dispatchEvent(new w.MouseEvent('dblclick', at));
+      return waitFor(panelUpload, 4000).then(function (inp) {
+        if (!inp) throw 'Squarespace didn’t open the image panel. Click the top image once, then Place as hero again.';
+        var IW = inp.ownerDocument.defaultView;
+        var dt = new IW.DataTransfer();
+        dt.items.add(out.file.constructor === IW.File ? out.file : new IW.File([out.blob], out.name, { type: 'image/jpeg' }));
+        inp.files = dt.files;
+        inp.dispatchEvent(new IW.Event('change', { bubbles: true }));
+        // uploading a large JPEG can take a while on a slow connection
+        return waitFor(function () { return panelShows(out.name); }, 30000);
+      }).then(function (ok) {
+        if (!ok) throw 'The upload didn’t show up in the panel. Check the top image, or use Save image and upload it by hand.';
+        P.placed = { st: 'done', name: out.name, w: out.w, h: out.h };
+      });
+    }).catch(function (why) {
+      P.placed = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t take the picture. Use Save image and upload it by hand.' };
+    }).then(drawDrawer);
+  }
+
+  // After placing: the Alt text tab, with suggestions already asked for the new picture
+  function altForHero() {
+    drawerTab = 'alt';
+    drawDrawer();
+    refreshAuto().then(function () {
+      var r = auto.filter(function (x) { return x.kind === 'alt'; })[0];
+      if (r && r.els && r.els.length) suggestAlt(r.els);
+    });
   }
 
   function stepBar(n) {
@@ -2978,7 +3086,7 @@ try {
   function sub(text) { return el('div', 'font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;margin:14px 0 6px;', text); }
 
   function drawImageTab(body) {
-    var step = !imgPick || imgPick.err ? 1 : imgPick.saved && imgPick.saved !== 'failed' ? 3 : 2;
+    var step = !imgPick || imgPick.err ? 1 : imgPick.placed && imgPick.placed.st === 'done' ? 3 : 2;
     body.appendChild(stepBar(step));
 
     // ---- 1 Search ----
@@ -3044,7 +3152,8 @@ try {
       body.appendChild(nm);
 
       var acts = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;');
-      acts.appendChild(actionButton(P.saved && P.saved !== 'failed' ? 'Save again' : 'Save image', function () { saveCrop(); }, true));
+      acts.appendChild(actionButton(P.placed && P.placed.st === 'done' ? 'Place again' : 'Place as hero', function () { placeHero(); }, true));
+      acts.appendChild(actionButton(P.saved && P.saved !== 'failed' ? 'Save again' : 'Save image', function () { saveCrop(); }));
       acts.appendChild(actionButton('Different file', function () { if (P.url) URL.revokeObjectURL(P.url); imgPick = null; drawDrawer(); }));
       body.appendChild(acts);
       if (P.saved === 'failed') body.appendChild(el('div', 'font-size:12px;color:' + C.red + ';', 'The browser couldn’t make the file. Try Save image again.'));
@@ -3053,8 +3162,13 @@ try {
 
     // ---- 3 Place ----
     body.appendChild(sub('3 Place'));
-    body.appendChild(el('div', 'font-size:12.5px;color:#555;line-height:1.5;', 'Upload the saved file as the hero image in Squarespace and Save. The Alt text tab then writes alt text from the picture itself, and Use fills it in.'));
-    if (step === 3) body.appendChild(actionButton('Go to Alt text', function () { drawerTab = 'alt'; refreshAuto().then(drawDrawer); drawDrawer(); }));
+    var pl = imgPick && imgPick.placed;
+    if (pl && pl.st === 'busy') body.appendChild(el('div', 'font-size:12.5px;color:#777;', 'Placing the picture in the top image block…'));
+    else if (pl && pl.st === 'failed') body.appendChild(el('div', 'font-size:12.5px;color:' + C.red + ';line-height:1.5;', pl.why));
+    else if (pl && pl.st === 'done') {
+      body.appendChild(el('div', 'font-size:12.5px;color:' + C.green + ';line-height:1.5;', '✓ ' + pl.name + ' is in the top image block (' + pl.w + ' × ' + pl.h + '). Write the alt text next, then Save the post.'));
+      body.appendChild(actionButton('Write alt text', altForHero, true));
+    } else body.appendChild(el('div', 'font-size:12.5px;color:#555;line-height:1.5;', 'With the post open in Edit, Place as hero puts the crop into the first image block, replacing any picture already there. Nothing goes live until you Save. Save image downloads the file instead, if you’d rather upload it by hand.'));
   }
 
   /* ---------- Links (internal links inside the draft) ----------
