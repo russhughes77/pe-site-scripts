@@ -3675,6 +3675,19 @@ try {
   function newTab() { try { return localStorage.getItem('pe-search-newtab') !== '0'; } catch (e) { return true; } }
   function setNewTab(on) { try { localStorage.setItem('pe-search-newtab', on ? '1' : '0'); } catch (e) {} }
   function tabAttrs() { return newTab() ? ' target="_blank" rel="noopener"' : ''; }
+  // Runs a search: in a new tab when that's the reader's choice, otherwise in this one
+  function goSearch(q) {
+    var url = '/search?q=' + encodeURIComponent(q);
+    if (newTab()) { var w = window.open(url, '_blank'); if (w) { try { w.opener = null; } catch (e) {} return; } }
+    location.href = url;
+  }
+  function searchForm(form, field) {
+    form.addEventListener('submit', function (e) {
+      var q = field.value.trim();
+      e.preventDefault();
+      if (q) goSearch(q);
+    });
+  }
 
   /* 1. Search button and box, with quick links and results as you type */
   function button() {
@@ -3723,8 +3736,9 @@ try {
       '<label class="pe-sp-tip"><input type="checkbox"> Open results in a new tab</label></div>';
     var input = pop.querySelector('input[type="search"]'), list = pop.querySelector('.pe-sp-list');
     var tick = pop.querySelector('.pe-sp-tip input'), form = pop.querySelector('form');
-    function applyTab() { tick.checked = newTab(); if (newTab()) form.target = '_blank'; else form.removeAttribute('target'); }
+    function applyTab() { tick.checked = newTab(); }
     applyTab();
+    searchForm(form, input);
     tick.onchange = function () { setNewTab(tick.checked); applyTab(); lookup(); };
     var timer, latest = '', cache = {};
 
@@ -3881,6 +3895,7 @@ try {
     var host = native ? native.parentNode : (document.querySelector('#content, main, .content') || document.body);
     host.insertBefore(root, native ? native.nextSibling : host.firstChild);
     root.querySelector('input[type="search"]').value = q;
+    searchForm(root.querySelector('form'), root.querySelector('input[type="search"]'));
     var ntBox = root.querySelector('.pe-sr-nt input');
     ntBox.checked = newTab();
     ntBox.onchange = function () { setNewTab(ntBox.checked); if (items.length || vlist.length || plist.length) draw(); };
