@@ -2460,7 +2460,24 @@ try {
     })[0];
     if (!lab) return Promise.resolve(null);
     (lab.closest('.sqs-button-vanilla') || lab).click();
-    return waitFor(settingsDoc, 3000);
+    // a freshly opened window loads the post's saved values a moment after it appears, and
+    // anything filled in before then is overwritten, so give it time to settle
+    return waitFor(settingsDoc, 3000).then(function (doc) { return doc && wait(800).then(function () { return doc; }); });
+  }
+
+  // Fills a field, then watches it for a moment: if Squarespace puts its own value back (it can
+  // while a tab is still loading), fills it again, up to three times. Resolves true once the
+  // value has held for over half a second.
+  function fillAndHold(f, v) {
+    var tries = 0;
+    function attempt() {
+      setField(f, v);
+      return wait(350).then(function () {
+        if (f.value !== v && ++tries < 3) return attempt();
+        return wait(300).then(function () { return f.value === v; });
+      });
+    }
+    return attempt();
   }
 
   // Checks find() every 100ms until it returns something, or gives up after ms
@@ -2532,9 +2549,8 @@ try {
       return fieldFor(doc, field);
     }).then(function (f) {
       if (!f) throw 'Couldn’t find the ' + useLabel(field) + ' box in Squarespace.';
-      setField(f, value);
-      return wait(150).then(function () {
-        if (f.value !== value) throw 'Squarespace didn’t take the new ' + useLabel(field) + '.';
+      return fillAndHold(f, value).then(function (held) {
+        if (!held) throw 'Squarespace didn’t keep the new ' + useLabel(field) + '.';
         // set every other row for this field back to its plain state
         Object.keys(useDone).forEach(function (k) { if (k !== key && useDone[k].field === field && useDone[k].st === 'used') delete useDone[k]; });
         useDone[key] = { st: 'used', at: Date.now(), field: field, value: value };
