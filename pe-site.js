@@ -1053,8 +1053,10 @@ try {
    *   1.5  30 Oct 2026  5d8a225  Typing in Joe's text boxes survives the checklist's redraws (Pixabay search,
    *                              file name, credit)
    *   1.6  30 Oct 2026  4e57de0  Place as hero waits for the new picture's asset id before moving on (fixes
-   *                              pictures not sticking); credit waits for the caption box to be redrawn */
-  var PE_VERSION = '1.6';
+   *                              pictures not sticking); credit waits for the caption box to be redrawn
+   *   1.7  30 Oct 2026  (this)   Links tab rebuilt like the pe-internal-links skill: shortlist by subject,
+   *                              Claude picks anchors in the writer's words (needs the 30 Oct links Code.gs) */
+  var PE_VERSION = '1.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2152,7 +2154,7 @@ try {
         if (!linkIdx) loadLinkIndex();
         if (linkIdx && linkIdx.targets) {
           if (!linkSugg || linkSugg.sig !== textSig()) findLinks();
-          out.push(linkSugg.list.length
+          out.push(linkSugg.shortlist.length
             ? { ok: false, kind: 'links', text: 'No internal links in the article' }
             : { ok: true, text: 'No internal links, and nothing in the archive matches this article' });
         }
@@ -3536,16 +3538,135 @@ try {
     return { on: false, brands: {} };
   }
 
-  // Suggestions for this post. The strict rules first; if they find nothing, a looser pass
-  // (any phrase of two words or more, or a product name, without needing a shared tag), shown
-  // with a note so each one is judged. Remembers a fingerprint of the text, so the 30-second
-  // checks only redo the work when the article changes.
+  /* Suggestions for this post (v1.7, rebuilt to work like the pe-internal-links skill).
+   * 1. Shortlist: archive articles that share the draft's subject (phrase cores, tags, brand,
+   *    title words; plurals and analog/analogue treated alike), competitor rule applied. Cheap,
+   *    so the internal links check uses it: it warns only when the shortlist has something.
+   * 2. Claude, through the checklist Apps Script (action 'links'), reads the draft and picks
+   *    phrases already in it worth linking, each to one shortlisted article, with a reason.
+   *    Asked only when the Links tab is open, and cached per draft text.
+   * 3. Every pick is checked here: the words must be in that paragraph as written, outside an
+   *    existing link, not in the opening four words; one per paragraph, one per article.
+   * If Claude can't be reached, the old phrase matching is used instead, with a note. */
+  var LINK_STOP = /^(a|an|the|and|or|but|for|to|of|in|on|at|by|with|from|into|is|are|was|were|be|been|it|its|this|that|these|those|what|why|how|when|who|which|your|you|we|our|they|their|them|he|she|his|her|still|now|new|vs|versus|best|top|review|reviewed|explained|guide|need|needs|really|actually|just|more|most|than|can|could|should|would|will|about|after|before|every|all|any|do|does|did|get|gets|make|makes|use|using|used|one|two|three|first|also|over|out|up|down|not|no|so|if|as|has|have|had|there|here|then|some|many|much|very|way|ways|time|year|years|part|good|great|well|look|looks|find|tip|tips|thing|things|audio|music|sound|studio|production|pro|2023|2024|2025|2026|2027)$/;
+  function normWord(w) {
+    w = String(w).toLowerCase().replace(/^analog$/, 'analogue');
+    if (w.length > 4 && /s$/.test(w) && !/ss$/.test(w)) w = w.slice(0, -1);
+    return w;
+  }
+  function normWords(t) {
+    return String(t || '').toLowerCase().replace(/['’]/g, '').split(/[^a-z0-9+]+/).filter(Boolean).map(normWord);
+  }
+
+  function linkShortlist() {
+    var paras = linkParas();
+    var words = paras.reduce(function (n, p) { return n + squash(p.textContent).split(' ').length; }, 0);
+    var here = location.pathname.replace(/\/+$/, '');
+    var linked = {};
+    var body = articleBody();
+    if (body) Array.prototype.forEach.call(body.querySelectorAll('a[href]'), function (a) { linked[pathOf(a.getAttribute('href'))] = 1; });
+    var guard = protectedBrands(linkIdx.targets);
+    var myTags = lower(postData.tags);
+    // the draft's words and word pairs
+    var dw = {}, db = {};
+    var all = normWords(postTitle() + ' ' + paras.map(function (p) { return p.textContent; }).join(' '));
+    all.forEach(function (w, i) { dw[w] = 1; if (i) db[all[i - 1] + ' ' + w] = 1; });
+    var scored = [];
+    linkIdx.targets.forEach(function (x) {
+      if (x.u === here || linked[x.u]) return;
+      if (guard.on && (x.k === 'comparison' || (x.k === 'product' && (!x.b || !guard.brands[x.b.toLowerCase()])))) return;
+      var score = 0, pairs = {};
+      x.p.forEach(function (ph) {
+        var w = normWords(ph);
+        var real = w.filter(function (v) { return !LINK_STOP.test(v); });
+        if (real.length > 1 && w.every(function (v, i) { return !i || db[w[i - 1] + ' ' + v]; })) score += 4; // the whole phrase, pair by pair
+        for (var i = 1; i < w.length; i++) {
+          var bg = w[i - 1] + ' ' + w[i];
+          // only pairs of two meaningful words ("mix bus", "channel strip"), never "the DAW" or "a mix"
+          if (db[bg] && !LINK_STOP.test(w[i - 1]) && !LINK_STOP.test(w[i]) && w[i - 1].length > 1 && w[i].length > 1) pairs[bg] = 1;
+        }
+        if (w.length === 1 && /[A-Z0-9]/.test(ph) && dw[w[0]]) score += 3; // a one-word product name
+      });
+      score += Math.min(Object.keys(pairs).length, 3) * 3;
+      var tw = {};
+      normWords(x.t).forEach(function (w) { if (w.length > 2 && !LINK_STOP.test(w) && dw[w]) tw[w] = 1; });
+      score += Math.min(Object.keys(tw).length, 4) * 0.75;
+      score += Math.min(lower(x.g).filter(function (g) { return myTags.indexOf(g) !== -1; }).length, 2) * 2;
+      if (x.b && normWords(x.b).every(function (w) { return dw[w]; })) score += 2;
+      if (score >= 3) scored.push({ x: x, score: score });
+    });
+    scored.sort(function (a, b) { return b.score - a.score || (b.x.v || 0) - (a.x.v || 0); });
+    return { targets: scored.slice(0, 60).map(function (s) { return s.x; }), guard: guard, words: words, linked: Object.keys(linked).length, paras: paras };
+  }
+
   function findLinks() {
     if (!linkIdx || !linkIdx.targets) return;
-    var strict = matchLinks(false);
-    linkSugg = strict.list.length ? strict : matchLinks(true);
-    linkSugg.loose = !strict.list.length && linkSugg.list.length > 0;
-    linkSugg.sig = textSig();
+    var sl = linkShortlist();
+    linkSugg = { status: 'ready', list: [], shortlist: sl.targets, guard: sl.guard, words: sl.words, linked: sl.linked, paras: sl.paras, sig: textSig() };
+  }
+
+  // Asks Claude for the links (only from the Links tab), then checks each pick in the draft
+  function askLinks() {
+    var sg = linkSugg;
+    if (!sg || sg.status !== 'ready') return;
+    sg.status = 'loading';
+    var paras = sg.paras, send = [];
+    paras.forEach(function (p, i) {
+      if (i === paras.length - 1 && paras.length > 3) return; // end on the writer's voice
+      var t = squash(p.textContent);
+      if (t.split(' ').length >= 6) send.push({ i: i, text: t });
+    });
+    var ids = {};
+    var targets = sg.shortlist.map(function (x, n) {
+      var id = 'a' + n, tier = tierOf(x.v);
+      ids[id] = x;
+      return { id: id, t: x.t, r: x.r || '', k: x.k || '', b: x.b || '', tier: tier ? tier[1] : 'Unscored' };
+    });
+    if (!targets.length || !send.length) { sg.status = 'done'; return drawDrawer(); }
+    var tags = lower(postData.tags);
+    fetch(C.store, { method: 'POST', body: JSON.stringify({
+      action: 'links', title: postTitle(), tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', '),
+      partner: tags.indexOf('partner') !== -1 || tags.indexOf('partners') !== -1, paras: send, targets: targets
+    }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (linkSugg !== sg) return;
+        if (!d || d.error || !d.picks) throw (d && d.error) || 'No answer';
+        var used = {}, usedT = {}, list = [];
+        d.picks.forEach(function (pk) {
+          var p = paras[pk.para], x = ids[pk.target];
+          if (!p || !x || used[pk.para] || usedT[x.u]) return;
+          var hit = null, re = phraseRe(pk.anchor);
+          textNodes(p).some(function (n, ni) {
+            re.lastIndex = 0;
+            var m;
+            while ((m = re.exec(n.data))) {
+              var start = m.index + m[1].length;
+              if (pk.para === 0 && ni === 0 && n.data.slice(0, start).split(/\s+/).filter(Boolean).length < 4) continue;
+              hit = m[2];
+              return true;
+            }
+            return false;
+          });
+          if (!hit) return; // not in that paragraph as written: dropped
+          used[pk.para] = 1; usedT[x.u] = 1;
+          list.push({ para: p, paraText: p.textContent, pi: pk.para, anchor: hit, target: x, tier: tierOf(x.v), why: pk.why });
+        });
+        list.sort(function (a, b) { return a.pi - b.pi; });
+        sg.list = list;
+        sg.status = 'done';
+      })
+      .catch(function (e) {
+        if (linkSugg !== sg) return;
+        // fall back to the old phrase matching, so the tab is never empty-handed for no reason
+        var strict = matchLinks(false), loose = strict.list.length ? strict : matchLinks(true);
+        sg.list = loose.list;
+        sg.loose = !strict.list.length && loose.list.length > 0;
+        sg.status = 'done';
+        sg.error = (typeof e === 'string' && e !== 'No answer' ? e : 'Joe couldn’t reach the link picker in the Google Sheet') + '. These come from simple phrase matching instead.';
+      })
+      .then(drawDrawer);
+    drawDrawer();
   }
   function textSig() {
     var b = articleBody();
@@ -3824,8 +3945,13 @@ try {
       body.appendChild(actionButton('Try again', function () { linkIdx = null; loadLinkIndex(); }));
       return;
     }
-    if (!linkSugg) findLinks();
+    if (!linkSugg || linkSugg.sig !== textSig() && linkSugg.status !== 'loading') findLinks();
     var sg = linkSugg, list = sg.list;
+    if (sg.status === 'ready') askLinks();
+    if (sg.status === 'loading' || sg.status === 'ready') {
+      body.appendChild(el('div', 'padding:14px 0;color:#777;font-size:13px;', 'Joe is reading the draft against ' + sg.shortlist.length + ' related articles…'));
+      return;
+    }
     var added = list.filter(function (s) { var d = linkDone[s.target.u]; return d && /added|saved|notsaved/.test(d.st); }).length;
 
     var intro = (sg.guard.on ? sg.guard.why + ': no links to other brands’ products or to roundups. ' : 'Editorial post. ') +
@@ -3833,8 +3959,11 @@ try {
     body.appendChild(el('div', 'margin:12px 0 2px;font-size:12px;color:#5a6068;', intro));
     body.appendChild(el('div', 'margin:0 0 6px;font-size:12px;color:#8a9097;', list.length ? added + ' of ' + list.length + ' added' : ''));
 
+    if (sg.error) body.appendChild(el('div', 'margin:4px 0 6px;padding:8px 10px;background:#fff8e6;border-radius:6px;font-size:12px;color:#5a3a00;', sg.error));
     if (!list.length) {
-      body.appendChild(el('div', 'padding:12px 0;color:#555;font-size:13px;', 'No phrases in this draft match an article worth linking to, so the internal links check won’t hold this post back.'));
+      body.appendChild(el('div', 'padding:12px 0;color:#555;font-size:13px;', sg.shortlist.length
+        ? 'Joe read the draft against ' + sg.shortlist.length + ' related articles and found no place where a link would genuinely help the reader.'
+        : 'Nothing in the archive matches this article, so the internal links check won’t hold this post back.'));
     } else if (sg.loose) {
       body.appendChild(el('div', 'margin:4px 0 6px;padding:8px 10px;background:#fff8e6;border-radius:6px;font-size:12px;color:#5a3a00;', 'No close matches, so these are looser ones: they share words with the article but not its tags. Check each fits before adding it.'));
     }
@@ -3861,7 +3990,7 @@ try {
         'color:' + (tier ? tier[3] : '#5a6068') + ';background:' + (tier ? tier[4] : '#f1f2f4') + ';',
         tier ? tier[1] + ' ' + s.target.v.toLocaleString() : 'Unscored'));
       row.appendChild(ti);
-      if (s.target.r) row.appendChild(el('div', 'font-size:12px;color:#777;margin:3px 0 0;', s.target.r));
+      if (s.why || s.target.r) row.appendChild(el('div', 'font-size:12px;color:#777;margin:3px 0 0;', s.why || s.target.r));
       var acts = el('div', 'display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:8px;');
 
       if (d.st === 'busy') acts.appendChild(el('span', 'font-size:12px;color:#777;', 'Adding…'));
