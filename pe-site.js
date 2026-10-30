@@ -1048,7 +1048,7 @@ try {
    *   1.2  30 Oct 2026  e9ff08a  Links and Image tabs, and the internal links check, on for the whole team
    *   1.3  30 Oct 2026  cdf8585  Image tab starts with Add image; Depositphotos search folded in, with a
    *                              sign-in reminder and a warning on files under 1000px wide
-   *   1.4  30 Oct 2026  (this)   Pixabay searched inside the Image tab; credit under the hero and Source URL
+   *   1.4  30 Oct 2026  e05f2e9  Pixabay searched inside the Image tab; credit under the hero and Source URL
    *                              filled on Place as hero (needs the 30 Oct Pixabay Code.gs) */
   var PE_VERSION = '1.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
