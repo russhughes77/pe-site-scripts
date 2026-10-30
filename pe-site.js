@@ -1060,7 +1060,7 @@ try {
    *                              desktops; stays under the hero on phones
    *   1.9  30 Oct 2026  99f02ef  Homepage ad move: finds the ad by the ad server's placeholder, as the
    *                              banner itself loads after the script runs (v1.8 never moved it)
-   *   2.0  30 Oct 2026  (push)   Homepage banners in the article grid: every 9 articles on desktop, every
+   *   2.0  30 Oct 2026  d77accb  Homepage banners in the article grid: every 9 articles on desktop, every
    *                              8 on tablet, none within 4 of the end; phones unchanged */
   var PE_VERSION = '2.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
