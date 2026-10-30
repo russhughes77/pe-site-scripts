@@ -2681,6 +2681,17 @@ try {
             var m;
             while ((m = re.exec(n.data))) {
               var start = m.index + m[1].length;
+              // not part of a longer name: "Focusrite Saffire" inside "Focusrite Saffire Pro 24 DSP"
+              // would send readers to a different product, so a capitalised word or number right
+              // after the words, or a capitalised word mid-sentence right before them, rules it out
+              // (product names only: an ordinary phrase such as "gain staging" can follow "Pro Tools")
+              if (/^[A-Z0-9]/.test(m[2])) {
+                var after = n.data.slice(start + m[2].length).match(/^[\s\u00a0]+(\S+)/);
+                if (after && /^[A-Z0-9]/.test(after[1])) continue;
+                var head = n.data.slice(0, start), prior = head.match(/(\S+)[\s\u00a0]+$/);
+                if (prior && /^[A-Z]/.test(prior[1]) && head.trim() !== prior[1] &&
+                    !/[.!?:]$/.test(head.replace(/[\s\u00a0]*\S+[\s\u00a0]+$/, ''))) continue;
+              }
               // not in the opening four words of the article
               if (pi === 0 && n.data.slice(0, start).split(/\s+/).filter(Boolean).length < 4 && textNodes(p)[0] === n) continue;
               var score = Math.min(nw, 4) + Math.min(shared, 2) * 1.5 + (tier ? tier[2] : 0.5) + (age < 365 ? 0.5 : 0);
