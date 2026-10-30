@@ -1037,6 +1037,15 @@ try {
   // the plain 'Open Sans' after it covers the moment before that has loaded.
   var F = "'PE UI Sans','Open Sans',sans-serif";
 
+  /* Version of pe-site.js, shown beside JOE in Joe's title bar, so anyone can say which copy their
+   * browser is running. Raise it with every push: the second number for fixes and small changes,
+   * the first for a new feature. Each version is tagged in GitHub (v1.0, v1.1...) so a rollback is
+   * one step: put that tag's two files back on main.
+   *   0.9  30 Oct 2026  Before versions began (commit 7217ed2)
+   *   1.0  30 Oct 2026  Image tab in Joe (testing, RH only); version shown in Joe */
+  var PE_VERSION = '1.0';
+  try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
+
   function ls(k, v) {
     try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; }
   }
@@ -1812,7 +1821,7 @@ try {
     drawChecks();
     if (stage === 'Draft' || stage === 'In review' || stage === 'Checks in progress') {
       var hw = el('button', 'display:block;width:100%;margin-top:12px;padding:9px;border:1px solid #dde1e6;border-radius:6px;background:#f7f9fb;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Ask Joe');
-      hw.title = 'Joe (formerly Help me write): headlines, meta descriptions, URLs, alt text and links';
+      hw.title = 'Joe v' + PE_VERSION + ' (formerly Help me write): headlines, meta descriptions, URLs, alt text, links and images';
       hw.type = 'button';
       hw.onclick = function () { openDrawer(); };
       list.appendChild(hw);
@@ -2296,7 +2305,8 @@ try {
     var joe = el('span', 'flex:1;display:flex;align-items:center;gap:7px;color:' + C.blue + ';');
     joe.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;display:block">' +
       '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/><path d="M12 17v4.5"/><path d="M8.5 21.5h7"/></svg>' +
-      '<span style="font-size:16px;font-weight:800;letter-spacing:.14em;line-height:1;">JOE</span>';
+      '<span style="font-size:16px;font-weight:800;letter-spacing:.14em;line-height:1;">JOE</span>' +
+      '<span title="Version of the site scripts this browser is running" style="font-size:11px;font-weight:600;letter-spacing:0;color:#9aa0a6;line-height:1;">v' + PE_VERSION + '</span>';
     joe.setAttribute('aria-label', 'Joe, help me write');
     drawerHead.appendChild(joe);
     var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;font-weight:400;line-height:1;cursor:pointer;color:#8a9097;padding:0 2px;', '×');

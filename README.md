@@ -24,3 +24,13 @@ to keep their copy for 7 days.)
 
 Each section is fenced off, so a fault in one never stops the others. The placement section must stay last.
 The editor guard stays in the Squarespace Header box, because it has to run before the page draws.
+
+## Versions and rolling back
+
+Joe shows the version beside its name (for example JOE v1.0), and the browser console logs it.
+The version history is in the comment above `PE_VERSION` in pe-site.js, and every version is a
+tag on GitHub (v1.0, v1.1...).
+
+- With every push, raise `PE_VERSION`, add a line to that history, and tag the commit.
+- To roll back, copy pe-site.js and pe-site.min.js from the tag you want back onto main and push.
+  Everyone has the old version within about 10 minutes.
