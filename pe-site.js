@@ -1062,7 +1062,7 @@ try {
    *                              banner itself loads after the script runs (v1.8 never moved it)
    *   2.0  30 Oct 2026  d77accb  Homepage banners in the article grid: every 9 articles on desktop, every
    *                              8 on tablet, none within 4 of the end; phones unchanged
-   *   2.1  30 Oct 2026  (push)   Article title on the hero picture, bottom left, large white type; tag
+   *   2.1  30 Oct 2026  03c1ecd  Article title on the hero picture, bottom left, large white type; tag
    *                              "Title Above" opts an article out */
   var PE_VERSION = '2.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
