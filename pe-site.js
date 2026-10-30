@@ -1046,7 +1046,7 @@ try {
    *   1.0  30 Oct 2026  7a5e6ac  Image tab in Joe (testing, RH only); version shown in Joe
    *   1.1  30 Oct 2026  e46e1ab  Image tab: Place as hero puts the crop into the top image block
    *   1.2  30 Oct 2026  e9ff08a  Links and Image tabs, and the internal links check, on for the whole team
-   *   1.3  30 Oct 2026  (this)   Image tab starts with Add image; Depositphotos search folded in, with a
+   *   1.3  30 Oct 2026  cdf8585  Image tab starts with Add image; Depositphotos search folded in, with a
    *                              sign-in reminder and a warning on files under 1000px wide */
   var PE_VERSION = '1.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
