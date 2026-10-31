@@ -1112,7 +1112,7 @@ try {
    *                              beats NEWS when an article fits more than one
    *   2.6  31 Oct 2026  5d0b929 DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
    *                              main blog, so deals never got the label. Label cache renamed to refresh
-   *   2.7  31 Oct 2026  (pending) DEAL label dropped from the day after a deal ends (ends- tag, #expires or
+   *   2.7  31 Oct 2026  a069b04 DEAL label dropped from the day after a deal ends (ends- tag, #expires or
    *                              #offer ends line, or "Ends ..." in the title) */
   var PE_VERSION = '2.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
