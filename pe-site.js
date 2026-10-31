@@ -1111,8 +1111,10 @@ try {
    *   2.5  31 Oct 2026  6929d79 FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
    *                              beats NEWS when an article fits more than one
    *   2.6  31 Oct 2026  5d0b929 DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
-   *                              main blog, so deals never got the label. Label cache renamed to refresh */
-  var PE_VERSION = '2.6';
+   *                              main blog, so deals never got the label. Label cache renamed to refresh
+   *   2.7  31 Oct 2026  (pending) DEAL label dropped from the day after a deal ends (ends- tag, #expires or
+   *                              #offer ends line, or "Ends ..." in the title) */
+  var PE_VERSION = '2.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5491,7 +5493,10 @@ try {
  * corner of the picture on homepage cards. Homepage only.
  *   FREE  anything in a Free / Free Plugins / Freebies category or tag
  *   DEAL  every post in the Partner Deals blog (/partner-deals), plus anything in a
- *         Deal / Deals / Partner Deals category or tag in the main blog (v2.6)
+ *         Deal / Deals / Partner Deals category or tag in the main blog (v2.6).
+ *         From the day after a deal ends, it loses the DEAL label (v2.7). The end date
+ *         comes from, in order: an ends-2026-11-30 tag, the post's #expires or
+ *         #offer ends line, or "Ends 29th October" in the title. No date, no change.
  *   NEWS  anything in the News category or tagged News
  * One label per card. When an article fits more than one, FREE wins, then DEAL,
  * then NEWS, so a free plugin filed under News reads FREE.
@@ -5505,7 +5510,7 @@ try {
 try {
 (function () {
   var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
-  var KEY = 'pe-card-labels-v26';   // new name in v2.6 so old cached lists are ignored
+  var KEY = 'pe-card-labels-v27';   // renamed whenever the rules change so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
 
@@ -5515,7 +5520,7 @@ try {
   // so the main blog's feed never sees those posts; that was the v2.5 bug).
   var LABELS = [
     { text: 'Free', names: ['Free', 'Free Plugins', 'Free Plugin', 'Freebies'] },
-    { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'], blogs: ['/partner-deals'] },
+    { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'], blogs: ['/partner-deals'], dropEnded: true },
     { text: 'News', names: ['News'] }
   ];
 
@@ -5546,8 +5551,58 @@ try {
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
       .catch(function () { return { items: [] }; });
   }
+  // ---- Deal end dates (v2.7). Same sources as the offer-expiry script, read day first. ----
+  var MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, sept: 8, oct: 9, nov: 10, dec: 11 };
+  function mon(w) { w = (w || '').toLowerCase(); return MONTHS[w.slice(0, 4)] !== undefined ? MONTHS[w.slice(0, 4)] : MONTHS[w.slice(0, 3)]; }
+
+  // Reads "30/11/26", "30.11.2026", "30 November 2026", "30th Nov", "Nov 30th, 2026".
+  // A missing year takes the publish year, or the next one if that would end before publication.
+  function readDate(t, pub) {
+    var m, d, mo, y;
+    if ((m = /\b(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})\b/.exec(t))) {
+      d = +m[1]; mo = +m[2] - 1; y = +m[3];
+    } else if ((m = /\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?([a-z]{3,9})\.?(?:,?\s+(\d{4}))?/i.exec(t)) && mon(m[2]) !== undefined) {
+      d = +m[1]; mo = mon(m[2]); y = m[3] ? +m[3] : 0;
+    } else if ((m = /\b([a-z]{3,9})\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i.exec(t)) && mon(m[1]) !== undefined) {
+      d = +m[2]; mo = mon(m[1]); y = m[3] ? +m[3] : 0;
+    } else return null;
+    if (y && y < 100) y += 2000;
+    if (!(d >= 1 && d <= 31 && mo >= 0 && mo <= 11)) return null;
+    var p = pub ? new Date(pub) : new Date();
+    if (!y) {
+      y = p.getFullYear();
+      if (new Date(y, mo, d) < new Date(p.getFullYear(), p.getMonth(), p.getDate())) y++;
+    }
+    return new Date(y, mo, d);
+  }
+
+  function endDate(i) {
+    var k, m;
+    var tags = i.tags || [];
+    for (k = 0; k < tags.length; k++) {
+      if ((m = /^ends-(\d{4})-(\d{2})-(\d{2})$/i.exec(tags[k]))) return new Date(+m[1], +m[2] - 1, +m[3]);
+    }
+    var body = String(i.body || '').replace(/<[^>]+>/g, '\n').replace(/&nbsp;/g, ' ');
+    if ((m = /#(?:expires|offer\s+ends)\s*:?\s*([^\n]{1,40})/i.exec(body))) {
+      var dt = readDate(m[1], i.publishOn);
+      if (dt) return dt;
+    }
+    if ((m = /\bend(?:s|ing)?\s+(?:on\s+)?([^|]{3,30})/i.exec(i.title || ''))) return readDate(m[1], i.publishOn);
+    return null;
+  }
+
+  // True from the day after the end date, in the reader's own time zone
+  function hasEnded(i) {
+    var e = endDate(i);
+    if (!e) return false;
+    var n = new Date();
+    return e < new Date(n.getFullYear(), n.getMonth(), n.getDate());
+  }
+
   function urls(j) {
-    return (j.items || []).map(function (i) { return i.fullUrl ? path(i.fullUrl) : ''; });
+    return (j.items || []).map(function (i) {
+      return i.fullUrl ? { p: path(i.fullUrl), ended: hasEnded(i) } : null;
+    });
   }
 
   function feed(q) {
@@ -5576,7 +5631,9 @@ try {
       });
       var jobs = qs.map(feed).concat((L.blogs || []).map(blogFeed));
       return Promise.all(jobs).then(function (lists) {
-        return [].concat.apply([], lists);
+        return [].concat.apply([], lists)
+          .filter(function (x) { return x && !(L.dropEnded && x.ended); })
+          .map(function (x) { return x.p; });
       });
     })).then(function (perLabel) {
       var map = {};
