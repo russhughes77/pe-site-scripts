@@ -1110,7 +1110,7 @@ try {
    *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z
    *   2.5  31 Oct 2026  6929d79 FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
    *                              beats NEWS when an article fits more than one
-   *   2.6  31 Oct 2026  (pending) DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
+   *   2.6  31 Oct 2026  5d0b929 DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
    *                              main blog, so deals never got the label. Label cache renamed to refresh */
   var PE_VERSION = '2.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
