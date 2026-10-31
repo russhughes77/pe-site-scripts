@@ -24,7 +24,7 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Get the code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Ask Plausible for yesterday's reads
         env:
