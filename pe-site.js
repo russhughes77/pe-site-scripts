@@ -1108,7 +1108,7 @@ try {
    *                              author photo in a circle under "Posted by" (tablet and desktop)
    *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage
    *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z
-   *   2.5  31 Oct 2026  (push)   FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
+   *   2.5  31 Oct 2026  6929d79 FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
    *                              beats NEWS when an article fits more than one */
   var PE_VERSION = '2.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
