@@ -1109,8 +1109,10 @@ try {
    *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage
    *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z
    *   2.5  31 Oct 2026  6929d79 FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
-   *                              beats NEWS when an article fits more than one */
-  var PE_VERSION = '2.5';
+   *                              beats NEWS when an article fits more than one
+   *   2.6  31 Oct 2026  (pending) DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
+   *                              main blog, so deals never got the label. Label cache renamed to refresh */
+  var PE_VERSION = '2.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5488,7 +5490,8 @@ try {
  * Puts a small orange label (Production Expert orange, #E87722) in the top-left
  * corner of the picture on homepage cards. Homepage only.
  *   FREE  anything in a Free / Free Plugins / Freebies category or tag
- *   DEAL  anything in a Deal / Deals / Partner Deals category or tag
+ *   DEAL  every post in the Partner Deals blog (/partner-deals), plus anything in a
+ *         Deal / Deals / Partner Deals category or tag in the main blog (v2.6)
  *   NEWS  anything in the News category or tagged News
  * One label per card. When an article fits more than one, FREE wins, then DEAL,
  * then NEWS, so a free plugin filed under News reads FREE.
@@ -5502,14 +5505,17 @@ try {
 try {
 (function () {
   var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
-  var KEY = 'pe-card-labels';
+  var KEY = 'pe-card-labels-v26';   // new name in v2.6 so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
 
-  // In priority order: the first label that matches wins
+  // In priority order: the first label that matches wins.
+  // names: categories or tags looked up in the main blog.
+  // blogs: whole blogs where every post gets the label (Partner Deals lives in its own blog,
+  // so the main blog's feed never sees those posts; that was the v2.5 bug).
   var LABELS = [
     { text: 'Free', names: ['Free', 'Free Plugins', 'Free Plugin', 'Freebies'] },
-    { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'] },
+    { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'], blogs: ['/partner-deals'] },
     { text: 'News', names: ['News'] }
   ];
 
@@ -5535,13 +5541,29 @@ try {
     return null;
   }
 
-  function feed(q) {
-    return fetch(BASE + q, { credentials: 'same-origin' })
+  function getJson(url) {
+    return fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
-      .catch(function () { return { items: [] }; })
-      .then(function (j) {
-        return (j.items || []).map(function (i) { return i.fullUrl ? path(i.fullUrl) : ''; });
+      .catch(function () { return { items: [] }; });
+  }
+  function urls(j) {
+    return (j.items || []).map(function (i) { return i.fullUrl ? path(i.fullUrl) : ''; });
+  }
+
+  function feed(q) {
+    return getJson(BASE + q).then(urls);
+  }
+
+  // A whole blog: its two newest pages (about 40 posts), which covers everything the homepage shows
+  function blogFeed(b) {
+    return getJson(b + '?format=json').then(function (j) {
+      var first = urls(j);
+      var next = j.pagination && j.pagination.nextPage && j.pagination.nextPageUrl;
+      if (!next) return first;
+      return getJson(next + (next.indexOf('?') < 0 ? '?' : '&') + 'format=json').then(function (j2) {
+        return first.concat(urls(j2));
       });
+    });
   }
 
   // Builds { "/article-path": "Free", ... } with the highest-priority label for each article
@@ -5552,7 +5574,8 @@ try {
         var v = encodeURIComponent(n);
         qs.push('category=' + v, 'tag=' + v);
       });
-      return Promise.all(qs.map(feed)).then(function (lists) {
+      var jobs = qs.map(feed).concat((L.blogs || []).map(blogFeed));
+      return Promise.all(jobs).then(function (lists) {
         return [].concat.apply([], lists);
       });
     })).then(function (perLabel) {
