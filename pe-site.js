@@ -1116,7 +1116,7 @@ try {
    *                              #offer ends line, or "Ends ..." in the title)
    *   2.8  31 Oct 2026  2131b9d MOST READ label on the three homepage stories with the most pageviews
    *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS
-   *   2.9  31 Oct 2026  (this)  Notes in the pre-publish checks fold away: click the NOTES heading.
+   *   2.9  31 Oct 2026  db4b6d9 Notes in the pre-publish checks fold away: click the NOTES heading.
    *                              Remembered per browser; open flags stay on show when shut */
   var PE_VERSION = '2.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
