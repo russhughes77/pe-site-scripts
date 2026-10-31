@@ -1113,8 +1113,10 @@ try {
    *   2.6  31 Oct 2026  5d0b929 DEAL label now reads the Partner Deals blog itself; v2.5 only searched the
    *                              main blog, so deals never got the label. Label cache renamed to refresh
    *   2.7  31 Oct 2026  a069b04 DEAL label dropped from the day after a deal ends (ends- tag, #expires or
-   *                              #offer ends line, or "Ends ..." in the title) */
-  var PE_VERSION = '2.7';
+   *                              #offer ends line, or "Ends ..." in the title)
+   *   2.8  31 Oct 2026  (pending) MOST READ label on the three homepage stories with the most pageviews
+   *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS */
+  var PE_VERSION = '2.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5498,8 +5500,12 @@ try {
  *         comes from, in order: an ends-2026-11-30 tag, the post's #expires or
  *         #offer ends line, or "Ends 29th October" in the title. No date, no change.
  *   NEWS  anything in the News category or tagged News
- * One label per card. When an article fits more than one, FREE wins, then DEAL,
- * then NEWS, so a free plugin filed under News reads FREE.
+ *   MOST READ  the three homepage stories with the most pageviews yesterday (v2.8).
+ *         The numbers come from most-read.json beside this script, written each
+ *         morning by the "Most read" job in this repo from Plausible. If the file
+ *         is missing or empty, no MOST READ labels appear and nothing else changes.
+ * One label per card. MOST READ wins, then FREE, then DEAL, then NEWS, so a free
+ * plugin filed under News reads FREE, and a popular deal reads MOST READ.
  * The cards themselves don't say what an article is, so the lists come from the
  * site's own feeds. They are fetched after the page has loaded and kept in this
  * browser for an hour. A category or tag name that doesn't exist on the site
@@ -5510,9 +5516,11 @@ try {
 try {
 (function () {
   var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
-  var KEY = 'pe-card-labels-v27';   // renamed whenever the rules change so old cached lists are ignored
+  var KEY = 'pe-card-labels-v28';   // renamed whenever the rules change so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
+  var MOST_READ = { text: 'Most Read', count: 3,
+    url: 'https://russhughes77.github.io/pe-site-scripts/most-read.json' };
 
   // In priority order: the first label that matches wins.
   // names: categories or tags looked up in the main blog.
@@ -5541,7 +5549,7 @@ try {
   function saved() {
     try {
       var o = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (o && o.t && Date.now() - o.t < KEEP_MS && o.m) return o.m;
+      if (o && o.t && Date.now() - o.t < KEEP_MS && o.m) return o;
     } catch (e) {}
     return null;
   }
@@ -5621,8 +5629,23 @@ try {
     });
   }
 
-  // Builds { "/article-path": "Free", ... } with the highest-priority label for each article
+  // Yesterday's pageviews by page, { "/article-path": 1234, ... }; {} when unavailable.
+  // The date in the address changes daily so browsers never hold an old copy past the morning.
+  function fetchReads() {
+    var d = new Date().toISOString().slice(0, 10);
+    return fetch(MOST_READ.url + '?d=' + d, { mode: 'cors', credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .catch(function () { return {}; })
+      .then(function (j) {
+        var out = {};
+        (j.pages || []).forEach(function (x) { if (x && x.p && x.v > 0) out[path(x.p).toLowerCase()] = x.v; });
+        return out;
+      });
+  }
+
+  // Builds { m: { "/article-path": "Free", ... }, r: { "/article-path": views } }
   function fetchMap() {
+    var reads = fetchReads();
     return Promise.all(LABELS.map(function (L) {
       var qs = [];
       L.names.forEach(function (n) {
@@ -5641,9 +5664,29 @@ try {
       for (var i = LABELS.length - 1; i >= 0; i--) {
         perLabel[i].forEach(function (p) { if (p) map[p] = LABELS[i].text; });
       }
-      try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), m: map })); } catch (e) {}
-      return map;
+      return reads.then(function (r) {
+        var data = { t: Date.now(), m: map, r: r };
+        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+        return data;
+      });
     });
+  }
+
+  // The homepage cards with the most reads yesterday: { "/article-path": true }
+  function topRead(reads) {
+    var seen = {}, ranked = [];
+    lists().forEach(function (blk) {
+      blk.querySelectorAll('.summary-item .summary-title a, .summary-item a.summary-title-link').forEach(function (a) {
+        var p = path(a.getAttribute('href')), v = reads[p.toLowerCase()];
+        if (!p || seen[p] || !v) return;
+        seen[p] = 1;
+        ranked.push({ p: p, v: v });
+      });
+    });
+    ranked.sort(function (x, y) { return y.v - x.v; });
+    var top = {};
+    ranked.slice(0, MOST_READ.count).forEach(function (x) { top[x.p] = true; });
+    return top;
   }
 
   // The homepage article lists to label: the first summary block (the main grid), plus
@@ -5659,8 +5702,9 @@ try {
     return out;
   }
 
-  function label(map) {
-    if (!map) return;
+  function label(data) {
+    if (!data || !data.m) return;
+    var map = data.m, top = topRead(data.r || {});
     if (!document.getElementById('pe-news-badge-css')) {
       var st = document.createElement('style');
       st.id = 'pe-news-badge-css';
@@ -5672,11 +5716,12 @@ try {
         var a = it.querySelector('.summary-title a, a.summary-title-link');
         var pic = it.querySelector('.summary-thumbnail-container');
         if (!a || !pic || pic.querySelector('.pe-news-badge')) return;
-        var text = map[path(a.getAttribute('href'))];
+        var p = path(a.getAttribute('href'));
+        var text = top[p] ? MOST_READ.text : map[p];
         if (!text) return;
         pic.classList.add('pe-news-card');
         var b = document.createElement('span');
-        b.className = 'pe-news-badge pe-badge-' + text.toLowerCase();
+        b.className = 'pe-news-badge pe-badge-' + text.toLowerCase().replace(/\s+/g, '-');
         b.textContent = text;
         pic.appendChild(b);
       });

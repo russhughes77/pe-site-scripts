@@ -34,3 +34,10 @@ The history, with the commit for each version, is in the comment above `PE_VERSI
   and add the commit to the history once pushed.
 - To roll back, copy pe-site.js and pe-site.min.js from that version's commit back onto main and
   push. Everyone has the old version within about 10 minutes.
+
+## Most read (v2.8)
+`most-read.json` holds yesterday's pageviews by page from Plausible. The "Most read" workflow
+(.github/workflows/most-read.yml, scripts/most_read.py) rewrites it at 05:07 UTC each day. It needs
+the repository secret PLAUSIBLE_API_KEY (Plausible Stats API key); set the repository variable
+PLAUSIBLE_SITE_ID only if the site isn't registered as production-expert.com. Without the key the
+file stays empty and no MOST READ labels appear.
