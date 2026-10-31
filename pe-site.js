@@ -1107,8 +1107,10 @@ try {
    *   2.2  30 Oct 2026  657cc25  Orange NEWS label on news articles in the homepage's main article grid;
    *                              author photo in a circle under "Posted by" (tablet and desktop)
    *   2.3  30 Oct 2026  3267c59  NEWS label also on the news section further down the homepage
-   *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z */
-  var PE_VERSION = '2.4';
+   *   2.4  30 Oct 2026  09653dc  Author list in Edit Post, Options, sorted A to Z
+   *   2.5  31 Oct 2026  (push)   FREE and DEAL labels on homepage cards alongside NEWS; FREE beats DEAL
+   *                              beats NEWS when an article fits more than one */
+  var PE_VERSION = '2.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -5481,24 +5483,35 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage banners in the article grid', e); }
 
 /* ================================================================
- * Production Expert: NEWS label on homepage cards (v2.2, 30 Oct 2026)
- * Puts a small orange NEWS label (Production Expert orange, #E87722) in the
- * top-left corner of the picture on every news article in the homepage's main
- * article grid. Homepage only.
- * The cards themselves don't say which articles are news, so the list comes
- * from the site's own feed: anything in the News category or tagged News (the
- * team uses both). The feed is large, so it's fetched after the page has
- * loaded and kept in this browser for an hour.
- * News articles in the other lists further down the homepage (the "Latest Music
- * And Audio Production News" section) are labelled too (v2.3); set SECTION_TOO to
- * false to label the main grid only.
+ * Production Expert: NEWS, FREE and DEAL labels on homepage cards
+ * (NEWS v2.2/v2.3, 30 Oct 2026; FREE and DEAL added v2.5, 31 Oct 2026)
+ * Puts a small orange label (Production Expert orange, #E87722) in the top-left
+ * corner of the picture on homepage cards. Homepage only.
+ *   FREE  anything in a Free / Free Plugins / Freebies category or tag
+ *   DEAL  anything in a Deal / Deals / Partner Deals category or tag
+ *   NEWS  anything in the News category or tagged News
+ * One label per card. When an article fits more than one, FREE wins, then DEAL,
+ * then NEWS, so a free plugin filed under News reads FREE.
+ * The cards themselves don't say what an article is, so the lists come from the
+ * site's own feeds. They are fetched after the page has loaded and kept in this
+ * browser for an hour. A category or tag name that doesn't exist on the site
+ * simply returns nothing, so the extra spellings cost nothing.
+ * All homepage article lists are labelled, including the "Latest Music And Audio
+ * Production News" section (v2.3); set SECTION_TOO to false for the main grid only.
  * ================================================================ */
 try {
 (function () {
-  var SECTION_TOO = true;    // label the news section further down too (on since v2.3)
-  var KEY = 'pe-news-urls';
-  var KEEP_MS = 60 * 60 * 1000;      // reuse the list for an hour
-  var FEEDS = ['/production-expert-1?category=News&format=json', '/production-expert-1?tag=News&format=json'];
+  var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
+  var KEY = 'pe-card-labels';
+  var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
+  var BASE = '/production-expert-1?format=json&';
+
+  // In priority order: the first label that matches wins
+  var LABELS = [
+    { text: 'Free', names: ['Free', 'Free Plugins', 'Free Plugin', 'Freebies'] },
+    { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'] },
+    { text: 'News', names: ['News'] }
+  ];
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
   try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
@@ -5517,23 +5530,39 @@ try {
   function saved() {
     try {
       var o = JSON.parse(localStorage.getItem(KEY) || 'null');
-      if (o && o.t && Date.now() - o.t < KEEP_MS && o.u) return o.u;
+      if (o && o.t && Date.now() - o.t < KEEP_MS && o.m) return o.m;
     } catch (e) {}
     return null;
   }
 
-  function fetchList() {
-    return Promise.all(FEEDS.map(function (f) {
-      return fetch(f, { credentials: 'same-origin' })
-        .then(function (r) { return r.ok ? r.json() : { items: [] }; })
-        .catch(function () { return { items: [] }; });
-    })).then(function (all) {
-      var urls = [];
-      all.forEach(function (j) {
-        (j.items || []).forEach(function (i) { if (i.fullUrl) urls.push(path(i.fullUrl)); });
+  function feed(q) {
+    return fetch(BASE + q, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .catch(function () { return { items: [] }; })
+      .then(function (j) {
+        return (j.items || []).map(function (i) { return i.fullUrl ? path(i.fullUrl) : ''; });
       });
-      try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), u: urls })); } catch (e) {}
-      return urls;
+  }
+
+  // Builds { "/article-path": "Free", ... } with the highest-priority label for each article
+  function fetchMap() {
+    return Promise.all(LABELS.map(function (L) {
+      var qs = [];
+      L.names.forEach(function (n) {
+        var v = encodeURIComponent(n);
+        qs.push('category=' + v, 'tag=' + v);
+      });
+      return Promise.all(qs.map(feed)).then(function (lists) {
+        return [].concat.apply([], lists);
+      });
+    })).then(function (perLabel) {
+      var map = {};
+      // Walk from lowest to highest priority so the higher label overwrites
+      for (var i = LABELS.length - 1; i >= 0; i--) {
+        perLabel[i].forEach(function (p) { if (p) map[p] = LABELS[i].text; });
+      }
+      try { localStorage.setItem(KEY, JSON.stringify({ t: Date.now(), m: map })); } catch (e) {}
+      return map;
     });
   }
 
@@ -5550,10 +5579,8 @@ try {
     return out;
   }
 
-  function label(urls) {
-    if (!urls || !urls.length) return;
-    var news = {};
-    urls.forEach(function (u) { news[u] = 1; });
+  function label(map) {
+    if (!map) return;
     if (!document.getElementById('pe-news-badge-css')) {
       var st = document.createElement('style');
       st.id = 'pe-news-badge-css';
@@ -5565,27 +5592,29 @@ try {
         var a = it.querySelector('.summary-title a, a.summary-title-link');
         var pic = it.querySelector('.summary-thumbnail-container');
         if (!a || !pic || pic.querySelector('.pe-news-badge')) return;
-        if (!news[path(a.getAttribute('href'))]) return;
+        var text = map[path(a.getAttribute('href'))];
+        if (!text) return;
         pic.classList.add('pe-news-card');
         var b = document.createElement('span');
-        b.className = 'pe-news-badge';
-        b.textContent = 'News';
+        b.className = 'pe-news-badge pe-badge-' + text.toLowerCase();
+        b.textContent = text;
         pic.appendChild(b);
       });
     });
   }
 
   function start() {
+    try { localStorage.removeItem('pe-news-urls'); } catch (e) {}   // old v2.2 store, no longer used
     var s = saved();
     if (s) { label(s); return; }
-    fetchList().then(label);
+    fetchMap().then(label);
   }
 
-  // Wait for the page to finish loading so the feed never competes with it
+  // Wait for the page to finish loading so the feeds never compete with it
   if (document.readyState === 'complete') setTimeout(start, 300);
   else addEventListener('load', function () { setTimeout(start, 300); });
 })();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS label on homepage cards', e); }
+} catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS, FREE and DEAL labels on homepage cards', e); }
 
 /* ================================================================
  * Production Expert: article title on the hero picture (v2.1, 30 Oct 2026)
