@@ -1114,7 +1114,7 @@ try {
    *                              main blog, so deals never got the label. Label cache renamed to refresh
    *   2.7  31 Oct 2026  a069b04 DEAL label dropped from the day after a deal ends (ends- tag, #expires or
    *                              #offer ends line, or "Ends ..." in the title)
-   *   2.8  31 Oct 2026  (pending) MOST READ label on the three homepage stories with the most pageviews
+   *   2.8  31 Oct 2026  2131b9d MOST READ label on the three homepage stories with the most pageviews
    *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS */
   var PE_VERSION = '2.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
