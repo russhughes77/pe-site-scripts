@@ -1115,8 +1115,10 @@ try {
    *   2.7  31 Oct 2026  a069b04 DEAL label dropped from the day after a deal ends (ends- tag, #expires or
    *                              #offer ends line, or "Ends ..." in the title)
    *   2.8  31 Oct 2026  2131b9d MOST READ label on the three homepage stories with the most pageviews
-   *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS */
-  var PE_VERSION = '2.8';
+   *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS
+   *   2.9  31 Oct 2026  (this)  Notes in the pre-publish checks fold away: click the NOTES heading.
+   *                              Remembered per browser; open flags stay on show when shut */
+  var PE_VERSION = '2.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1385,6 +1387,10 @@ try {
    * the sheet says it can handle flags ("flags: 1" in its answer). */
   var notes = null;                             // this post's notes from the sheet, oldest first (null until the sheet answers)
   var notesBox = null, notesList = null;        // built once; only the list part is redrawn
+  var notesHead = null, notesForm = null;       // the clickable Notes heading, and the text box with its buttons
+  // Notes can be folded away to save room. The choice is remembered per browser ('1' = shut).
+  // Open flags for the author stay on show even when shut, so a content issue is never hidden.
+  var notesShut = ls('pe-notes-shut') === '1';
   var flagBtn = null;                           // the Flag for author button, shown once the sheet can take flags
   var flagsOn = false;                          // the sheet answered with flags: 1
   var NOTE_MAX = 800;                           // characters per note, so a note always fits in one request
@@ -1618,7 +1624,10 @@ try {
     if (flagBtn) flagBtn.style.display = flagsOn ? '' : 'none';
     notesList.innerHTML = '';
     var openFlags = notes.filter(function (n) { return n.flag === 'open'; });
-    openFlags.concat(notes.filter(function (n) { return n.flag !== 'open'; })).forEach(function (n) {
+    drawNotesHead(openFlags.length);
+    notesForm.style.display = notesShut ? 'none' : '';   // shut: hide the text box and buttons
+    // Shut shows only open flags; open shows everything, flags first
+    (notesShut ? openFlags : openFlags.concat(notes.filter(function (n) { return n.flag !== 'open'; }))).forEach(function (n) {
       if (n.flag) { notesList.appendChild(flagCard(n)); return; }
       var card = el('div', 'margin:0 0 6px;padding:8px 10px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;font-size:12.5px;line-height:1.45;');
       var top = el('div', 'display:flex;align-items:center;gap:6px;margin-bottom:2px;font-size:11.5px;color:#80868d;');
@@ -1642,12 +1651,40 @@ try {
       (unread ? ', not read yet' : ', read by the author') + '. See Notes' };
   }
 
+  // The Notes heading doubles as the fold button: NOTES · 3 ▾ when open, ▸ when shut.
+  // The count is every note on the post; open flags are named in red so they stand out when shut.
+  function drawNotesHead(flagCount) {
+    if (!notesHead) return;
+    var total = (notes || []).length;
+    notesHead.innerHTML = '';
+    notesHead.appendChild(el('span', 'width:10px;font-size:10px;color:#9aa0a6;', notesShut ? '▸' : '▾'));
+    notesHead.appendChild(el('span', '', 'Notes' + (total ? ' · ' + total : '')));
+    if (flagCount) notesHead.appendChild(el('span', 'color:' + C.red + ';', '⚑ ' + flagCount + (flagCount === 1 ? ' flag' : ' flags')));
+    notesHead.title = notesShut ? 'Show notes' : 'Hide notes';
+    notesHead.setAttribute('aria-expanded', notesShut ? 'false' : 'true');
+  }
+
+  // Opens or shuts the notes, remembers the choice in this browser, and redraws.
+  // Left alone while a note is being edited, so a half-finished edit isn't hidden mid-flow.
+  function toggleNotes() {
+    if (editingNote) return;
+    notesShut = !notesShut;
+    ls('pe-notes-shut', notesShut ? '1' : '0');
+    renderNotes();
+  }
+
   // Builds the box once: heading, the notes, and a text box with Add note and Flag for author underneath
   function buildNotes() {
     notesBox = el('div', 'display:none;padding:2px 16px 14px;border-top:1px solid #eceef1;');
-    notesBox.appendChild(sectionLabel('Notes'));
+    // Clickable heading, styled to match the other section labels in the panel
+    notesHead = el('button', 'display:flex;align-items:center;gap:6px;width:100%;margin:12px 0 4px;padding:0;border:0;background:none;' +
+      'font:700 10.5px/1.4 ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;cursor:pointer;text-align:left;');
+    notesHead.type = 'button';
+    notesHead.onclick = toggleNotes;
+    notesBox.appendChild(notesHead);
     notesList = el('div');
     notesBox.appendChild(notesList);
+    notesForm = el('div');                        // holds the text box, buttons and message so they fold away together
     var field = el('textarea', 'display:block;box-sizing:border-box;width:100%;min-height:54px;padding:7px 9px;border:1px solid #d5d9de;border-radius:6px;' +
       'resize:vertical;background:#fff;font:13px/1.45 ' + F + ';color:#222;');
     field.placeholder = 'Anything the team should know about this post';
@@ -1702,9 +1739,10 @@ try {
     var btns = el('div', 'display:flex;gap:6px;flex:0 0 auto;');
     btns.appendChild(flagBtn);
     btns.appendChild(add);
-    notesBox.appendChild(field);
-    notesBox.appendChild(row);
-    notesBox.appendChild(msg);
+    notesForm.appendChild(field);
+    notesForm.appendChild(row);
+    notesForm.appendChild(msg);
+    notesBox.appendChild(notesForm);
     row.appendChild(el('span', 'flex:1;'));
     row.appendChild(btns);
     msg.style.display = 'block';
