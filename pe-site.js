@@ -1118,7 +1118,7 @@ try {
    *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS
    *   2.9  31 Oct 2026  db4b6d9 Notes in the pre-publish checks fold away: click the NOTES heading.
    *                              Remembered per browser; open flags stay on show when shut
-   *   3.0  31 Oct 2026  (this)  Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
+   *   3.0  31 Oct 2026  042ec40 Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
    *                              a chip per tab, Bring to front when open); version in the panel title */
   var PE_VERSION = '3.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
