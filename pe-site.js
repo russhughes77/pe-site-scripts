@@ -1117,8 +1117,10 @@ try {
    *   2.8  31 Oct 2026  2131b9d MOST READ label on the three homepage stories with the most pageviews
    *                              yesterday (Plausible, via most-read.json); beats FREE, DEAL and NEWS
    *   2.9  31 Oct 2026  db4b6d9 Notes in the pre-publish checks fold away: click the NOTES heading.
-   *                              Remembered per browser; open flags stay on show when shut */
-  var PE_VERSION = '2.9';
+   *                              Remembered per browser; open flags stay on show when shut
+   *   3.0  31 Oct 2026  (this)  Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
+   *                              a chip per tab, Bring to front when open); version in the panel title */
+  var PE_VERSION = '3.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1930,13 +1932,7 @@ try {
     drawStale(c);
     drawProblems();
     drawChecks();
-    if (stage === 'Draft' || stage === 'In review' || stage === 'Checks in progress') {
-      var hw = el('button', 'display:block;width:100%;margin-top:12px;padding:9px;border:1px solid #dde1e6;border-radius:6px;background:#f7f9fb;font:600 13px ' + F + ';color:#222;cursor:pointer;', '✨ Ask Joe');
-      hw.title = 'Joe v' + PE_VERSION + ' (formerly Help me write): headlines, meta descriptions, URLs, alt text, links and images';
-      hw.type = 'button';
-      hw.onclick = function () { openDrawer(); };
-      list.appendChild(hw);
-    }
+    drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
     if (statusErr) list.appendChild(el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eceef1;color:#888;font:11px/1.5 ' + F + ';',
       'Couldn\'t check the post with Squarespace: ' + statusErr + '. Trying again in 30 seconds.'));
@@ -2395,6 +2391,7 @@ try {
     drawerShut = v;
     ls('pe-hmw-shut', v ? '1' : '');
     placeDrawer();
+    drawJoeBar();
   }
 
   // Tells the shared drag code how a drag moves this window
@@ -2425,7 +2422,7 @@ try {
     x.className = 'pe-x';
     x.setAttribute('aria-label', 'Close');
     x.title = 'Close';
-    x.onclick = function () { drawer.style.display = 'none'; };
+    x.onclick = function () { drawer.style.display = 'none'; drawJoeBar(); };
     drawerHead.appendChild(x);
     movable(drawerHead,
       function () { setDrawerShut(!drawerShut); },                     // click: shrink or open
@@ -2466,6 +2463,68 @@ try {
     if (tab && drawerShut) setDrawerShut(false);
     placeDrawer();
     drawDrawer();
+    drawJoeBar();
+  }
+
+  /* ---------- Joe bar (v3.0) ----------
+   * A bar pinned to the foot of the pre-publish checks panel, on every stage, so Joe can always
+   * be found again after it's closed. It stays put while the checks above it scroll.
+   *   - Closed: the Joe wordmark, an Open Joe button, and a chip per tab that opens Joe on that tab.
+   *   - Open (even if shrunk or dragged out of the way): the bar turns blue and says "is open",
+   *     with Bring to front, which opens it full size. The chip for the tab Joe is on is highlighted.
+   * Replaces the old Ask Joe button, which only showed on drafts and posts in review and so
+   * vanished once all the checks were ticked. */
+  var joeBar = null, joeBarRow = null, joeChips = null;
+
+  // Short chip labels, so all six fit on two rows at most in a 300px panel
+  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image' };
+
+  // Joe counts as open when its window is on the page and not closed with x
+  function joeIsOpen() {
+    return !!(drawer && drawer.isConnected && drawer.style.display !== 'none');
+  }
+
+  // Built once by build(); position:sticky keeps it at the foot of the panel's scrolling area
+  function buildJoeBar() {
+    joeBar = el('div', 'position:sticky;bottom:0;z-index:1;padding:9px 16px 10px;border-top:1px solid #eceef1;background:#fafbfc;');
+    joeBarRow = el('div', 'display:flex;align-items:center;gap:8px;');
+    joeChips = el('div', 'display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;');
+    joeBar.appendChild(joeBarRow);
+    joeBar.appendChild(joeChips);
+    return joeBar;
+  }
+
+  // Redraws the bar to match Joe's state: closed, open, or open but shrunk
+  function drawJoeBar() {
+    if (!joeBar) return;
+    var open = joeIsOpen();
+    joeBar.style.background = open ? '#e8f1f9' : '#fafbfc';
+    joeBarRow.innerHTML = '';
+    // Same microphone glyph and JOE capitals as Joe's own title bar
+    var mark = el('span', 'display:flex;align-items:center;gap:6px;color:' + C.blue + ';');
+    mark.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex:0 0 auto;display:block">' +
+      '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/><path d="M12 17v4.5"/><path d="M8.5 21.5h7"/></svg>' +
+      '<span style="font-size:13px;font-weight:800;letter-spacing:.14em;line-height:1;">JOE</span>';
+    joeBarRow.appendChild(mark);
+    joeBarRow.appendChild(el('span', 'flex:1;font-size:12px;color:' + C.blue + ';', open ? (drawerShut ? 'is open, shrunk' : 'is open') : ''));
+    var b = el('button', 'flex:0 0 auto;padding:4px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + (open ? '#fff' : C.blue) +
+      ';font:700 12px/1.6 ' + F + ';color:' + (open ? C.blue : '#fff') + ';cursor:pointer;', open ? 'Bring to front' : 'Open Joe');
+    b.type = 'button';
+    b.title = 'Joe v' + PE_VERSION + ' (formerly Help me write): headlines, meta descriptions, URLs, alt text, links and images';
+    // Bring to front opens it full size, since a shrunk Joe is the usual reason it's hard to see
+    b.onclick = function () { if (open && drawerShut) setDrawerShut(false); openDrawer(); };
+    joeBarRow.appendChild(b);
+    // One chip per tab this person can use (Links and Image follow the same settings as Joe's tabs)
+    joeChips.innerHTML = '';
+    drawerTabs().forEach(function (t) {
+      var on = open && drawerTab === t[0];
+      var c = el('button', 'padding:2px 9px;border:1px solid ' + (on ? C.blue : '#d5d9de') + ';border-radius:999px;background:' + (on ? '#fff' : 'transparent') +
+        ';font:600 11.5px/1.6 ' + F + ';color:' + (on ? C.blue : '#555') + ';cursor:pointer;white-space:nowrap;', JOE_CHIP[t[0]] || t[1]);
+      c.type = 'button';
+      c.title = 'Open Joe on ' + t[1];
+      c.onclick = function () { openDrawer(t[0]); };
+      joeChips.appendChild(c);
+    });
   }
 
   function articleText() {
@@ -2792,7 +2851,7 @@ try {
       var b = el('button', 'padding:5px 11px;border:0;border-radius:999px;background:' + (on ? '#e3eef8' : 'transparent') + ';color:' + (on ? C.blue : '#5a6068') +
         ';font:' + (on ? 700 : 600) + ' 12.5px ' + F + ';cursor:pointer;', t[1]);
       b.type = 'button';
-      b.onclick = function () { drawerTab = t[0]; drawDrawer(); };
+      b.onclick = function () { drawerTab = t[0]; drawDrawer(); drawJoeBar(); };
       tabs.appendChild(b);
     });
     drawerInner.appendChild(tabs);
@@ -4194,6 +4253,11 @@ try {
     head.title = 'Click to shrink. Drag to move. Double-click to put it back in the corner.';
     // Title in small capitals with wide spacing, matching Squarespace's own window headers (EDIT POST)
     head.appendChild(el('span', 'font-size:13px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:inherit;'));
+    // Version of the site scripts, beside the title, so anyone can see which copy they're running
+    // without opening Joe. draw() only touches the first and last spans, so this one is left alone.
+    var ver = el('span', 'flex:1;font-size:11px;font-weight:600;letter-spacing:0;color:#9aa0a6;', 'v' + PE_VERSION);
+    ver.title = 'Version of the site scripts this browser is running';
+    head.appendChild(ver);
     head.appendChild(el('span', 'flex:0 0 auto;font-size:12px;font-weight:600;font-variant-numeric:tabular-nums;')); // the 2/4 count
     head.style.cursor = 'move';
     head.style.touchAction = 'none';
@@ -4203,6 +4267,7 @@ try {
     panel.appendChild(embBox);
     panel.appendChild(list);
     panel.appendChild(buildNotes()); // under the checks, outside the part draw() rebuilds
+    panel.appendChild(buildJoeBar()); // pinned to the foot of the panel, on every stage
 
     pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
       ';border-radius:20px;background:#fff;box-shadow:0 6px 18px rgba(17,24,39,.16);font:700 13px ' + F + ';font-variant-numeric:tabular-nums;cursor:pointer;');
