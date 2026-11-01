@@ -1123,8 +1123,11 @@ try {
    *   3.1   1 Nov 2026  c7d0dc3 Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
    *                              Ahead of plan warning, Too soon warning under 5 minutes (works now)
    *   3.2   1 Nov 2026  7fd392c Sends the author with planned date requests; unconfirmed calendar
-   *                              matches labelled "Matched to Mel's calendar by title" */
-  var PE_VERSION = '3.2';
+   *                              matches labelled "Matched to Mel's calendar by title"
+   *   3.3   1 Nov 2026  (this)  Planned date box follows the stage: "Published …" with on plan / ahead /
+   *                              later on live posts (no buttons), "Scheduled …" on scheduled posts;
+   *                              "+ Add an embargo" hidden on live posts */
+  var PE_VERSION = '3.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1356,6 +1359,9 @@ try {
     }
 
     if (!embargo.at) {
+      // A live post can't be put under embargo any more, so the link only shows before it goes out
+      var wfE = +postData.workflowState || 0, tE = +postData.publishOn || 0;
+      if ((wfE === 1 || wfE === 2) && tE && tE <= Date.now()) return;
       embBox.appendChild(btn('+ Add an embargo', 'margin:10px 0 0;padding:0;border:0;background:none;font:600 12px ' + F + ';color:' + C.blue + ';cursor:pointer;',
         function () { embEditing = true; renderEmbargo(); }));
       return;
@@ -1502,7 +1508,11 @@ try {
       return;
     }
 
+    // Where the post is up to: live posts report when they went out, scheduled posts when they will
+    var wfP = +postData.workflowState || 0, tP = +postData.publishOn || 0;
+    var isLive = (wfP === 1 || wfP === 2) && tP && tP <= Date.now();
     if (!day) {
+      if (isLive) return;                        // live with no plan: nothing useful to add now
       planBox.appendChild(btn('+ Add a planned date', 'margin:10px 0 0;padding:0;border:0;background:none;font:600 12px ' + F + ';color:' + C.blue + ';cursor:pointer;',
         function () { planEditing = true; renderPlan(); }));
       return;
@@ -1510,13 +1520,28 @@ try {
     var chk = planCheck(), bad = chk && !chk.ok;
     var line = el('div', 'margin:10px 0 0;padding:9px 11px;border-radius:6px;font-size:12.5px;line-height:1.45;' +
       (bad ? 'background:#fff4e0;color:#5a3a00;border:1px solid #f0d49a;' : 'background:#f6f7f9;color:#3a4048;border:1px solid #eceef1;'));
-    line.appendChild(el('div', 'font-weight:700;', (bad ? '⚠ ' : '📅 ') + 'Planned ' + dayText(day)));
+    // The headline changes with the stage:
+    //   live:       "Published Sun 1 Nov, 09:00", then "On plan", "planned Thu 5 Nov" or "a day late"
+    //   scheduled:  "Scheduled Thu 5 Nov, 09:00 · on plan"
+    //   otherwise:  "Planned Thu 5 Nov"
+    var actualDay = isLive ? londonDay(tP) : scheduledFor ? londonDay(scheduledFor) : '';
+    var headline = isLive ? 'Published ' + inZone(tP, 'Europe/London')
+      : scheduledFor ? 'Scheduled ' + inZone(scheduledFor, 'Europe/London') : 'Planned ' + dayText(day);
+    var icon = bad ? '⚠ ' : isLive ? '✓ ' : '📅 ';
+    line.appendChild(el('div', 'font-weight:700;', icon + headline));
+    if (actualDay) {
+      var late = actualDay > day;
+      line.appendChild(el('div', 'font-weight:600;color:' + (bad ? 'inherit' : late ? '#5a3a00' : '#2e6b10') + ';',
+        actualDay === day ? 'On plan' : (late ? 'Later than planned, ' : 'Ahead of plan, ') + 'planned ' + dayText(day)));
+    }
     var sub = plan.over
       ? (plan.cal ? 'Moved from ' + dayText(plan.cal) : 'Not in Mel\'s calendar') + (plan.by ? ' by ' + plan.by : '')
       // guess: not linked on the Content Manager yet, matched by title (and author)
       : (plan.guess ? 'Matched to Mel\'s calendar by title, not confirmed yet' : 'From Mel\'s calendar') + (plan.lane ? ', ' + plan.lane + ' lane' : '');
     line.appendChild(el('div', 'opacity:.85;', sub));
-    if (bad) line.appendChild(el('div', 'margin-top:3px;font-weight:600;', chk.live ? 'Went live ahead of plan.' : 'Scheduled ahead of plan. Change the schedule, or move the planned date.'));
+    if (bad && !chk.live) line.appendChild(el('div', 'margin-top:3px;font-weight:600;', 'Change the schedule, or move the planned date.'));
+    // Once a post is live the date can't be changed by the plan, so the buttons go
+    if (isLive) { planBox.appendChild(line); return; }
     var foot = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
     foot.appendChild(btn('Change date', small, function () { planEditing = true; renderPlan(); }));
     if (plan.over && plan.cal) foot.appendChild(btn('Back to calendar date', small, function () { planCall({ day: '', by: who() }).catch(function () {}); }));
@@ -2464,6 +2489,7 @@ try {
     return runAuto().then(function (res) {
       auto = res;
       if (!planEditing) renderPlan(); // the planned date line turns amber or back as the schedule changes
+    if (!embEditing) renderEmbargo(); // and the embargo link goes once the post is live
       if (loaded) draw();
     });
   }
