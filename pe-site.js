@@ -1127,7 +1127,7 @@ try {
    *   3.3   1 Nov 2026  e6ae9d1 Planned date box follows the stage: "Published …" with on plan / ahead /
    *                              later on live posts (no buttons), "Scheduled …" on scheduled posts;
    *                              "+ Add an embargo" hidden on live posts
-   *   3.4   1 Nov 2026  (this)  Stale draft warning: a draft not edited for 4 weeks asks whether it can
+   *   3.4   1 Nov 2026  4311424 Stale draft warning: a draft not edited for 4 weeks asks whether it can
    *                              be deleted */
   var PE_VERSION = '3.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
