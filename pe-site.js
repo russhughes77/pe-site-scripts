@@ -1139,8 +1139,11 @@ try {
    *   3.8   1 Nov 2026  31427db Overview counts embedded video and audio (Squarespace video and audio
    *                              blocks, YouTube, Vimeo, SoundCloud and other players) as items Claude
    *                              judges; our own clips count as ours and add up to 15 to the score.
-   *                              Needs the 1 Nov late Code.gs */
-  var PE_VERSION = '3.8';
+   *                              Needs the 1 Nov late Code.gs
+   *   3.9   1 Nov 2026  (this)  Overview judges pictures in the body too (not the hero or ad banners):
+   *                              our own screenshots and graphics count as ours and add 5. Needs the
+   *                              1 Nov screenshots Code.gs */
+  var PE_VERSION = '3.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2793,6 +2796,13 @@ try {
   function ovText(e) {
     var kind = e.getAttribute('data-pe-ov');
     if (!kind) return squash(e.textContent);
+    if (kind === 'Image') { // v3.9: alt text, caption and file name, which usually says whether it's a screenshot
+      var img = e.querySelector('img'), alt = squash(img && img.getAttribute('alt'));
+      var file = '';
+      try { file = decodeURIComponent(imgSrc(img).split('/').pop()).replace(/\+/g, ' '); } catch (x) {}
+      var cap = squash((e.querySelector('figcaption, .image-caption') || {}).textContent || '').slice(0, 160);
+      return '[Image' + (alt ? ': ' + alt : '') + (cap && cap !== alt ? '. Caption: ' + cap : '') + (file ? '. File: ' + file.slice(0, 80) : '') + ']';
+    }
     var info = {};
     try { info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {}; } catch (x) {}
     var f = e.querySelector('iframe, video, audio') || e;
@@ -2810,9 +2820,17 @@ try {
     var body = articleBody();
     if (!body) return [];
     var out = [], stop = false;
-    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, iframe, video, audio'), function (e) {
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, .sqs-block-image, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, iframe, video, audio'), function (e) {
       if (stop) return;
       if (e.closest('.pe-ui, .pe-signup, .pe-author-bio, .pe-checklist, .pe-drawer')) return;
+      // Pictures in the body (v3.9). The hero (any picture before the first paragraph) and ad banners don't count
+      if (e.matches('.sqs-block-image')) {
+        var pic = e.querySelector('img');
+        if (!pic || !out.length || e.querySelector('.antur-ad, a[href*="adserver"]') || e.closest('.antur-ad')) return;
+        e.setAttribute('data-pe-ov', 'Image');
+        out.push(e);
+        return;
+      }
       if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code')) {
         if (e.parentElement && e.parentElement.closest('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, [data-pe-ov]')) return; // counted with its block
         var kind = ovMedia(e);
@@ -2854,8 +2872,10 @@ try {
       action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
       meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
       paras: paras.length,
-      media: paras.filter(function (e) { return e.getAttribute('data-pe-ov'); }).length,
-      mediaItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') ? i + 1 : 0; }).filter(Boolean).join(','),
+      media: paras.filter(function (e) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || ''); }).length,
+      mediaItems: paras.map(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') ? i + 1 : 0; }).filter(Boolean).join(','),
+      images: paras.filter(function (e) { return e.getAttribute('data-pe-ov') === 'Image'; }).length,
+      imageItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' ? i + 1 : 0; }).filter(Boolean).join(','),
       text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
     };
@@ -2867,7 +2887,9 @@ try {
           ovRes = d.overview;
           ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
           ovRes.media = payload.media;
-          ovRes.mediaOurs = paras.filter(function (e, i) { return e.getAttribute('data-pe-ov') && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
+          ovRes.images = payload.images;
+          ovRes.mediaOurs = paras.filter(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
+          ovRes.imagesOurs = paras.filter(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
           ls('pe-ov-' + post, JSON.stringify(ovRes));
         } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
         if (ovMarked) ovMark(true);
@@ -2985,11 +3007,13 @@ try {
 
     body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
     body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
-      (r.ours || []).length + ' of ' + r.total + (r.media ? ' paragraphs and players' : ' paragraphs') +
-      ' carry testing, numbers, named people, opinion or our own audio and video. The rest restate what\'s already public.'));
+      (r.ours || []).length + ' of ' + r.total + ' items carry testing, numbers, named people, opinion, or our own screenshots, audio and video. The rest restate what\'s already public.'));
     if (r.media) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
       r.media + (r.media === 1 ? ' player' : ' players') + ' in the post' + (r.mediaOurs != null ? ', ' + r.mediaOurs + ' counted as ours' : '') + '. A summary can\'t play them' +
       (r.mediaBonus ? ', so they add ' + r.mediaBonus + ' to the score.' : '.')));
+    if (r.images) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
+      r.images + (r.images === 1 ? ' picture' : ' pictures') + ' in the body, ' + (r.imagesOurs || 0) + ' counted as our own screenshots or graphics' +
+      (r.imageBonus ? ', adding ' + r.imageBonus + ' to the score.' : '.')));
     var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show in the post', function () { ovMark(!ovMarked); drawDrawer(); });
     sh.style.marginTop = '7px';
     body.appendChild(sh);
