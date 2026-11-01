@@ -1134,7 +1134,7 @@ try {
    *                              (needs the Overview Code.gs). Advisory only, never a warning
    *   3.6   1 Nov 2026  8df5a5e Overview prompts shown on partner posts too, in line with editorial
    *                              policy: we add our own view to partner content
-   *   3.7   1 Nov 2026  (this)  Overview tab says "Nothing to add" when Joe returns no prompts (the
+   *   3.7   1 Nov 2026  8ee3e8d Overview tab says "Nothing to add" when Joe returns no prompts (the
    *                              1 Nov Code.gs gives fewer than three when the draft doesn't need them) */
   var PE_VERSION = '3.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
