@@ -1135,8 +1135,12 @@ try {
    *   3.6   1 Nov 2026  8df5a5e Overview prompts shown on partner posts too, in line with editorial
    *                              policy: we add our own view to partner content
    *   3.7   1 Nov 2026  8ee3e8d Overview tab says "Nothing to add" when Joe returns no prompts (the
-   *                              1 Nov Code.gs gives fewer than three when the draft doesn't need them) */
-  var PE_VERSION = '3.7';
+   *                              1 Nov Code.gs gives fewer than three when the draft doesn't need them)
+   *   3.8   1 Nov 2026  (this)  Overview counts embedded video and audio (Squarespace video and audio
+   *                              blocks, YouTube, Vimeo, SoundCloud and other players) as items Claude
+   *                              judges; our own clips count as ours and add up to 15 to the score.
+   *                              Needs the 1 Nov late Code.gs */
+  var PE_VERSION = '3.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2769,14 +2773,53 @@ try {
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
   var ovOpen = ls('pe-ov-open') === '1';
 
-  // The article's paragraphs and list items in reading order, stopping at the related links block
+  // Embedded video and audio a reader can watch or hear and an AI summary can't (v3.8).
+  // Squarespace video and audio blocks, embed blocks holding a known player, and bare players.
+  var OV_MEDIA = /youtube\.com|youtu\.be|vimeo\.com|wistia|soundcloud\.com|spotify\.com|bandcamp\.com|mixcloud\.com|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack|loom\.com/i;
+  function ovMedia(e) {
+    if (e.matches('.sqs-block-video')) return 'Video';
+    if (e.matches('.sqs-block-audio')) return 'Audio';
+    var players = e.matches('.sqs-block-embed, .sqs-block-code') ? e.querySelectorAll('iframe, video, audio') : [e];
+    for (var i = 0; i < players.length; i++) {
+      var f = players[i];
+      if (f.tagName === 'AUDIO') return 'Audio';
+      if (f.tagName === 'VIDEO') return 'Video';
+      var src = f.getAttribute('src') || f.getAttribute('data-src') || '';
+      if (f.tagName === 'IFRAME' && OV_MEDIA.test(src)) return /soundcloud|spotify|bandcamp|mixcloud|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack/i.test(src) ? 'Audio' : 'Video';
+    }
+    return '';
+  }
+  // How each item is described to Claude: the text of a paragraph, or a label for a player
+  function ovText(e) {
+    var kind = e.getAttribute('data-pe-ov');
+    if (!kind) return squash(e.textContent);
+    var info = {};
+    try { info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {}; } catch (x) {}
+    var f = e.querySelector('iframe, video, audio') || e;
+    var src = info.url || info.audioAssetUrl || f.getAttribute('src') || f.getAttribute('data-src') || '';
+    var host = '';
+    try { host = new URL(src, location.href).hostname.replace(/^www\./, ''); } catch (x) {}
+    var title = squash(info.title || (f.getAttribute && f.getAttribute('title')) || '');
+    if (/^(youtube|vimeo)?\s*(video\s*)?player$/i.test(title)) title = '';
+    var words = squash(info.description || e.textContent || '').slice(0, 160);
+    return '[' + kind + (title ? ': ' + title : '') + (host && !/squarespace/i.test(host) ? ', from ' + host : kind === 'Audio' ? ', uploaded to the post' : '') +
+      (words && words !== title ? '. Caption: ' + words : '') + ']';
+  }
+  // The article's paragraphs, list items and players in reading order, stopping at the related links block
   function ovParas() {
     var body = articleBody();
     if (!body) return [];
     var out = [], stop = false;
-    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote'), function (e) {
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, iframe, video, audio'), function (e) {
       if (stop) return;
       if (e.closest('.pe-ui, .pe-signup, .pe-author-bio, .pe-checklist, .pe-drawer')) return;
+      if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code')) {
+        if (e.parentElement && e.parentElement.closest('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, [data-pe-ov]')) return; // counted with its block
+        var kind = ovMedia(e);
+        if (kind) { e.setAttribute('data-pe-ov', kind); out.push(e); }
+        return;
+      }
+      if (e.closest('[data-pe-ov]')) return;
       var t = squash(e.textContent);
       if (/You Might Also Find These Articles Useful/i.test(t)) { stop = true; return; }
       if (e.tagName === 'LI' && e.querySelector('p')) return;          // its paragraphs count instead
@@ -2787,7 +2830,7 @@ try {
   }
   // A fingerprint of the headline and text, so the panel knows when the post changed after a check
   function ovSig(paras) {
-    var s = postTitle() + '|' + paras.map(function (e) { return squash(e.textContent); }).join('\n'), h = 0;
+    var s = postTitle() + '|' + paras.map(ovText).join('\n'), h = 0;
     for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
     return String(h);
   }
@@ -2811,7 +2854,9 @@ try {
       action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
       meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
       paras: paras.length,
-      text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + squash(e.textContent); }).join('\n').slice(0, 15000),
+      media: paras.filter(function (e) { return e.getAttribute('data-pe-ov'); }).length,
+      mediaItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') ? i + 1 : 0; }).filter(Boolean).join(','),
+      text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
     };
     fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
@@ -2821,6 +2866,8 @@ try {
         if (d && d.overview) {
           ovRes = d.overview;
           ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
+          ovRes.media = payload.media;
+          ovRes.mediaOurs = paras.filter(function (e, i) { return e.getAttribute('data-pe-ov') && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
           ls('pe-ov-' + post, JSON.stringify(ovRes));
         } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
         if (ovMarked) ovMark(true);
@@ -2938,7 +2985,11 @@ try {
 
     body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
     body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
-      (r.ours || []).length + ' of ' + r.total + ' paragraphs carry testing, numbers, named people or opinion. The rest restate what\'s already public.'));
+      (r.ours || []).length + ' of ' + r.total + (r.media ? ' paragraphs and players' : ' paragraphs') +
+      ' carry testing, numbers, named people, opinion or our own audio and video. The rest restate what\'s already public.'));
+    if (r.media) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
+      r.media + (r.media === 1 ? ' player' : ' players') + ' in the post' + (r.mediaOurs != null ? ', ' + r.mediaOurs + ' counted as ours' : '') + '. A summary can\'t play them' +
+      (r.mediaBonus ? ', so they add ' + r.mediaBonus + ' to the score.' : '.')));
     var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show in the post', function () { ovMark(!ovMarked); drawDrawer(); });
     sh.style.marginTop = '7px';
     body.appendChild(sh);
