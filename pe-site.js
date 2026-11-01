@@ -1128,8 +1128,11 @@ try {
    *                              later on live posts (no buttons), "Scheduled …" on scheduled posts;
    *                              "+ Add an embargo" hidden on live posts
    *   3.4   1 Nov 2026  4311424 Stale draft warning: a draft not edited for 4 weeks asks whether it can
-   *                              be deleted */
-  var PE_VERSION = '3.4';
+   *                              be deleted
+   *   3.5   1 Nov 2026  (this)  Overview score: how much a Google AI summary could give away. A line in
+   *                              the checks panel that opens to a summary, and an Overview tab in Joe
+   *                              (needs the Overview Code.gs). Advisory only, never a warning */
+  var PE_VERSION = '3.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2131,6 +2134,7 @@ try {
     drawHistory();
     drawStale(c);
     drawProblems();
+    drawOverview(); // advisory Overview score, between the warnings and the checks
     drawChecks();
     drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
@@ -2696,7 +2700,7 @@ try {
   var joeBar = null, joeBarRow = null, joeChips = null;
 
   // Short chip labels, so all six fit on two rows at most in a 300px panel
-  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image' };
+  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image', overview: 'Overview' };
 
   // Joe counts as open when its window is on the page and not closed with x
   function joeIsOpen() {
@@ -2744,6 +2748,217 @@ try {
       c.onclick = function () { openDrawer(t[0]); };
       joeChips.appendChild(c);
     });
+  }
+
+  /* ---------- Overview check (v3.5) ----------
+   * How much of this post could a Google AI summary hand a searcher without a click?
+   * Joe's server (Code.gs, task "overview") asks Claude for the searches the post is likely to
+   * rank for, whether a summary could answer each from public material, which paragraphs carry
+   * material only Production Expert has (testing, numbers, named people, opinion), three prompts
+   * for the writer and a note on the headline. The score is worked out in Code.gs so it's
+   * consistent: half from searches that need us, half from the share of paragraphs that are ours,
+   * plus 5 if one of the first three paragraphs is ours.
+   * Advisory only: never a warning, never counted, never blocks Ready to schedule.
+   * Runs once by itself when a post reaches review, otherwise on Check. Results are kept per post
+   * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours. */
+  var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
+  var ovOpen = ls('pe-ov-open') === '1';
+
+  // The article's paragraphs and list items in reading order, stopping at the related links block
+  function ovParas() {
+    var body = articleBody();
+    if (!body) return [];
+    var out = [], stop = false;
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote'), function (e) {
+      if (stop) return;
+      if (e.closest('.pe-ui, .pe-signup, .pe-author-bio, .pe-checklist, .pe-drawer')) return;
+      var t = squash(e.textContent);
+      if (/You Might Also Find These Articles Useful/i.test(t)) { stop = true; return; }
+      if (e.tagName === 'LI' && e.querySelector('p')) return;          // its paragraphs count instead
+      if (e.tagName === 'P' && e.closest('blockquote, li') && out.indexOf(e.closest('blockquote, li')) >= 0) return;
+      if (t.length >= 40) out.push(e);
+    });
+    return out;
+  }
+  // A fingerprint of the headline and text, so the panel knows when the post changed after a check
+  function ovSig(paras) {
+    var s = postTitle() + '|' + paras.map(function (e) { return squash(e.textContent); }).join('\n'), h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return String(h);
+  }
+  function ovLoad() {
+    if (ovFor === post) return;
+    ovFor = post;
+    try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
+  }
+  function ovColour(n) { return n >= 70 ? C.green : n >= 40 ? C.amber : C.red; }
+  function ovTint(n) { return n >= 70 ? ['#eef6e6', '#cfe3b9', '#27500a'] : n >= 40 ? ['#fff8ec', '#f0dcb8', '#5a3a00'] : ['#fdecea', '#f2c4c0', '#791f1f']; }
+  function ovPartner() { return !!document.querySelector('body.view-item article.hentry.tag-partner'); }
+
+  function ovRun() {
+    if (ovBusy) return;
+    var paras = ovParas();
+    if (paras.length < 4) { ovErr = 'There isn\'t enough article text yet to check'; draw(); return; }
+    ovBusy = true; ovErr = '';
+    draw();
+    var partner = ovPartner();
+    var payload = {
+      action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
+      meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
+      paras: paras.length,
+      text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + squash(e.textContent); }).join('\n').slice(0, 15000),
+      tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
+    };
+    fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        ovBusy = false;
+        if (d && d.overview) {
+          ovRes = d.overview;
+          ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
+          ls('pe-ov-' + post, JSON.stringify(ovRes));
+        } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
+        if (ovMarked) ovMark(true);
+        draw();
+      })
+      .catch(function () { ovBusy = false; ovErr = 'Could not reach the Google Sheet'; draw(); });
+  }
+
+  // Show in the post: paragraphs only we have get a green edge, restated ones a grey wash
+  function ovMark(on) {
+    ovMarked = on;
+    var ours = (ovRes && ovRes.ours) || [];
+    ovParas().forEach(function (e, i) {
+      var mine = ours.indexOf(i + 1) >= 0;
+      e.style.background = on ? (mine ? '#eef6e6' : '#eceef1') : '';
+      e.style.boxShadow = on && mine ? 'inset 3px 0 0 ' + C.green : '';
+      e.style.borderRadius = on ? '3px' : '';
+      e.title = on ? (mine ? 'Only ours' : 'Restates what\'s already public') : '';
+    });
+    if (on) {
+      var first = ovParas().filter(function (e, i) { return ours.indexOf(i + 1) < 0; })[0];
+      if (first) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }
+
+  function ovSmall(text, fn, blue) {
+    var b = el('button', 'flex:0 0 auto;padding:2px 9px;border:1px solid ' + (blue ? C.blue : '#dde1e6') + ';border-radius:5px;background:#fff;font:' + (blue ? 700 : 600) +
+      ' 11.5px/1.6 ' + F + ';color:' + (blue ? C.blue : '#444') + ';cursor:pointer;', text);
+    b.type = 'button';
+    b.onclick = fn;
+    return b;
+  }
+  function ovNeeds(r) { return (r.searches || []).filter(function (s) { return s.needs; }).length; }
+  function ovPct(r) { return r.total ? Math.round(100 * (r.ours || []).length / r.total) : 0; }
+
+  // The Overview section of the checks panel: one line with the score, opening to a summary
+  function drawOverview() {
+    ovLoad();
+    var wf = +postData.workflowState || 0;
+    // Runs once by itself when the post reaches review, if this browser has no result yet
+    if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3) { ovAuto = true; setTimeout(ovRun, 0); }
+    if (!ovRes && !ovBusy && wf === 1) return; // nothing to show on a live post never checked
+    list.appendChild(sectionLabel('Overview'));
+    if (!ovRes) {
+      var r = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr ? C.red : '#555') + ';');
+      r.appendChild(el('span', 'flex:1;', ovBusy ? 'Checking how much a Google summary could give away…'
+        : ovErr || 'How much of this could a Google summary give away?'));
+      if (!ovBusy) r.appendChild(ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
+      list.appendChild(r);
+      return;
+    }
+    var n = +ovRes.score || 0, t = ovTint(n), stale = ovRes.sig !== ovSig(ovParas());
+    var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid ' + t[1] + ';border-radius:6px;background:' + t[0] +
+      ';text-align:left;font:13px/1.4 ' + F + ';color:' + t[2] + ';cursor:pointer;');
+    row.type = 'button';
+    row.title = 'How much of this post a Google AI summary could give away. Higher is better.';
+    row.appendChild(el('span', 'flex:1;', 'Overview score' + (stale ? ' (edited since)' : '')));
+    row.appendChild(el('span', 'font-weight:700;font-variant-numeric:tabular-nums;color:' + ovColour(n) + ';', ovBusy ? '…' : n + '/100'));
+    row.appendChild(el('span', 'font-size:11px;color:' + ovColour(n) + ';', ovOpen ? '▴' : '▾'));
+    row.onclick = function () { ovOpen = !ovOpen; ls('pe-ov-open', ovOpen ? '1' : '0'); draw(); };
+    list.appendChild(row);
+    if (!ovOpen) return;
+    var box = el('div', 'padding:6px 2px 4px;font-size:12.5px;line-height:1.45;color:#444;');
+    var s = ovRes.searches || [];
+    box.appendChild(el('div', '', ovNeeds(ovRes) + ' of ' + s.length + ' likely searches need us. ' + ovPct(ovRes) + '% of the post is only ours.'));
+    var p = (ovRes.prompts || [])[0];
+    if (p && !ovRes.partner) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
+    if (ovErr) box.appendChild(el('div', 'margin:4px 0;color:' + C.red + ';', ovErr));
+    var btns = el('div', 'display:flex;gap:6px;margin-top:6px;');
+    btns.appendChild(ovSmall('Full report in Joe', function () { openDrawer('overview'); }, true));
+    btns.appendChild(ovSmall(ovBusy ? 'Checking…' : 'Check again', ovRun));
+    box.appendChild(btns);
+    box.appendChild(el('div', 'margin-top:6px;font-size:11.5px;color:#80868d;', 'Advisory only. Doesn\'t count as a warning.'));
+    list.appendChild(box);
+  }
+
+  // Joe's Overview tab: the full report
+  function drawOverviewTab(body) {
+    ovLoad();
+    if (!ovRes) {
+      body.appendChild(el('div', 'margin:14px 0 0;font-size:13px;line-height:1.5;color:#444;',
+        'Claude reads the post, works out the searches it\'s likely to rank for, and checks how much a Google AI summary could answer without anyone clicking through. Then it suggests what to add that only Production Expert can say.'));
+      if (ovBusy) body.appendChild(el('div', 'padding:12px 0;color:#777;', 'Checking…'));
+      else body.appendChild(actionButton('Check this post', ovRun, true));
+      if (ovErr) body.appendChild(el('div', 'color:' + C.red + ';font-size:13px;', ovErr));
+      return;
+    }
+    var r = ovRes, n = +r.score || 0, stale = r.sig !== ovSig(ovParas());
+    var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;');
+    top.appendChild(el('span', 'font:700 26px/1 ' + F + ';color:' + ovColour(n) + ';font-variant-numeric:tabular-nums;', String(n)));
+    top.appendChild(el('span', 'font-size:13px;color:#80868d;', '/ 100'));
+    top.appendChild(el('span', 'flex:1;'));
+    top.appendChild(el('span', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at)));
+    body.appendChild(top);
+    var bar = el('div', 'height:6px;margin:8px 0 6px;border-radius:3px;background:#eceef1;overflow:hidden;');
+    bar.appendChild(el('div', 'height:100%;width:' + Math.max(2, Math.min(100, n)) + '%;background:' + ovColour(n) + ';'));
+    body.appendChild(bar);
+    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:' + ovTint(n)[2] + ';',
+      n >= 70 ? 'Most of this needs a click. A summary can\'t give it away.'
+        : n >= 40 ? 'A summary could cover a fair part of this. The prompts below would strengthen it.'
+        : 'Most of this a Google summary can give away. Add what only you know.'));
+    if (stale) {
+      var st = el('div', 'margin:10px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
+        'The post has changed since this check.');
+      body.appendChild(st);
+    }
+
+    body.appendChild(sectionLabel('Likely searches'));
+    (r.searches || []).forEach(function (s, i) {
+      var q = el('div', 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:12.5px;line-height:1.4;' + (i ? 'border-top:1px solid #eceef1;' : ''));
+      q.appendChild(el('span', 'flex:1;', s.q));
+      q.appendChild(el('span', 'flex:0 0 auto;font-weight:600;color:' + (s.needs ? C.green : C.red) + ';', s.needs ? 'Needs us' : 'Answered'));
+      body.appendChild(q);
+    });
+
+    body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
+    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
+      (r.ours || []).length + ' of ' + r.total + ' paragraphs carry testing, numbers, named people or opinion. The rest restate what\'s already public.'));
+    var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show in the post', function () { ovMark(!ovMarked); drawDrawer(); });
+    sh.style.marginTop = '7px';
+    body.appendChild(sh);
+
+    if (r.partner) {
+      body.appendChild(sectionLabel('Add what Google can\'t'));
+      body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#80868d;', 'Partner content: no prompts, so Joe never pushes editorial into paid copy.'));
+    } else if ((r.prompts || []).length) {
+      body.appendChild(sectionLabel('Add what Google can\'t'));
+      r.prompts.forEach(function (p) {
+        body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
+      });
+    }
+    if (r.headline) {
+      body.appendChild(sectionLabel('Headline'));
+      var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
+      h.appendChild(el('span', 'flex:1;', r.headline));
+      var sg = ovSmall('Suggest', function () { openDrawer('headlines'); });
+      sg.style.borderColor = '#e3c79a'; sg.style.color = '#5a3a00';
+      h.appendChild(sg);
+      body.appendChild(h);
+    }
+    if (ovErr) body.appendChild(el('div', 'margin-top:10px;color:' + C.red + ';font-size:13px;', ovErr));
+    body.appendChild(actionButton(ovBusy ? 'Checking…' : 'Check again', ovRun));
+    body.appendChild(el('div', 'font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
   }
 
   function articleText() {
@@ -3080,7 +3295,7 @@ try {
     if (drawerTab === 'links' && !linksOn()) drawerTab = 'headlines';
     if (drawerTab === 'image' && !imageOn()) drawerTab = 'headlines';
     if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
-    else if (drawerTab === 'image') drawImageTab(body); else drawWriteTab(body);
+    else if (drawerTab === 'image') drawImageTab(body); else if (drawerTab === 'overview') drawOverviewTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
     if (kept) {
       var again = body.querySelector('[data-keep="' + kept.key + '"]');
@@ -3835,7 +4050,8 @@ try {
   }
   function drawerTabs() {
     var t = linksOn() ? TABS.concat([['links', 'Links']]) : TABS;
-    return imageOn() ? t.concat([['image', 'Image']]) : t;
+    t = imageOn() ? t.concat([['image', 'Image']]) : t;
+    return t.concat([['overview', 'Overview']]); // v3.5, for everyone
   }
 
   function tierOf(v) {
