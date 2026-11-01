@@ -1132,7 +1132,7 @@ try {
    *   3.5   1 Nov 2026  79d73b8 Overview score: how much a Google AI summary could give away. A line in
    *                              the checks panel that opens to a summary, and an Overview tab in Joe
    *                              (needs the Overview Code.gs). Advisory only, never a warning
-   *   3.6   1 Nov 2026  (this)  Overview prompts shown on partner posts too, in line with editorial
+   *   3.6   1 Nov 2026  8df5a5e Overview prompts shown on partner posts too, in line with editorial
    *                              policy: we add our own view to partner content */
   var PE_VERSION = '3.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
