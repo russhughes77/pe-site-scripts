@@ -1140,7 +1140,7 @@ try {
    *                              blocks, YouTube, Vimeo, SoundCloud and other players) as items Claude
    *                              judges; our own clips count as ours and add up to 15 to the score.
    *                              Needs the 1 Nov late Code.gs
-   *   3.9   1 Nov 2026  (this)  Overview judges pictures in the body too (not the hero or ad banners):
+   *   3.9   1 Nov 2026  9388bcb Overview judges pictures in the body too (not the hero or ad banners):
    *                              our own screenshots and graphics count as ours and add 5. Needs the
    *                              1 Nov screenshots Code.gs */
   var PE_VERSION = '3.9';
