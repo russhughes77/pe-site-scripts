@@ -1124,10 +1124,12 @@ try {
    *                              Ahead of plan warning, Too soon warning under 5 minutes (works now)
    *   3.2   1 Nov 2026  7fd392c Sends the author with planned date requests; unconfirmed calendar
    *                              matches labelled "Matched to Mel's calendar by title"
-   *   3.3   1 Nov 2026  (this)  Planned date box follows the stage: "Published …" with on plan / ahead /
+   *   3.3   1 Nov 2026  e6ae9d1 Planned date box follows the stage: "Published …" with on plan / ahead /
    *                              later on live posts (no buttons), "Scheduled …" on scheduled posts;
-   *                              "+ Add an embargo" hidden on live posts */
-  var PE_VERSION = '3.3';
+   *                              "+ Add an embargo" hidden on live posts
+   *   3.4   1 Nov 2026  (this)  Stale draft warning: a draft not edited for 4 weeks asks whether it can
+   *                              be deleted */
+  var PE_VERSION = '3.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1470,6 +1472,20 @@ try {
       return { ok: false, kind: 'soon', text: 'Goes out less than 5 minutes after it was scheduled. Facebook may lose the image and the link may 404: schedule it at least 5 minutes ahead',
         bar: 'Less than 5 minutes ahead: schedule it later so Facebook keeps the image' };
     return null;
+  }
+
+  // Drafts left untouched (v3.4): a draft not edited for 4 weeks or more gets an amber warning
+  // asking whether it can be deleted. Goes by the last edit, so an old draft someone is still
+  // working on isn't flagged. The Content Manager flags the same drafts (Code.gs).
+  var STALE_DAYS = 28;
+  function staleDraftCheck() {
+    if ((+postData.workflowState || 0) !== 4) return null;          // drafts only
+    var edited = +postData.updatedOn || 0;
+    if (!edited) return null;
+    var days = Math.floor((Date.now() - edited) / 864e5);
+    if (days < STALE_DAYS) return null;
+    var weeks = Math.floor(days / 7);
+    return { ok: false, kind: 'stale', text: 'Draft not edited for ' + weeks + ' weeks. Is it still needed, or can it be deleted?' };
   }
 
   // The planned date line, above the embargo. Kept out of the part draw() rebuilds, like the embargo.
@@ -2347,6 +2363,9 @@ try {
     if (pln) out.push(pln);
     var soon = soonCheck();
     if (soon) out.push(soon);
+    // 0d. A draft nobody has edited for four weeks or more: still needed, or can it go?
+    var old = staleDraftCheck();
+    if (old) out.push(old);
 
     // 1. Alt text on the pictures in the article body and its header (ad banners don't count)
     var imgs = Array.prototype.filter.call(a.querySelectorAll('.body.entry-content img, .promoted-block-image img, .entry-header img'), function (i) {
