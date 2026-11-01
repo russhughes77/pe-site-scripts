@@ -1131,8 +1131,10 @@ try {
    *                              be deleted
    *   3.5   1 Nov 2026  79d73b8 Overview score: how much a Google AI summary could give away. A line in
    *                              the checks panel that opens to a summary, and an Overview tab in Joe
-   *                              (needs the Overview Code.gs). Advisory only, never a warning */
-  var PE_VERSION = '3.5';
+   *                              (needs the Overview Code.gs). Advisory only, never a warning
+   *   3.6   1 Nov 2026  (this)  Overview prompts shown on partner posts too, in line with editorial
+   *                              policy: we add our own view to partner content */
+  var PE_VERSION = '3.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2760,7 +2762,8 @@ try {
    * plus 5 if one of the first three paragraphs is ours.
    * Advisory only: never a warning, never counted, never blocks Ready to schedule.
    * Runs once by itself when a post reaches review, otherwise on Check. Results are kept per post
-   * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours. */
+   * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours.
+   * Partner posts are treated the same, prompts included (v3.6). */
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
   var ovOpen = ls('pe-ov-open') === '1';
 
@@ -2882,7 +2885,7 @@ try {
     var s = ovRes.searches || [];
     box.appendChild(el('div', '', ovNeeds(ovRes) + ' of ' + s.length + ' likely searches need us. ' + ovPct(ovRes) + '% of the post is only ours.'));
     var p = (ovRes.prompts || [])[0];
-    if (p && !ovRes.partner) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
+    if (p) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
     if (ovErr) box.appendChild(el('div', 'margin:4px 0;color:' + C.red + ';', ovErr));
     var btns = el('div', 'display:flex;gap:6px;margin-top:6px;');
     btns.appendChild(ovSmall('Full report in Joe', function () { openDrawer('overview'); }, true));
@@ -2938,10 +2941,8 @@ try {
     sh.style.marginTop = '7px';
     body.appendChild(sh);
 
-    if (r.partner) {
-      body.appendChild(sectionLabel('Add what Google can\'t'));
-      body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#80868d;', 'Partner content: no prompts, so Joe never pushes editorial into paid copy.'));
-    } else if ((r.prompts || []).length) {
+    // Partner posts get prompts too: our own view is what makes partner content credible (v3.6)
+    if ((r.prompts || []).length) {
       body.appendChild(sectionLabel('Add what Google can\'t'));
       r.prompts.forEach(function (p) {
         body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
