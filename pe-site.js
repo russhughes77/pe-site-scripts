@@ -1121,8 +1121,10 @@ try {
    *   3.0  31 Oct 2026  042ec40 Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
    *                              a chip per tab, Bring to front when open); version in the panel title
    *   3.1   1 Nov 2026  c7d0dc3 Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
-   *                              Ahead of plan warning, Too soon warning under 5 minutes (works now) */
-  var PE_VERSION = '3.1';
+   *                              Ahead of plan warning, Too soon warning under 5 minutes (works now)
+   *   3.2   1 Nov 2026  (this)  Sends the author with planned date requests; unconfirmed calendar
+   *                              matches labelled "Matched to Mel's calendar by title" */
+  var PE_VERSION = '3.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1419,14 +1421,15 @@ try {
 
   // Reads the post's planned date from the sheet, or moves it (extra holds day and by)
   function planCall(extra) {
-    var data = { action: 'plan', post: post, title: postTitle() };
+    // The author helps the sheet match the post to Mel's calendar when it isn't linked yet
+    var data = { action: 'plan', post: post, title: postTitle(), author: authorOf().name || '' };
     if (extra) { data.set = 1; Object.keys(extra).forEach(function (k) { data[k] = extra[k]; }); }
     var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
     return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
       // An older Code.gs answers with something else and no plan: stay hidden
       if (!d || !d.ok || !d.plan) { if (extra) throw new Error((d && d.error) || 'the sheet needs the Planned dates update'); return; }
       var p = d.plan, before = JSON.stringify(plan);
-      plan = { cal: p.cal || '', lane: p.lane || '', over: p.over || '', by: p.by || '', on: +p.on || 0 };
+      plan = { cal: p.cal || '', lane: p.lane || '', guess: !!+p.guess, over: p.over || '', by: p.by || '', on: +p.on || 0 };
       if (extra) { planEditing = false; getHistory(); }  // the sheet logged the move in the history
       if (JSON.stringify(plan) !== before || extra) { renderPlan(); refreshAuto(); }
     });
@@ -1510,7 +1513,8 @@ try {
     line.appendChild(el('div', 'font-weight:700;', (bad ? '⚠ ' : '📅 ') + 'Planned ' + dayText(day)));
     var sub = plan.over
       ? (plan.cal ? 'Moved from ' + dayText(plan.cal) : 'Not in Mel\'s calendar') + (plan.by ? ' by ' + plan.by : '')
-      : 'From Mel\'s calendar' + (plan.lane ? ', ' + plan.lane + ' lane' : '');
+      // guess: not linked on the Content Manager yet, matched by title (and author)
+      : (plan.guess ? 'Matched to Mel\'s calendar by title, not confirmed yet' : 'From Mel\'s calendar') + (plan.lane ? ', ' + plan.lane + ' lane' : '');
     line.appendChild(el('div', 'opacity:.85;', sub));
     if (bad) line.appendChild(el('div', 'margin-top:3px;font-weight:600;', chk.live ? 'Went live ahead of plan.' : 'Scheduled ahead of plan. Change the schedule, or move the planned date.'));
     var foot = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
