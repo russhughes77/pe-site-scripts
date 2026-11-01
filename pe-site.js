@@ -1129,7 +1129,7 @@ try {
    *                              "+ Add an embargo" hidden on live posts
    *   3.4   1 Nov 2026  4311424 Stale draft warning: a draft not edited for 4 weeks asks whether it can
    *                              be deleted
-   *   3.5   1 Nov 2026  (this)  Overview score: how much a Google AI summary could give away. A line in
+   *   3.5   1 Nov 2026  79d73b8 Overview score: how much a Google AI summary could give away. A line in
    *                              the checks panel that opens to a summary, and an Overview tab in Joe
    *                              (needs the Overview Code.gs). Advisory only, never a warning */
   var PE_VERSION = '3.5';
