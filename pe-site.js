@@ -1122,7 +1122,7 @@ try {
    *                              a chip per tab, Bring to front when open); version in the panel title
    *   3.1   1 Nov 2026  c7d0dc3 Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
    *                              Ahead of plan warning, Too soon warning under 5 minutes (works now)
-   *   3.2   1 Nov 2026  (this)  Sends the author with planned date requests; unconfirmed calendar
+   *   3.2   1 Nov 2026  7fd392c Sends the author with planned date requests; unconfirmed calendar
    *                              matches labelled "Matched to Mel's calendar by title" */
   var PE_VERSION = '3.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
