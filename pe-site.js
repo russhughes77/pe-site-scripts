@@ -1120,7 +1120,7 @@ try {
    *                              Remembered per browser; open flags stay on show when shut
    *   3.0  31 Oct 2026  042ec40 Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
    *                              a chip per tab, Bring to front when open); version in the panel title
-   *   3.1   1 Nov 2026  (this)  Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
+   *   3.1   1 Nov 2026  c7d0dc3 Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
    *                              Ahead of plan warning, Too soon warning under 5 minutes (works now) */
   var PE_VERSION = '3.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
