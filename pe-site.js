@@ -1119,8 +1119,10 @@ try {
    *   2.9  31 Oct 2026  db4b6d9 Notes in the pre-publish checks fold away: click the NOTES heading.
    *                              Remembered per browser; open flags stay on show when shut
    *   3.0  31 Oct 2026  042ec40 Joe bar pinned to the foot of the checks panel on every stage (Open Joe,
-   *                              a chip per tab, Bring to front when open); version in the panel title */
-  var PE_VERSION = '3.0';
+   *                              a chip per tab, Bring to front when open); version in the panel title
+   *   3.1   1 Nov 2026  (this)  Planned date from Mel's calendar (needs the Planned dates Code.gs), amber
+   *                              Ahead of plan warning, Too soon warning under 5 minutes (works now) */
+  var PE_VERSION = '3.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1311,7 +1313,9 @@ try {
     function btn(text, css, onclick) { var b = el('button', css, text); b.type = 'button'; b.onclick = onclick; return b; }
 
     if (embEditing) {
-      var start = embargo.at ? zonedParts(embargo.at, embargo.tz || 'Europe/London') : { date: '', time: '09:00' };
+      // A new embargo starts on the planned date when it came from Make it an embargo
+      var start = embargo.at ? zonedParts(embargo.at, embargo.tz || 'Europe/London') : { date: embSeed || '', time: '09:00' };
+      embSeed = '';
       var form = el('div', 'margin:10px 0 2px;padding:10px 12px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;');
       form.appendChild(el('div', 'margin-bottom:6px;font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;', 'Embargo lifts'));
       var field = 'padding:5px 6px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:13px ' + F + ';color:#222;';
@@ -1362,14 +1366,161 @@ try {
     var sub = [];
     if (embargo.tz && embargo.tz !== 'Europe/London') sub.push(inZone(embargo.at, embargo.tz) + ' ' + zoneName(embargo.tz));
     if (embargo.by) sub.push('set by ' + embargo.by);
-    var foot = el('div', 'display:flex;align-items:center;gap:6px;margin-top:4px;');
-    foot.appendChild(el('span', 'flex:1;opacity:.85;', sub.join(' · ')));
+    line.appendChild(el('div', 'opacity:.85;', sub.join(' · ')));
+    var foot = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
     foot.appendChild(btn('Change', small, function () { embEditing = true; renderEmbargo(); }));
     foot.appendChild(btn('Remove', small, function () {
       embargoCall({ at: 0, tz: '', by: who() }).catch(function () {});
     }));
+    // Make it a planned date: keeps the day as a soft date and removes the hard embargo.
+    // Only once the sheet takes planned dates (plan isn't null).
+    if (plan && future) foot.appendChild(btn('Make it a planned date', small, function () {
+      var d = londonDay(embargo.at), by = who();
+      planCall({ day: d === plan.cal ? '' : d, by: by }).then(function () {
+        return embargoCall({ at: 0, tz: '', by: by });
+      }).catch(function () {});
+    }));
     line.appendChild(foot);
     embBox.appendChild(line);
+  }
+
+  /* ---------- Planned date (v3.1) ----------
+   * Each post's planned publishing day, read from Mel's Editorial Calendar 2026 through the
+   * Google Sheet (the post's linked calendar slot, the same link the Content Manager uses).
+   * Anyone can move the date in the panel. A moved date is kept in the checklist sheet as an
+   * override; Mel's calendar is never written to, because it's her plan. The panel shows
+   * "Moved from Thu 5 Nov by RH" so the change is visible, and the Content Manager can flag it.
+   *
+   * Because the team always schedules (never Publish, which upsets Facebook), the check runs
+   * the moment a post is scheduled: a scheduled day before the planned day turns the panel
+   * amber with "Ahead of plan", and the scheduled bar names it, leaving time to pull it back.
+   * A planned date is a soft date; an embargo (above) is the hard "must not" one, in red.
+   * One click turns either into the other.
+   *
+   * The sheet side (Code.gs, section "Planned dates"): GET ?action=plan&post=…&title=…
+   * answers {ok, plan: {cal: 'YYYY-MM-DD' or '', lane, over: 'YYYY-MM-DD' or '', by, on}}.
+   * Add set=1&day=YYYY-MM-DD&by=… to move the date (day= empty clears the override).
+   * Until the sheet answers with "plan", this whole box stays hidden and nothing changes. */
+  var plan = null;                               // from the sheet; null until it answers with a plan
+  var planBox = null;                            // the planned date line in the panel, built once
+  var planEditing = false;                       // true while the date box is showing
+  var embSeed = '';                              // a day to start the embargo form on (from Make it an embargo)
+
+  // An exact moment as its day in the UK: '2026-11-05'
+  function londonDay(t) { return zonedParts(t, 'Europe/London').date; }
+  // '2026-11-05' as 'Thu 5 Nov' (midday UTC, so no time zone can tip it into another day)
+  function dayText(d) {
+    var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(d || '');
+    if (!m) return d || '';
+    return new Date(Date.UTC(+m[1], m[2] - 1, +m[3], 12)).toLocaleDateString('en-GB', { timeZone: 'UTC', weekday: 'short', day: 'numeric', month: 'short' });
+  }
+  // The day that counts: a date moved in the panel beats the calendar's
+  function planDay() { return plan ? (plan.over || plan.cal || '') : ''; }
+
+  // Reads the post's planned date from the sheet, or moves it (extra holds day and by)
+  function planCall(extra) {
+    var data = { action: 'plan', post: post, title: postTitle() };
+    if (extra) { data.set = 1; Object.keys(extra).forEach(function (k) { data[k] = extra[k]; }); }
+    var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
+    return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
+      // An older Code.gs answers with something else and no plan: stay hidden
+      if (!d || !d.ok || !d.plan) { if (extra) throw new Error((d && d.error) || 'the sheet needs the Planned dates update'); return; }
+      var p = d.plan, before = JSON.stringify(plan);
+      plan = { cal: p.cal || '', lane: p.lane || '', over: p.over || '', by: p.by || '', on: +p.on || 0 };
+      if (extra) { planEditing = false; getHistory(); }  // the sheet logged the move in the history
+      if (JSON.stringify(plan) !== before || extra) { renderPlan(); refreshAuto(); }
+    });
+  }
+
+  // The automatic check, added to the others by runAuto. Compares days in the UK, since the
+  // calendar plans days, not times.
+  function planCheck() {
+    var day = planDay();
+    if (!day) return null;
+    var wf = +postData.workflowState || 0, t = +postData.publishOn || 0;
+    if (scheduledFor && londonDay(scheduledFor) < day)
+      return { ok: false, kind: 'plan', text: 'Scheduled for ' + inZone(scheduledFor, 'Europe/London') + ', but planned for ' + dayText(day),
+        bar: 'planned for ' + dayText(day) };
+    if ((wf === 1 || wf === 2) && t && t <= Date.now() && londonDay(t) < day && Date.now() - t < 7 * 864e5)
+      return { ok: false, kind: 'plan', live: true, text: 'Went live ' + inZone(t, 'Europe/London') + ', but was planned for ' + dayText(day) };
+    return { ok: true, text: 'Planned for ' + dayText(day) };
+  }
+
+  // The Facebook quirk: a post that goes live within 5 minutes of being created or scheduled
+  // can lose its image on Facebook and give 404s. Warns when a post has just been scheduled
+  // (edited in the last 10 minutes) for less than 5 minutes ahead. The first sighting of each
+  // schedule is remembered, so the warning doesn't vanish when the page reloads.
+  function soonCheck() {
+    if (!scheduledFor) return null;
+    var key = 'pe-sched-seen-' + post, seen = null;
+    try { seen = JSON.parse(ls(key) || 'null'); } catch (e) {}
+    if (!seen || seen.t !== scheduledFor) { seen = { t: scheduledFor, at: Date.now() }; ls(key, JSON.stringify(seen)); }
+    var gap = scheduledFor - Math.max(seen.at, +postData.updatedOn || 0);
+    var fresh = Date.now() - (+postData.updatedOn || 0) < 10 * 60000;
+    if (fresh && gap < 5 * 60000)
+      return { ok: false, kind: 'soon', text: 'Goes out less than 5 minutes after it was scheduled. Facebook may lose the image and the link may 404: schedule it at least 5 minutes ahead',
+        bar: 'Less than 5 minutes ahead: schedule it later so Facebook keeps the image' };
+    return null;
+  }
+
+  // The planned date line, above the embargo. Kept out of the part draw() rebuilds, like the embargo.
+  function renderPlan() {
+    if (!planBox) return;
+    planBox.innerHTML = '';
+    if (!plan) return;                           // sheet not updated yet: nothing to show
+    var small = 'padding:3px 9px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:600 11.5px/1.6 ' + F + ';color:#333;cursor:pointer;';
+    function btn(text, css, onclick) { var b = el('button', css, text); b.type = 'button'; b.onclick = onclick; return b; }
+    var day = planDay();
+
+    if (planEditing) {
+      var form = el('div', 'margin:10px 0 2px;padding:10px 12px;border:1px solid #eceef1;border-radius:6px;background:#fafbfc;');
+      form.appendChild(el('div', 'margin-bottom:6px;font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;', 'Planned date'));
+      var dIn = el('input', 'width:100%;box-sizing:border-box;padding:5px 6px;border:1px solid #d5d9de;border-radius:5px;background:#fff;font:13px ' + F + ';color:#222;');
+      dIn.type = 'date'; dIn.value = day;
+      form.appendChild(dIn);
+      var msg = el('div', 'margin-top:6px;font-size:12px;color:#80868d;',
+        plan.cal ? 'Mel\'s calendar says ' + dayText(plan.cal) + '. Her calendar isn\'t changed.' : 'Not in Mel\'s calendar. Her calendar isn\'t changed.');
+      form.appendChild(msg);
+      var acts = el('div', 'display:flex;gap:6px;margin-top:8px;');
+      var save = btn('Save date', 'padding:5px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + C.blue + ';font:700 12px/1.6 ' + F + ';color:#fff;cursor:pointer;', function () {
+        if (!dIn.value) { msg.style.color = C.red; msg.textContent = 'Pick a date.'; return; }
+        // Saving the calendar's own date clears the override instead of storing a copy of it
+        var v = dIn.value === plan.cal ? '' : dIn.value;
+        save.disabled = true; save.textContent = 'Saving…';
+        planCall({ day: v, by: who() }).catch(function (e) {
+          save.disabled = false; save.textContent = 'Save date';
+          msg.style.color = C.red; msg.textContent = 'Not saved: ' + (e.message || e) + '. Try again.';
+        });
+      });
+      acts.appendChild(save);
+      acts.appendChild(btn('Cancel', small, function () { planEditing = false; renderPlan(); }));
+      form.appendChild(acts);
+      planBox.appendChild(form);
+      return;
+    }
+
+    if (!day) {
+      planBox.appendChild(btn('+ Add a planned date', 'margin:10px 0 0;padding:0;border:0;background:none;font:600 12px ' + F + ';color:' + C.blue + ';cursor:pointer;',
+        function () { planEditing = true; renderPlan(); }));
+      return;
+    }
+    var chk = planCheck(), bad = chk && !chk.ok;
+    var line = el('div', 'margin:10px 0 0;padding:9px 11px;border-radius:6px;font-size:12.5px;line-height:1.45;' +
+      (bad ? 'background:#fff4e0;color:#5a3a00;border:1px solid #f0d49a;' : 'background:#f6f7f9;color:#3a4048;border:1px solid #eceef1;'));
+    line.appendChild(el('div', 'font-weight:700;', (bad ? '⚠ ' : '📅 ') + 'Planned ' + dayText(day)));
+    var sub = plan.over
+      ? (plan.cal ? 'Moved from ' + dayText(plan.cal) : 'Not in Mel\'s calendar') + (plan.by ? ' by ' + plan.by : '')
+      : 'From Mel\'s calendar' + (plan.lane ? ', ' + plan.lane + ' lane' : '');
+    line.appendChild(el('div', 'opacity:.85;', sub));
+    if (bad) line.appendChild(el('div', 'margin-top:3px;font-weight:600;', chk.live ? 'Went live ahead of plan.' : 'Scheduled ahead of plan. Change the schedule, or move the planned date.'));
+    var foot = el('div', 'display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;');
+    foot.appendChild(btn('Change date', small, function () { planEditing = true; renderPlan(); }));
+    if (plan.over && plan.cal) foot.appendChild(btn('Back to calendar date', small, function () { planCall({ day: '', by: who() }).catch(function () {}); }));
+    if (plan.over && !plan.cal) foot.appendChild(btn('Remove', small, function () { planCall({ day: '', by: who() }).catch(function () {}); }));
+    // Make it an embargo: opens the embargo form on this day, for a time and zone to be added
+    if (!embargo.at) foot.appendChild(btn('Make it an embargo', small, function () { embSeed = day; embEditing = true; renderEmbargo(); }));
+    line.appendChild(foot);
+    planBox.appendChild(line);
   }
 
   /* ---------- Notes ----------
@@ -1852,6 +2003,7 @@ try {
   function histText(h) {
     var who = h.who || '';
     if (h.kind === 'save') return (who ? who + ' saved' : 'Saved, editor unknown') + (h.detail ? ': ' + h.detail : '');
+    if (h.kind === 'plan') return h.item === 'cleared' ? who + ' put the planned date back to Mel\'s calendar' : who + ' moved the planned date to ' + h.item;
     if (h.kind === 'embargo') return h.item === 'removed' ? who + ' removed the embargo' : who + ' set the embargo: lifts ' + h.item;
     if (h.kind === 'status') return (who ? who + ' changed the status' : 'Status changed') + (h.detail ? ': ' + h.detail : '');
     if (h.kind === 'tick') return who + ' ticked ' + h.item;
@@ -1916,9 +2068,12 @@ try {
 
     var embIssue = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
     var flagIssue = auto.filter(function (r) { return r.kind === 'flag'; })[0];
-    head.firstChild.textContent = embIssue ? (embIssue.live ? 'Live before embargo' : 'Embargo clash') : flagIssue ? 'Content issue' : c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
+    var planIssue = auto.filter(function (r) { return (r.kind === 'plan' || r.kind === 'soon') && !r.ok; })[0];
+    head.firstChild.textContent = embIssue ? (embIssue.live ? 'Live before embargo' : 'Embargo clash') : flagIssue ? 'Content issue'
+      : planIssue ? (planIssue.kind === 'soon' ? 'Scheduled too soon' : 'Ahead of plan')
+      : c.warn ? 'Scheduled: checks missing' : c.stale ? 'Edited since checked' : 'Pre-publish checks';
     head.lastChild.textContent = status;
-    head.style.color = embIssue || flagIssue || c.warn ? C.red : c.stale ? C.amber : '#222';
+    head.style.color = embIssue || flagIssue || c.warn ? C.red : (c.stale || planIssue) ? C.amber : '#222';
     head.lastChild.style.color = colour;
     panel.style.borderTopColor = colour;
     pill.style.borderColor = colour;
@@ -1939,7 +2094,8 @@ try {
     if (reportErr) list.appendChild(el('div', 'margin-top:10px;padding:7px 9px;border-radius:4px;background:#fdecea;color:' + C.red + ';font:12px/1.4 ' + F + ';',
       'The Content Manager did not update: ' + reportErr + '. It will try again in 30 seconds.'));
     var embBad = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
-    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue);
+    warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue,
+      auto.filter(function (r) { return (r.kind === 'plan' || r.kind === 'soon') && !r.ok && !r.live; }));
     if (drawer && drawer.style.display !== 'none') drawDrawer();
 
     clearTimeout(hideTimer);
@@ -2087,7 +2243,8 @@ try {
   }
 
   // Red bar across the top of the page while a scheduled post has unticked checks or warnings
-  function warning(on, missing, autoWarn, embBad, flagBad) {
+  function warning(on, missing, autoWarn, embBad, flagBad, planBad) {
+    planBad = planBad || [];
     if (!on) { if (banner) banner.style.display = 'none'; return; }
     if (!banner) {
       banner = el('div', 'position:fixed;top:0;left:0;right:0;z-index:10001;padding:10px 16px;background:' + C.red +
@@ -2100,11 +2257,15 @@ try {
     var bits = [];
     if (embBad) bits.push('EMBARGO: ' + (embBad.bar || embBad.text) + '.'); // named first, before anything else
     if (flagBad) bits.push('CONTENT ISSUE flagged for the author and not resolved.');
+    planBad.forEach(function (r) { bits.push((r.kind === 'soon' ? 'TOO SOON: ' : 'AHEAD OF PLAN: ') + (r.bar || r.text) + '.'); });
     if (missing.length) bits.push(missing.length + (missing.length === 1 ? ' check' : ' checks') + ' not done: ' + missing.join(', ') + '.');
-    var others = autoWarn - (embBad ? 1 : 0) - (flagBad ? 1 : 0); // the embargo and flag are already named above
+    var others = autoWarn - (embBad ? 1 : 0) - (flagBad ? 1 : 0) - planBad.length; // already named above
     if (others) bits.push(others + (others === 1 ? ' other automatic warning' : ' other automatic warnings') + ' in the checklist.');
     // a live post has no schedule to report, only the embargo
     banner.textContent = (scheduledFor ? 'Scheduled for ' + when + '. ' : '') + bits.join(' ');
+    // Amber when the only problems are the date ones (soft), red for everything else
+    var onlyDate = planBad.length && !embBad && !flagBad && !missing.length && others <= 0;
+    banner.style.background = onlyDate ? C.amber : C.red;
     banner.style.display = '';
   }
 
@@ -2152,6 +2313,11 @@ try {
     // 0b. A content issue flagged for the author and not yet resolved (see the Notes section)
     var flg = flagCheck();
     if (flg) out.push(flg);
+    // 0c. Scheduled ahead of the planned date, and scheduled too close to now (Facebook)
+    var pln = planCheck();
+    if (pln) out.push(pln);
+    var soon = soonCheck();
+    if (soon) out.push(soon);
 
     // 1. Alt text on the pictures in the article body and its header (ad banners don't count)
     var imgs = Array.prototype.filter.call(a.querySelectorAll('.body.entry-content img, .promoted-block-image img, .entry-header img'), function (i) {
@@ -2291,7 +2457,11 @@ try {
   }
 
   function refreshAuto() {
-    return runAuto().then(function (res) { auto = res; if (loaded) draw(); });
+    return runAuto().then(function (res) {
+      auto = res;
+      if (!planEditing) renderPlan(); // the planned date line turns amber or back as the schedule changes
+      if (loaded) draw();
+    });
   }
 
   /* ---------- Help me write drawer ---------- */
@@ -4263,7 +4433,9 @@ try {
     head.style.touchAction = 'none';
     list = el('div', 'padding:2px 16px 14px;');
     embBox = el('div', 'padding:0 16px;');
+    planBox = el('div', 'padding:0 16px;');
     panel.appendChild(head);
+    panel.appendChild(planBox);
     panel.appendChild(embBox);
     panel.appendChild(list);
     panel.appendChild(buildNotes()); // under the checks, outside the part draw() rebuilds
@@ -4317,12 +4489,14 @@ try {
     checkSchedule().then(function () { call({ post: post }); setTimeout(refreshAuto, 1200); });
     renderEmbargo();
     embargoCall().catch(function () {}); // no answer: no embargo line changes, try again in 30 seconds
+    planCall().catch(function () {});    // no answer, or an older Code.gs: the planned date stays hidden
     notesCall().catch(function () {});   // no answer: the notes box stays as it is
     registerMe();                        // so flag emails can reach this person as an author
     setInterval(function () {
       if (document.hidden) return;
       checkSchedule().then(refreshAuto); call({ post: post });
       if (!embEditing) embargoCall().catch(function () {}); // someone else may have set one
+      if (!planEditing) planCall().catch(function () {});   // or moved the planned date
       notesCall().catch(function () {});                    // someone else may have left a note
     }, 30000);
   }
