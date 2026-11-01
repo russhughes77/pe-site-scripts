@@ -1142,8 +1142,10 @@ try {
    *                              Needs the 1 Nov late Code.gs
    *   3.9   1 Nov 2026  9388bcb Overview judges pictures in the body too (not the hero or ad banners):
    *                              our own screenshots and graphics count as ours and add 5. Needs the
-   *                              1 Nov screenshots Code.gs */
-  var PE_VERSION = '3.9';
+   *                              1 Nov screenshots Code.gs
+   *   4.0   1 Nov 2026  (next)  Stale draft warning ignores saves that changed nothing (opening a draft
+   *                              and closing it no longer resets its clock); goes by the History list */
+  var PE_VERSION = '4.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1491,10 +1493,25 @@ try {
   // Drafts left untouched (v3.4): a draft not edited for 4 weeks or more gets an amber warning
   // asking whether it can be deleted. Goes by the last edit, so an old draft someone is still
   // working on isn't flagged. The Content Manager flags the same drafts (Code.gs).
+  // v4.0: goes by the last save that changed something. Squarespace logs a save when a post is just
+  // opened in the editor and closed, which reset the clock on every draft anyone looked at. The
+  // History list compares each save with the one before (headline, SEO title, meta, URL, word count,
+  // status), so a save that changed none of those is ignored. Code.gs uses the same rule.
   var STALE_DAYS = 28;
+  function realEditTime() {
+    var edited = +postData.updatedOn || 0;
+    if (!hist) return 0;                                             // wait for the History list
+    var saves = hist.filter(function (h) { return h.kind === 'save' || h.kind === 'status'; })
+      .sort(function (a, b) { return a.when - b.when; });
+    if (!saves.length) return edited;
+    if (edited > saves[saves.length - 1].when + 60000) return edited; // newest save not in History yet
+    var real = saves[0].when;                                       // the first save seen counts as an edit
+    saves.forEach(function (h) { if (h.detail) real = h.when; });  // then only saves that changed something
+    return real;
+  }
   function staleDraftCheck() {
     if ((+postData.workflowState || 0) !== 4) return null;          // drafts only
-    var edited = +postData.updatedOn || 0;
+    var edited = realEditTime();
     if (!edited) return null;
     var days = Math.floor((Date.now() - edited) / 864e5);
     if (days < STALE_DAYS) return null;
@@ -2044,7 +2061,14 @@ try {
     data = data || { action: 'hist', post: post };
     var q = Object.keys(data).map(function (k) { return k + '=' + encodeURIComponent(data[k]); }).join('&');
     return fetch(C.store + '?' + q).then(function (r) { return r.json(); }).then(function (d) {
-      if (d && d.ok && d.history) { hist = d.history; draw(); }
+      if (d && d.ok && d.history) {
+        hist = d.history;
+        // v4.0: the stale draft check goes by History, so redo it now History has arrived
+        auto = auto.filter(function (r) { return r.kind !== 'stale'; });
+        var old = staleDraftCheck();
+        if (old) auto.push(old);
+        draw();
+      }
     }).catch(function () {}); // no history this time: the panel just shows the save time
   }
 
