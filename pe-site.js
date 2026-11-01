@@ -1133,8 +1133,10 @@ try {
    *                              the checks panel that opens to a summary, and an Overview tab in Joe
    *                              (needs the Overview Code.gs). Advisory only, never a warning
    *   3.6   1 Nov 2026  8df5a5e Overview prompts shown on partner posts too, in line with editorial
-   *                              policy: we add our own view to partner content */
-  var PE_VERSION = '3.6';
+   *                              policy: we add our own view to partner content
+   *   3.7   1 Nov 2026  (this)  Overview tab says "Nothing to add" when Joe returns no prompts (the
+   *                              1 Nov Code.gs gives fewer than three when the draft doesn't need them) */
+  var PE_VERSION = '3.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2942,12 +2944,12 @@ try {
     body.appendChild(sh);
 
     // Partner posts get prompts too: our own view is what makes partner content credible (v3.6)
-    if ((r.prompts || []).length) {
-      body.appendChild(sectionLabel('Add what Google can\'t'));
-      r.prompts.forEach(function (p) {
-        body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
-      });
-    }
+    body.appendChild(sectionLabel('Add what Google can\'t'));
+    if ((r.prompts || []).length) r.prompts.forEach(function (p) {
+      body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
+    });
+    // Joe can now return fewer than three prompts, or none, when the draft already does the job (v3.7)
+    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', 'Nothing to add. The draft already gives a summary little to take.'));
     if (r.headline) {
       body.appendChild(sectionLabel('Headline'));
       var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
