@@ -1136,7 +1136,7 @@ try {
    *                              policy: we add our own view to partner content
    *   3.7   1 Nov 2026  8ee3e8d Overview tab says "Nothing to add" when Joe returns no prompts (the
    *                              1 Nov Code.gs gives fewer than three when the draft doesn't need them)
-   *   3.8   1 Nov 2026  (this)  Overview counts embedded video and audio (Squarespace video and audio
+   *   3.8   1 Nov 2026  31427db Overview counts embedded video and audio (Squarespace video and audio
    *                              blocks, YouTube, Vimeo, SoundCloud and other players) as items Claude
    *                              judges; our own clips count as ours and add up to 15 to the score.
    *                              Needs the 1 Nov late Code.gs */
