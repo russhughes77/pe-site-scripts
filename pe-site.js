@@ -1143,7 +1143,7 @@ try {
    *   3.9   1 Nov 2026  9388bcb Overview judges pictures in the body too (not the hero or ad banners):
    *                              our own screenshots and graphics count as ours and add 5. Needs the
    *                              1 Nov screenshots Code.gs
-   *   4.0   1 Nov 2026  (next)  Stale draft warning ignores saves that changed nothing (opening a draft
+   *   4.0   1 Nov 2026  0333c6e Stale draft warning ignores saves that changed nothing (opening a draft
    *                              and closing it no longer resets its clock); goes by the History list */
   var PE_VERSION = '4.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
