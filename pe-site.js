@@ -1158,8 +1158,10 @@ try {
    *   4.5   2 Nov 2026  02cba92 Homepage on a light grey (#F6F6F6) with white story cards of equal
    *                              height in each row; tablet and desktop only
    *   4.6   2 Nov 2026  75c373c Grey homepage: gaps between cards set on the row, so hidden (expired)
-   *                              deals no longer leave two Deals cards touching */
-  var PE_VERSION = '4.6';
+   *                              deals no longer leave two Deals cards touching
+   *   4.7   2 Nov 2026  (next)  Homepage and blog cards with no picture get the article's own hero,
+   *                              so a post re-saved under Squarespace's hero bug never shows a blank tile */
+  var PE_VERSION = '4.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6908,3 +6910,74 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: placement for the top-of-article boxes', e); }
+
+/* ================================================================
+ * Production Expert: fill blank article cards (v4.7, 2 Nov 2026)
+ * Since about midday on 2 Nov 2026 Squarespace drops a post's hero (its "promoted block") whenever
+ * the post is saved, so a card for that post in a summary block (the homepage grid, blog lists)
+ * comes out with no picture unless someone has set the Featured Image on the Options tab. Found
+ * on Krotos Studio 3.0, then on CodWaves Quance after an evening edit to a post that had been fine.
+ * For any card without a picture, this fetches the article and gives the card its hero: the
+ * promoted image if there is one, otherwise the first image in the body. The card is built the way
+ * Squarespace builds its own (summary-thumbnail-outer-container, 16:9, cover crop), so the
+ * homepage's other scripts and styles treat it like any other card.
+ * - Fixes what readers see only. Facebook and search engines read the page before scripts run, so
+ *   the Featured Image is still the real fix (Joe's Place as hero sets it, the checks warn).
+ * - Skips cards that already have a picture, and leaves the editor alone.
+ * ================================================================ */
+try {
+(function () {
+  try { if (window.top !== window) return; } catch (e) { return; }   // not in the editor
+  var done = {};                       // one fetch per article, shared by its cards
+
+  function heroOf(url) {
+    return fetch(url + (url.indexOf('?') < 0 ? '?' : '&') + 'format=json', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (d) {
+        var it = d && d.item;
+        if (!it) return null;
+        var html = (it.promotedBlock || '') + (it.body || '');
+        var m = html.match(/<img[^>]+data-src="([^"]+)"[^>]*>/i);
+        if (!m) return null;
+        var alt = (m[0].match(/alt="([^"]*)"/i) || [])[1] || it.title || '';
+        return { src: m[1], alt: alt };
+      })
+      .catch(function () { return null; });
+  }
+
+  function fill(item, pic) {
+    if (!pic || item.querySelector('.summary-thumbnail-outer-container')) return;
+    var link = item.querySelector('a.summary-title-link, .summary-title a');
+    var href = link ? link.getAttribute('href') : '#';
+    var outer = document.createElement('div');
+    outer.className = 'summary-thumbnail-outer-container pe-filled-thumb';
+    outer.innerHTML =
+      '<a class="summary-thumbnail-container sqs-gallery-image-container" href="' + href + '">' +
+      '<div class="summary-thumbnail img-wrapper" style="position:relative;padding-bottom:56.25%;overflow:hidden">' +
+      '<img class="summary-thumbnail-image loaded" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" loading="lazy"></div></a>';
+    var img = outer.querySelector('img');
+    img.src = pic.src + (pic.src.indexOf('?') < 0 ? '?format=1000w' : '');
+    img.alt = pic.alt;
+    item.insertBefore(outer, item.firstChild);
+    item.classList.add('summary-item-has-thumbnail');
+    // the grid lays cards out by height; ask it to measure again
+    setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, 60);
+  }
+
+  function run() {
+    Array.prototype.forEach.call(document.querySelectorAll('.summary-item'), function (item) {
+      if (item.querySelector('.summary-thumbnail-outer-container img, .summary-thumbnail img')) return;
+      var link = item.querySelector('a.summary-title-link, .summary-title a');
+      var href = link && link.getAttribute('href');
+      if (!href || href.charAt(0) !== '/' || item.dataset.peFill) return;   // each card once
+      item.dataset.peFill = '1';
+      (done[href] = done[href] || heroOf(href)).then(function (pic) { fill(item, pic); });
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('load', run);
+  setTimeout(run, 2000);
+  addEventListener('mercury:load', function () { setTimeout(run, 100); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: fill blank article cards', e); }
