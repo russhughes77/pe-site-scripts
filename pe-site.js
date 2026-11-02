@@ -1150,7 +1150,7 @@ try {
    *                              the hero check warns when nothing reaches the homepage tile or Facebook
    *   4.2   2 Nov 2026  ac19bd9 Homepage hero headline lines up with the left edge of the article grid
    *                              at every window width; bottoms of g, p and y no longer cut off
-   *   4.3   2 Nov 2026  (next)  Live articles missing Squarespace's hero area get it rebuilt from the
+   *   4.3   2 Nov 2026  bf6aea6 Live articles missing Squarespace's hero area get it rebuilt from the
    *                              opening image, so the hero runs edge to edge on phones again */
   var PE_VERSION = '4.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
