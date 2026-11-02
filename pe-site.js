@@ -1159,7 +1159,7 @@ try {
    *                              height in each row; tablet and desktop only
    *   4.6   2 Nov 2026  75c373c Grey homepage: gaps between cards set on the row, so hidden (expired)
    *                              deals no longer leave two Deals cards touching
-   *   4.7   2 Nov 2026  (next)  Homepage and blog cards with no picture get the article's own hero,
+   *   4.7   2 Nov 2026  9725745 Homepage and blog cards with no picture get the article's own hero,
    *                              so a post re-saved under Squarespace's hero bug never shows a blank tile */
   var PE_VERSION = '4.7';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
