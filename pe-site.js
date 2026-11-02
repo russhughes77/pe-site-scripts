@@ -1148,7 +1148,7 @@ try {
    *   4.1   2 Nov 2026  d0b0fc2 Squarespace stopped promoting a post's first image as its hero on save
    *                              (from about midday 2 Nov). Place as hero also fills Featured Image, and
    *                              the hero check warns when nothing reaches the homepage tile or Facebook
-   *   4.2   2 Nov 2026          Homepage hero headline lines up with the left edge of the article grid
+   *   4.2   2 Nov 2026  ac19bd9 Homepage hero headline lines up with the left edge of the article grid
    *                              at every window width; bottoms of g, p and y no longer cut off */
   var PE_VERSION = '4.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
