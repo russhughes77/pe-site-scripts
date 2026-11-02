@@ -1151,8 +1151,11 @@ try {
    *   4.2   2 Nov 2026  ac19bd9 Homepage hero headline lines up with the left edge of the article grid
    *                              at every window width; bottoms of g, p and y no longer cut off
    *   4.3   2 Nov 2026  bf6aea6 Live articles missing Squarespace's hero area get it rebuilt from the
-   *                              opening image, so the hero runs edge to edge on phones again */
-  var PE_VERSION = '4.3';
+   *                              opening image, so the hero runs edge to edge on phones again
+   *   4.4   2 Nov 2026          Phones: the article title on the hero and the homepage hero headline
+   *                              line up with the text below them (were 16px from the screen edge,
+   *                              text at 30px) */
+  var PE_VERSION = '4.4';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6467,14 +6470,15 @@ try {
  * It also stops the bottom of letters such as g, p and y being cut off on
  * the second line: the line spacing was tighter than the font needs and the
  * headline box hid anything below it.
- * - Tablet and desktop only for the alignment (768px and up). Phones keep
- *   their current margins, because the article pictures there run edge to edge.
+ * - Every screen size. On phones the pictures run edge to edge, so the
+ *   headline lines up with the card headlines and text instead (v4.3; it was
+ *   16px from the screen edge, the text 30px).
  * - The descender fix applies at every size.
  * - Homepage only. Leaves the editor alone.
  * ================================================================ */
 try {
 (function () {
-  var MIN_DESKTOP = 768;              // px; below this phones keep their own margins
+  var MIN_DESKTOP = 768;              // px; the wider headline (85% of the column) from here up
 
   function isHome() { return document.body && document.body.classList.contains('homepage'); }
   if (window.top !== window) return;  // the Squarespace editor
@@ -6484,11 +6488,12 @@ try {
   var CSS =
     'body.homepage .sqs-block-gallery .meta .meta-title{' +
       'line-height:1.2 !important;padding-bottom:0.14em !important;margin-bottom:-0.14em !important;}' +
+    // Every screen size (phones added in v4.3): the headline's left edge on the grid's edge
+    'body.homepage .sqs-block-gallery .meta{' +
+      'left:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
+      'right:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
+      'width:auto !important;max-width:none !important;}' +
     '@media (min-width:' + MIN_DESKTOP + 'px){' +
-      'body.homepage .sqs-block-gallery .meta{' +
-        'left:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
-        'right:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
-        'width:auto !important;max-width:none !important;}' +
       // Headline up to 85% of the column (was two-thirds of the window), so
       // headlines that used to break over two lines still do.
       'body.homepage .sqs-block-gallery .meta .meta-inside{max-width:85% !important;}' +
@@ -6581,8 +6586,10 @@ try {
       'text-wrap:balance;text-shadow:0 2px 14px rgba(0,0,0,.45)}' +
     'h1.pe-hero-title a{color:#fff!important}' +
     'h1.pe-hero-title.pe-long{font-size:clamp(20px,2.4vw,32px)!important;max-width:88%}' +
+    // Phones (v4.3): the picture runs edge to edge, so the title lines up with the
+    // left edge of the article text below it (--pe-title-left, measured in alignTitle)
     '@media (max-width:640px){h1.pe-hero-title,h1.pe-hero-title.pe-long{max-width:none;font-size:22px!important;' +
-      'left:16px;right:16px;bottom:14px}}' +
+      'left:var(--pe-title-left,30px);right:var(--pe-title-left,30px);bottom:14px}}' +
     // the header the title came from is left empty, so take it out of the flow
     'article header.pe-title-moved{display:none!important}';
 
@@ -6670,11 +6677,26 @@ try {
     if (header && header.tagName === 'HEADER' && !header.textContent.trim() && !header.querySelector('img, a, time')) {
       header.classList.add('pe-title-moved');
     }
+    alignTitle();
+  }
+
+  // Phones (v4.3): measure where the article text starts, relative to the hero
+  // picture, so the title's left edge sits on the same line as the text, the
+  // read time and the contents box below it. Wider screens keep the inset,
+  // because there the picture sits inside the text column.
+  function alignTitle() {
+    var h1 = document.querySelector('h1.pe-hero-title');
+    var body = document.querySelector('article.hentry .body.entry-content');
+    if (!h1 || !body) return;
+    var wrap = h1.parentNode.getBoundingClientRect();
+    var left = Math.round(body.getBoundingClientRect().left - wrap.left);
+    if (left >= 0 && left < wrap.width / 4) h1.style.setProperty('--pe-title-left', left + 'px');
   }
 
   run();
   document.addEventListener('DOMContentLoaded', run);
-  addEventListener('load', run);
+  addEventListener('load', function () { run(); alignTitle(); });
+  addEventListener('resize', alignTitle);
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: article title on the hero picture', e); }
