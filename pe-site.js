@@ -1147,8 +1147,10 @@ try {
    *                              and closing it no longer resets its clock); goes by the History list
    *   4.1   2 Nov 2026  d0b0fc2 Squarespace stopped promoting a post's first image as its hero on save
    *                              (from about midday 2 Nov). Place as hero also fills Featured Image, and
-   *                              the hero check warns when nothing reaches the homepage tile or Facebook */
-  var PE_VERSION = '4.1';
+   *                              the hero check warns when nothing reaches the homepage tile or Facebook
+   *   4.2   2 Nov 2026          Homepage hero headline lines up with the left edge of the article grid
+   *                              at every window width; bottoms of g, p and y no longer cut off */
+  var PE_VERSION = '4.2';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6451,6 +6453,88 @@ try {
   else addEventListener('load', function () { setTimeout(start, 300); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS, FREE and DEAL labels on homepage cards', e); }
+
+/* ================================================================
+ * Production Expert: homepage hero headline lined up with the grid (v4.2, 2 Nov 2026)
+ * The homepage hero picture runs the full width of the window, but its
+ * headline used to sit a fixed 30px from the window edge. On anything wider
+ * than the page column that left it hanging out to the left of the article
+ * pictures below. This keeps the headline's left edge on the same line as
+ * the left edge of the article grid at every window width, and moves with it
+ * as the window is resized.
+ * It also stops the bottom of letters such as g, p and y being cut off on
+ * the second line: the line spacing was tighter than the font needs and the
+ * headline box hid anything below it.
+ * - Tablet and desktop only for the alignment (768px and up). Phones keep
+ *   their current margins, because the article pictures there run edge to edge.
+ * - The descender fix applies at every size.
+ * - Homepage only. Leaves the editor alone.
+ * ================================================================ */
+try {
+(function () {
+  var MIN_DESKTOP = 768;              // px; below this phones keep their own margins
+
+  function isHome() { return document.body && document.body.classList.contains('homepage'); }
+  if (window.top !== window) return;  // the Squarespace editor
+
+  // The styles. --pe-hero-left is measured below; until it is, the fallback
+  // works out the same edge from the 1200px page and its 30px padding.
+  var CSS =
+    'body.homepage .sqs-block-gallery .meta .meta-title{' +
+      'line-height:1.2 !important;padding-bottom:0.14em !important;margin-bottom:-0.14em !important;}' +
+    '@media (min-width:' + MIN_DESKTOP + 'px){' +
+      'body.homepage .sqs-block-gallery .meta{' +
+        'left:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
+        'right:var(--pe-hero-left, calc(max(0px, (100% - 1200px) / 2) + 30px)) !important;' +
+        'width:auto !important;max-width:none !important;}' +
+      // Headline up to 85% of the column (was two-thirds of the window), so
+      // headlines that used to break over two lines still do.
+      'body.homepage .sqs-block-gallery .meta .meta-inside{max-width:85% !important;}' +
+    '}';
+
+  function addStyle() {
+    if (document.getElementById('pe-hero-align-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-hero-align-css';
+    st.textContent = CSS;
+    document.head.appendChild(st);
+  }
+
+  // Measure where the article grid starts, relative to the full-width hero, and
+  // hand that to the styles above. The hero block is used rather than each slide,
+  // because slides that aren't showing are moved off to the side.
+  function measure() {
+    if (!isHome()) return;
+    var hero = document.querySelector('.sqs-block-gallery');
+    var col = document.querySelector('#container-content .sqs-layout');
+    if (!hero || !col) return;
+    var h = hero.getBoundingClientRect();
+    var left = Math.round(col.getBoundingClientRect().left - h.left);
+    if (left >= 0 && left < h.width / 2) {
+      document.documentElement.style.setProperty('--pe-hero-left', left + 'px');
+    }
+  }
+
+  var queued = false;
+  function onResize() {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(function () { queued = false; measure(); });
+  }
+
+  function run() {
+    if (!isHome()) return;
+    addStyle();
+    measure();
+    setTimeout(measure, 600);         // again once the gallery has finished laying out
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('load', measure);
+  addEventListener('resize', onResize);
+  addEventListener('mercury:load', run);
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: homepage hero headline alignment', e); }
 
 /* ================================================================
  * Production Expert: article title on the hero picture (v2.1, 30 Oct 2026)
