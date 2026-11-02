@@ -1145,7 +1145,7 @@ try {
    *                              1 Nov screenshots Code.gs
    *   4.0   1 Nov 2026  0333c6e Stale draft warning ignores saves that changed nothing (opening a draft
    *                              and closing it no longer resets its clock); goes by the History list
-   *   4.1   2 Nov 2026  (next)  Squarespace stopped promoting a post's first image as its hero on save
+   *   4.1   2 Nov 2026  d0b0fc2 Squarespace stopped promoting a post's first image as its hero on save
    *                              (from about midday 2 Nov). Place as hero also fills Featured Image, and
    *                              the hero check warns when nothing reaches the homepage tile or Facebook */
   var PE_VERSION = '4.1';
