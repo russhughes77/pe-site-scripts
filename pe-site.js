@@ -1155,7 +1155,7 @@ try {
    *   4.4   2 Nov 2026  60367c4 Phones: the article title on the hero and the homepage hero headline
    *                              line up with the text below them (were 16px from the screen edge,
    *                              text at 30px)
-   *   4.5   2 Nov 2026          Homepage on a light grey (#F6F6F6) with white story cards of equal
+   *   4.5   2 Nov 2026  02cba92 Homepage on a light grey (#F6F6F6) with white story cards of equal
    *                              height in each row; tablet and desktop only */
   var PE_VERSION = '4.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
