@@ -1157,7 +1157,7 @@ try {
    *                              text at 30px)
    *   4.5   2 Nov 2026  02cba92 Homepage on a light grey (#F6F6F6) with white story cards of equal
    *                              height in each row; tablet and desktop only
-   *   4.6   2 Nov 2026          Grey homepage: gaps between cards set on the row, so hidden (expired)
+   *   4.6   2 Nov 2026  75c373c Grey homepage: gaps between cards set on the row, so hidden (expired)
    *                              deals no longer leave two Deals cards touching */
   var PE_VERSION = '4.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
