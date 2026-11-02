@@ -1144,8 +1144,11 @@ try {
    *                              our own screenshots and graphics count as ours and add 5. Needs the
    *                              1 Nov screenshots Code.gs
    *   4.0   1 Nov 2026  0333c6e Stale draft warning ignores saves that changed nothing (opening a draft
-   *                              and closing it no longer resets its clock); goes by the History list */
-  var PE_VERSION = '4.0';
+   *                              and closing it no longer resets its clock); goes by the History list
+   *   4.1   2 Nov 2026  (next)  Squarespace stopped promoting a post's first image as its hero on save
+   *                              (from about midday 2 Nov). Place as hero also fills Featured Image, and
+   *                              the hero check warns when nothing reaches the homepage tile or Facebook */
+  var PE_VERSION = '4.1';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2453,7 +2456,14 @@ try {
     // 6. Hero image
     var hero = a.querySelector('.promoted-block-image img, .entry-header img') ||
       Array.prototype.slice.call(body.querySelectorAll('.sqs-block')).slice(0, 6).filter(function (b) { return /image-block|gallery-block/.test(b.className); })[0];
-    out.push(hero ? { ok: true, text: 'Hero image in place' } : { ok: false, text: 'No hero image, so search results will show no picture' });
+    // 6a (v4.1). The picture Squarespace hands to the homepage tile and Facebook: the promoted hero,
+    // or the Featured Image on the Options tab (assetUrl then ends in a file name). Since midday on
+    // 2 Nov 2026 Squarespace stopped promoting the first image of a post when it's saved, so a hero in
+    // the body alone isn't enough any more. Read from the saved post, so it updates after Save.
+    var served = !!postData.promotedBlock || /\/[^\/?]+\.[a-z0-9]{3,4}(\?|$)/i.test(String(postData.assetUrl || ''));
+    if (!hero) out.push({ ok: false, text: 'No hero image, so search results will show no picture' });
+    else if (!served) out.push({ ok: false, text: 'Hero won’t show on the homepage tile or Facebook. Add the same picture as the Featured Image on the Options tab, then Save' });
+    else out.push({ ok: true, text: 'Hero image in place' });
 
     // 6b and 6c only apply before a post goes live (status 1 is published). Older live posts
     // were written before these rules, and flagging them would fill the Content Manager with
@@ -3793,7 +3803,8 @@ try {
       }).then(function (ok) {
         if (!ok) throw 'The upload didn’t show up in the panel. Check the top image, or use Save image and upload it by hand.';
         P.placed = { st: 'done', name: out.name, w: out.w, h: out.h, notes: [] };
-        return wait(600).then(function () { return creditCaption(P); }).then(function () { return creditSource(P); });
+        return wait(600).then(function () { return creditCaption(P); }).then(function () { return creditSource(P); })
+          .then(function () { return featuredImage(P, out); });
       });
     }).catch(function (why) {
       P.placed = { st: 'failed', why: typeof why === 'string' ? why : 'Squarespace didn’t take the picture. Use Save image and upload it by hand.' };
@@ -3861,6 +3872,62 @@ try {
           P.placed.notes.push(held ? { t: '✓ Source URL filled. Press Apply in Settings, then Save.' } : { bad: true, t: 'Source URL didn’t take. Paste it by hand: ' + c.page });
         });
       }).then(function () { settingsTab(doc, 'Content'); }); // back to the post, so the new picture is in view
+    });
+  }
+
+  /* Featured Image on the Options tab (v4.1). Since about midday on 2 Nov 2026 Squarespace no longer
+   * treats the first image in a post as its hero (the "promoted block") when a post is saved, so a post
+   * saved after that shows a blank homepage tile and the site logo on Facebook. Found live on Krotos
+   * Studio 3.0 and RME Control 3.5: every post saved from 12:52 that day lost it, every one saved by
+   * 11:51 kept it. The Featured Image box fixes both, and the article page doesn't show it, so the
+   * hero never appears twice. Filled only when empty; a picture already there is left alone.
+   * The box is a Squarespace uploader on the Options tab with an ordinary file input beside
+   * "Upload an Image" (checked live 2 Nov 2026). It turns a .webp named .jpg away ("Processing
+   * failed"), which is why Joe's crop is always a real JPEG. Unlike the rest of the window, this box
+   * saves to the post the moment the upload finishes: Cancel and Discard don't undo it (checked live
+   * 2 Nov 2026), so Joe only ever puts the hero itself there. */
+  function featuredBox(doc) {
+    var lab = Array.prototype.filter.call(doc.querySelectorAll('label, div, span'), function (e) {
+      return e.children.length === 0 && !ours(e) && e.textContent.trim() === 'Featured Image';
+    })[0];
+    for (var box = lab, i = 0; box && i < 6; i++) {
+      box = box.parentElement;
+      var inp = box && box.querySelector('.sqs-uploader input[type="file"], input[type="file"]');
+      if (inp) return { box: box, inp: inp };
+    }
+    return null;
+  }
+  // 'filled', 'empty', or null while the box is still loading. Only reliable with the Options tab
+  // showing: on other tabs the preview never loads and "Upload an Image" stays in the page either way.
+  function featuredState(f) {
+    var pic = Array.prototype.some.call(f.box.querySelectorAll('img'), function (i) {
+      return /squarespace/.test(i.currentSrc || i.src || '') && visible(i);
+    });
+    if (pic) return 'filled';
+    var up = Array.prototype.some.call(f.box.querySelectorAll('div, span, button'), function (e) {
+      return e.children.length === 0 && e.textContent.trim() === 'Upload an Image' && visible(e);
+    });
+    return up ? 'empty' : null;
+  }
+  function featuredImage(P, out) {
+    return openSettings().then(function (doc) {
+      if (!doc) { P.placed.notes.push({ bad: true, t: 'Featured Image not filled. Open Settings, Options, and upload the same picture to Featured Image, or the homepage tile and Facebook image will be blank.' }); return; }
+      settingsTab(doc, 'Options');
+      return waitFor(function () { var f = featuredBox(doc); return f && featuredState(f) ? f : null; }, 5000).then(function (f) {
+        if (!f) { P.placed.notes.push({ bad: true, t: 'Couldn’t find Featured Image on the Options tab. Upload the same picture there by hand (Save image downloads it).' }); return; }
+        if (featuredState(f) === 'filled') { P.placed.notes.push({ t: 'Featured Image already has a picture, so it was left alone. Check it matches the hero.' }); return; }
+        var IW = f.inp.ownerDocument.defaultView, dt = new IW.DataTransfer();
+        dt.items.add(new IW.File([out.blob], out.name, { type: 'image/jpeg' }));
+        f.inp.files = dt.files;
+        f.inp.dispatchEvent(new IW.Event('change', { bubbles: true }));
+        return waitFor(function () {
+          var g = featuredBox(doc);
+          return g && featuredState(g) === 'filled' && !/processing failed/i.test(doc.body.textContent) ? g : null;
+        }, 30000).then(function (g) {
+          P.placed.notes.push(g ? { t: '✓ Same picture set as the Featured Image, for the homepage tile and Facebook. Squarespace saves this box straight away.' }
+            : { bad: true, t: 'Featured Image didn’t take. Upload the same picture there by hand on the Options tab.' });
+        });
+      }).then(function () { settingsTab(doc, 'Content'); });
     });
   }
 
