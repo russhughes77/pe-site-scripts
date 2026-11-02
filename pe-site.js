@@ -1152,7 +1152,7 @@ try {
    *                              at every window width; bottoms of g, p and y no longer cut off
    *   4.3   2 Nov 2026  bf6aea6 Live articles missing Squarespace's hero area get it rebuilt from the
    *                              opening image, so the hero runs edge to edge on phones again
-   *   4.4   2 Nov 2026          Phones: the article title on the hero and the homepage hero headline
+   *   4.4   2 Nov 2026  60367c4 Phones: the article title on the hero and the homepage hero headline
    *                              line up with the text below them (were 16px from the screen edge,
    *                              text at 30px) */
   var PE_VERSION = '4.4';
