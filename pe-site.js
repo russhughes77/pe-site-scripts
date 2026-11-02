@@ -1156,8 +1156,10 @@ try {
    *                              line up with the text below them (were 16px from the screen edge,
    *                              text at 30px)
    *   4.5   2 Nov 2026  02cba92 Homepage on a light grey (#F6F6F6) with white story cards of equal
-   *                              height in each row; tablet and desktop only */
-  var PE_VERSION = '4.5';
+   *                              height in each row; tablet and desktop only
+   *   4.6   2 Nov 2026          Grey homepage: gaps between cards set on the row, so hidden (expired)
+   *                              deals no longer leave two Deals cards touching */
+  var PE_VERSION = '4.6';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6553,7 +6555,9 @@ try {
  * stay white.
  * - Cards in a row are the same height, so the white boxes line up along the
  *   bottom. The lists switch from floats to a wrapping row to do that; card
- *   widths and the 10px gaps are unchanged.
+ *   widths and the 10px gaps are unchanged. Gaps are set on the row (v4.6),
+ *   because Squarespace's card margins count hidden cards and left two Deals
+ *   cards touching.
  * - Text inside each card gets 16px of padding so it doesn't touch the card
  *   edge. Pictures stay full width at the top of the card.
  * - Banners in the grid sit on the grey, which marks them off from the stories.
@@ -6573,8 +6577,13 @@ try {
     '@media (min-width:' + FROM + 'px){' +
       'body.homepage,body.homepage #navigator{background:' + GREY + ' !important}' +
       'body.homepage #topBar,body.homepage #bottomBar{background:#fff !important}' +
-      L + '{display:flex !important;flex-wrap:wrap !important;align-items:stretch !important}' +
-      L + ' > .summary-item{background:#fff !important;float:none !important}' +
+      // v4.6: the gaps come from the row itself, not from Squarespace's per-card margins.
+      // Those margins count hidden cards (expired deals), so in Deals two cards ended up
+      // touching. 0.877193% is the same gap Squarespace used (10px on a 1140px column).
+      L + '{display:flex !important;flex-wrap:wrap !important;align-items:stretch !important;' +
+        'column-gap:0.877193% !important;row-gap:10px !important}' +
+      L + '::before,' + L + '::after{display:none !important}' +   // the old float clearer would take a slot
+      L + ' > .summary-item{background:#fff !important;float:none !important;clear:none !important;margin:0 !important}' +
       L + ' > .summary-item .summary-content{padding:4px 16px 18px !important}' +
     '}';
 
