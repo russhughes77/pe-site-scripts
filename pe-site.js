@@ -1149,8 +1149,10 @@ try {
    *                              (from about midday 2 Nov). Place as hero also fills Featured Image, and
    *                              the hero check warns when nothing reaches the homepage tile or Facebook
    *   4.2   2 Nov 2026  ac19bd9 Homepage hero headline lines up with the left edge of the article grid
-   *                              at every window width; bottoms of g, p and y no longer cut off */
-  var PE_VERSION = '4.2';
+   *                              at every window width; bottoms of g, p and y no longer cut off
+   *   4.3   2 Nov 2026  (next)  Live articles missing Squarespace's hero area get it rebuilt from the
+   *                              opening image, so the hero runs edge to edge on phones again */
+  var PE_VERSION = '4.3';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6550,6 +6552,14 @@ try {
  * - Opt out per article with the tag "Title Above" (screenshots where the
  *   picture is the point, or pictures with words in the bottom left).
  * - Leaves the editor alone, so writers edit the title as normal.
+ * - v4.3: rebuilds Squarespace's hero area when it's missing. From about midday on 2 Nov 2026
+ *   Squarespace stopped lifting a post's first image into its own area above the article (the
+ *   "promoted block") when a post is saved. The theme bleeds that area edge to edge on phones,
+ *   so without it the hero sat inside the padded text column (Krotos Studio 3.0 against FabFilter
+ *   Twin 3, same day). When the page has no hero area and the body opens with a single wide image,
+ *   that image block moves into a hero area built the way Squarespace builds it (div.special-content
+ *   holding a "promoted-block" layout, before the body, with the article marked promoted), so the
+ *   theme's own styles apply on every screen size. Live pages only; the editor is untouched.
  * ================================================================ */
 try {
 (function () {
@@ -6610,9 +6620,33 @@ try {
     return b.querySelector('.image-block-wrapper');
   }
 
+  // v4.3: puts the body's opening hero image into a rebuilt hero area (see the header above)
+  function rebuildHeroArea(art) {
+    if (art.querySelector('.special-content')) return;            // Squarespace made one: leave it
+    var body = art.querySelector('.body.entry-content .sqs-layout');
+    if (!body || !heroFrom(body)) return;                         // body doesn't open with a wide image
+    var block = firstBlock(body);
+    var main = body.closest('section.main') || art.querySelector('section.main');
+    if (!main) return;
+    var place = body;                                             // the child of section.main holding the body
+    while (place && place.parentElement !== main) place = place.parentElement;
+    if (!place) return;
+    var sc = document.createElement('div');
+    sc.className = 'special-content pe-hero-area';
+    sc.innerHTML = '<div class="sqs-layout sqs-grid-12 columns-12" data-layout-label="Promoted Block" data-type="promoted-block">' +
+      '<div class="row sqs-row"><div class="col sqs-col-12 span-12"></div></div></div>';
+    sc.querySelector('.col').appendChild(block);
+    main.insertBefore(sc, place);
+    art.classList.add('promoted', 'promoted-block-image');
+    // Squarespace sizes its pictures to their box; ask it to look again at the new width
+    setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, 50);
+  }
+
   function run() {
     var art = document.querySelector('article.hentry');
-    if (!art || art.classList.contains('tag-title-above')) return;
+    if (!art) return;
+    rebuildHeroArea(art);
+    if (art.classList.contains('tag-title-above')) return;
     var h1 = art.querySelector('h1.entry-title');
     if (!h1 || h1.classList.contains('pe-hero-title')) return;   // missing, or already done
 
