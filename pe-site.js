@@ -1154,8 +1154,10 @@ try {
    *                              opening image, so the hero runs edge to edge on phones again
    *   4.4   2 Nov 2026  60367c4 Phones: the article title on the hero and the homepage hero headline
    *                              line up with the text below them (were 16px from the screen edge,
-   *                              text at 30px) */
-  var PE_VERSION = '4.4';
+   *                              text at 30px)
+   *   4.5   2 Nov 2026          Homepage on a light grey (#F6F6F6) with white story cards of equal
+   *                              height in each row; tablet and desktop only */
+  var PE_VERSION = '4.5';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6542,6 +6544,53 @@ try {
   addEventListener('mercury:load', run);
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage hero headline alignment', e); }
+
+/* ================================================================
+ * Production Expert: light grey homepage with white story cards (v4.5, 2 Nov 2026)
+ * On tablet and desktop the homepage sits on a light grey (#F6F6F6) and every
+ * story in the article lists becomes a white card, so the grid reads as
+ * separate stories without adding lines or borders. The header and footer
+ * stay white.
+ * - Cards in a row are the same height, so the white boxes line up along the
+ *   bottom. The lists switch from floats to a wrapping row to do that; card
+ *   widths and the 10px gaps are unchanged.
+ * - Text inside each card gets 16px of padding so it doesn't touch the card
+ *   edge. Pictures stay full width at the top of the card.
+ * - Banners in the grid sit on the grey, which marks them off from the stories.
+ * - Phones are left alone (768px and under): pictures there run edge to edge,
+ *   and phones have dark mode, which this would need its own version of.
+ * - Homepage only. Leaves the editor alone.
+ * ================================================================ */
+try {
+(function () {
+  var GREY = '#F6F6F6';               // page colour behind the cards
+  var FROM = 768;                     // px; tablet and desktop only
+
+  if (window.top !== window) return;  // the Squarespace editor
+
+  var L = 'body.homepage #container-content .summary-item-list';
+  var CSS =
+    '@media (min-width:' + FROM + 'px){' +
+      'body.homepage,body.homepage #navigator{background:' + GREY + ' !important}' +
+      'body.homepage #topBar,body.homepage #bottomBar{background:#fff !important}' +
+      L + '{display:flex !important;flex-wrap:wrap !important;align-items:stretch !important}' +
+      L + ' > .summary-item{background:#fff !important;float:none !important}' +
+      L + ' > .summary-item .summary-content{padding:4px 16px 18px !important}' +
+    '}';
+
+  function run() {
+    if (!document.body || !document.body.classList.contains('homepage')) return;
+    if (document.getElementById('pe-grey-home-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-grey-home-css';
+    st.textContent = CSS;
+    document.head.appendChild(st);
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('mercury:load', run);
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: light grey homepage', e); }
 
 /* ================================================================
  * Production Expert: article title on the hero picture (v2.1, 30 Oct 2026)
