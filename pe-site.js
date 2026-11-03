@@ -1161,7 +1161,7 @@ try {
    *                              deals no longer leave two Deals cards touching
    *   4.7   2 Nov 2026  9725745 Homepage and blog cards with no picture get the article's own hero,
    *                              so a post re-saved under Squarespace's hero bug never shows a blank tile
-   *   4.8   3 Nov 2026  (next)  Joe: suggestions can be highlighted and copied by hand, and every
+   *   4.8   3 Nov 2026  aaa015d Joe: suggestions can be highlighted and copied by hand, and every
    *                              suggestion has a Copy button beside Use */
   var PE_VERSION = '4.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
