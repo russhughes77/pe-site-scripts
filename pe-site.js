@@ -1160,8 +1160,10 @@ try {
    *   4.6   2 Nov 2026  75c373c Grey homepage: gaps between cards set on the row, so hidden (expired)
    *                              deals no longer leave two Deals cards touching
    *   4.7   2 Nov 2026  9725745 Homepage and blog cards with no picture get the article's own hero,
-   *                              so a post re-saved under Squarespace's hero bug never shows a blank tile */
-  var PE_VERSION = '4.7';
+   *                              so a post re-saved under Squarespace's hero bug never shows a blank tile
+   *   4.8   3 Nov 2026  (next)  Joe: suggestions can be highlighted and copied by hand, and every
+   *                              suggestion has a Copy button beside Use */
+  var PE_VERSION = '4.8';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2728,6 +2730,7 @@ try {
       drawerInner = el('div', 'flex:1;min-height:0;display:flex;flex-direction:column;');
       drawer.appendChild(drawerInner);
       shield(drawer);
+      watchJoeHighlight(drawer);
       var doc = hostDoc();
       styleUp(doc);
       if (doc !== document) {
@@ -3362,10 +3365,9 @@ try {
       var label = fields.length > 1 ? 'Use as ' + useLabel(field) : 'Use';
       box.appendChild(linkBtn(label, function () { onUse(key, field); }, true));
     });
-    if (anyFailed) {
-      var c = copyButton(text);
-      box.appendChild(c);
-    }
+    // Copy is always offered (v4.8): Use sometimes fills nothing without noticing, and the team
+    // needs the words to paste by hand
+    box.appendChild(copyButton(text));
     return box;
   }
 
@@ -3392,8 +3394,31 @@ try {
     return b;
   }
 
+  // True while someone is highlighting text in Joe, or has some highlighted. The checklist's
+  // every-few-seconds redraws wait, so the highlight isn't wiped mid-copy (v4.8). Clicking any
+  // button in Joe clears the highlight first, so tabs and buttons always work.
+  var joeMouseDown = false, joeDrawWaiting = false;
+  function joeHighlighting() {
+    if (!drawer) return false;
+    if (joeMouseDown) return true;
+    var s = drawer.ownerDocument.getSelection && drawer.ownerDocument.getSelection();
+    return !!(s && !s.isCollapsed && s.rangeCount && drawer.contains(s.anchorNode));
+  }
+  function watchJoeHighlight(box) {
+    var doc = box.ownerDocument;
+    box.addEventListener('mousedown', function (e) {
+      if (e.target.closest && e.target.closest('.pe-sel')) joeMouseDown = true;
+      if (e.target.closest && e.target.closest('button')) { var s = doc.getSelection(); if (s) s.removeAllRanges(); }
+    }, true);
+    doc.addEventListener('mouseup', function () { joeMouseDown = false; }, true);
+    doc.addEventListener('selectionchange', function () {
+      if (joeDrawWaiting && !joeHighlighting()) { joeDrawWaiting = false; drawDrawer(); }
+    });
+  }
+
   function drawDrawer() {
     if (!drawer || !drawerInner) return;
+    if (joeHighlighting()) { joeDrawWaiting = true; return; }
     // only the part under the title bar is redrawn; keep the reader's scroll position
     var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
     // The checklist redraws Joe every few seconds. A text box someone is typing in (marked with
@@ -3437,7 +3462,9 @@ try {
     var curBox = el('div', 'margin:14px 0 4px;padding:10px 12px;background:#f6f7f9;border:1px solid #eceef1;border-radius:6px;font-size:13px;line-height:1.45;');
     curBox.appendChild(el('div', 'font:700 10.5px ' + F + ';letter-spacing:.08em;text-transform:uppercase;color:#7a8088;margin-bottom:4px;', cur.label));
     var cv = el('div', 'display:flex;gap:8px;align-items:flex-start;');
-    cv.appendChild(el('span', 'flex:1;color:' + (cur.value ? '#222' : '#999') + ';', cur.value || 'None yet'));
+    var cvt = el('span', 'flex:1;color:' + (cur.value ? '#222' : '#999') + ';user-select:text;-webkit-user-select:text;cursor:text;', cur.value || 'None yet');
+    cvt.className = 'pe-sel';
+    cv.appendChild(cvt);
     if (cur.value && (cur.max || cur.min)) cv.appendChild(lengthNote(cur.value, cur.min, cur.max));
     curBox.appendChild(cv);
     body.appendChild(curBox);
@@ -3453,7 +3480,9 @@ try {
     (sg.options || []).forEach(function (o) {
       var item = el('div', 'padding:11px 0;border-bottom:1px solid #eceef1;');
       var row = el('div', 'display:flex;gap:10px;align-items:flex-start;');
-      row.appendChild(el('span', 'flex:1;line-height:1.5;', o));
+      var ot = el('span', 'flex:1;line-height:1.5;user-select:text;-webkit-user-select:text;cursor:text;', o);
+      ot.className = 'pe-sel'; // can be highlighted and copied (v4.8)
+      row.appendChild(ot);
       if (task !== 'url') row.appendChild(lengthNote(o, cur.min, cur.max));
       item.appendChild(row);
       item.appendChild(useButtons(task, o, fields, function (key, field) { useText(key, field, o); }));
@@ -3520,8 +3549,10 @@ try {
       th.onclick = function () { point([i]); };
       row.appendChild(th);
       var txt = el('div', 'flex:1;min-width:0;');
-      txt.appendChild(el('span', 'font-size:13px;color:' + (sg.status === 'error' ? C.red : '#222') + ';',
-        sg.status === 'loading' ? 'Writing…' : sg.text || 'Not asked yet'));
+      var at = el('span', 'font-size:13px;color:' + (sg.status === 'error' ? C.red : '#222') + ';user-select:text;-webkit-user-select:text;cursor:text;',
+        sg.status === 'loading' ? 'Writing…' : sg.text || 'Not asked yet');
+      at.className = 'pe-sel'; // can be highlighted and copied (v4.8)
+      txt.appendChild(at);
       if (sg.status === 'done') txt.appendChild(useButtons('alt|' + imgSrc(i), sg.text, ['alt'], function (key) { useAlt(key, imgSrc(i), sg.text); }));
       row.appendChild(txt);
       body.appendChild(row);
