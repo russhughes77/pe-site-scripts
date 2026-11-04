@@ -1163,7 +1163,7 @@ try {
    *                              so a post re-saved under Squarespace's hero bug never shows a blank tile
    *   4.8   3 Nov 2026  aaa015d Joe: suggestions can be highlighted and copied by hand, and every
    *                              suggestion has a Copy button beside Use
-   *   4.9   4 Nov 2026  (this)  Homepage hero filled from the five newest articles tagged "Hero",
+   *   4.9   4 Nov 2026  970b08b Homepage hero filled from the five newest articles tagged "Hero",
    *                              cropped on the focal point; pictures under 1500px wide skipped, and
    *                              the checks warn. Hero tag kept out of Related Content */
   var PE_VERSION = '4.9';
