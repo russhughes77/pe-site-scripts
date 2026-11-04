@@ -619,7 +619,7 @@ try {
     blog: '/production-expert-1',
     cacheHours: 6,
     tagFeeds: 2,
-    ignoreTags: ['partner', 'no-contents'],
+    ignoreTags: ['partner', 'no-contents', 'hero'],   // 'hero' (v4.9): the homepage hero tag says nothing about subject
     BROAD: ['news', 'review', 'reviews', 'opinion', 'comment', 'interview', 'podcast', 'deal',
             'competition', 'advice', 'audio', 'music', 'discuss', 'event', 'just for fun', 'poll',
             'quiz', 'quick tip', 'jobs', 'business', 'case study', 'buying guide', 'free plug-in'],
@@ -1162,8 +1162,11 @@ try {
    *   4.7   2 Nov 2026  9725745 Homepage and blog cards with no picture get the article's own hero,
    *                              so a post re-saved under Squarespace's hero bug never shows a blank tile
    *   4.8   3 Nov 2026  aaa015d Joe: suggestions can be highlighted and copied by hand, and every
-   *                              suggestion has a Copy button beside Use */
-  var PE_VERSION = '4.8';
+   *                              suggestion has a Copy button beside Use
+   *   4.9   4 Nov 2026  (this)  Homepage hero filled from the five newest articles tagged "Hero",
+   *                              cropped on the focal point; pictures under 1500px wide skipped, and
+   *                              the checks warn. Hero tag kept out of Related Content */
+  var PE_VERSION = '4.9';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2479,6 +2482,26 @@ try {
     if (!hero) out.push({ ok: false, text: 'No hero image, so search results will show no picture' });
     else if (!served) out.push({ ok: false, text: 'Hero won’t show on the homepage tile or Facebook. Add the same picture as the Featured Image on the Options tab, then Save' });
     else out.push({ ok: true, text: 'Hero image in place' });
+
+    // 6d (v4.9). Tagged "Hero" for the homepage slideshow: is the picture wide enough? The homepage
+    // skips pictures under 1500px wide (same number as minWidth in the Hero tag section), so say so
+    // here, where it can be fixed. Applies to live posts too, as old articles get tagged.
+    var heroTag = a.classList.contains('tag-hero') ||
+      (postData.tags || []).some(function (t) { return String(t).toLowerCase() === 'hero'; });
+    if (heroTag) {
+      var HERO_MIN = 1500;
+      var hsrc = String((postData.promotedBlock || '') + (postData.body || ''));
+      var hm = hsrc.match(/<img[^>]+data-image-dimensions="(\d+)x(\d+)"/i);
+      var hw = hm ? +hm[1] : 0;
+      if (!hw && hero) {
+        var him = hero.tagName === 'IMG' ? hero : hero.querySelector && hero.querySelector('img');
+        var hd = him && (him.getAttribute('data-image-dimensions') || '').match(/^(\d+)x/);
+        hw = hd ? +hd[1] : 0;
+      }
+      if (!hw) out.push({ ok: false, text: 'Tagged Hero, but no picture found for the homepage slideshow' });
+      else if (hw < HERO_MIN) out.push({ ok: false, text: 'Tagged Hero, but the picture is ' + hw + 'px wide, so the homepage will skip it. Upload a version ' + HERO_MIN + 'px wide or more' });
+      else out.push({ ok: true, text: 'Tagged Hero: picture is ' + hw + 'px wide, sharp enough for the homepage' });
+    }
 
     // 6b and 6c only apply before a post goes live (status 1 is published). Older live posts
     // were written before these rules, and flagging them would fill the Content Manager with
@@ -6579,6 +6602,203 @@ try {
   addEventListener('mercury:load', run);
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage hero headline alignment', e); }
+
+/* ================================================================
+ * Production Expert: homepage hero from the "Hero" tag (v4.9, 4 Nov 2026)
+ * Tag an article "Hero" and it goes into the slideshow at the top of the
+ * homepage. The five newest tagged articles fill the slides, newest first,
+ * so each new one pushes the oldest off. Nobody has to remove old tags.
+ * - Picture: the article's own hero (its promoted image, or the first image
+ *   in the body), falling back to the Featured Image on the Options tab.
+ *   It is cropped to the slideshow's wider shape around the picture's focal
+ *   point, so move the focal point dot on the hero image to change the crop.
+ * - Sharpness: a picture under 1500px wide would look soft at full width, so
+ *   that article is skipped and the next tagged one is used. The pre-publish
+ *   checks warn when a Hero-tagged article's picture is too small.
+ * - Order goes by publish date, not by when the tag was added, so tagging an
+ *   old article only gets it in if it is newer than the fifth tagged one.
+ * - Slides with no tagged article left to fill them keep what is set in the
+ *   gallery by hand, so the gallery is also the fallback if the feed fails.
+ * - The tag stays hidden from readers and out of Related Content (both
+ *   handled by their own sections).
+ * - Testing: add ?pe-hero-tag=News to the homepage address to fill the
+ *   slides from another tag. Only that browser tab sees it.
+ * - Homepage only. Leaves the editor alone.
+ * ================================================================ */
+try {
+(function () {
+  var C = {
+    tag: 'Hero',                      // the tag that puts an article in the hero (any capitals)
+    max: 5,                           // slides to fill; never more than the gallery has
+    blog: '/production-expert-1',     // the blog the tagged articles come from
+    minWidth: 1500,                   // px; narrower pictures are skipped (same number in the checks)
+    key: 'pe-hero-v1'                 // this browser's copy of the last list, for an instant start
+  };
+
+  try { if (window.top !== window) return; } catch (e) { return; }   // the Squarespace editor
+  function isHome() { return document.body && document.body.classList.contains('homepage'); }
+
+  // A test tag from the address (?pe-hero-tag=News), otherwise the real one
+  var testTag = (location.search.match(/[?&]pe-hero-tag=([^&]+)/) || [])[1];
+  var TAG = testTag ? decodeURIComponent(testTag.replace(/\+/g, ' ')) : C.tag;
+
+  // The styles. The picture sits in its own layer inside the slide's link, so
+  // clicks still go to the article, and the headline and its shading stay on top.
+  // Squarespace's own picture is hidden on filled slides only.
+  var CSS =
+    '.pe-hero-filled > a{position:absolute !important;top:0;left:0;right:0;bottom:0;display:block;overflow:hidden}' +
+    '.pe-hero-filled > a img.thumb-image{visibility:hidden !important}' +
+    '.pe-hero-pic{position:absolute;top:0;left:0;right:0;bottom:0;background-size:cover;' +
+      'background-repeat:no-repeat;opacity:0;transition:opacity .4s ease}' +
+    '.pe-hero-pic.pe-in{opacity:1}';
+
+  function addStyle() {
+    if (document.getElementById('pe-hero-tag-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-hero-tag-css';
+    st.textContent = CSS;
+    document.head.appendChild(st);
+  }
+
+  function ls(v) {
+    try {
+      if (v === undefined) return JSON.parse(localStorage.getItem(C.key) || 'null');
+      localStorage.setItem(C.key, JSON.stringify(v));
+    } catch (e) { return null; }
+  }
+
+  // The article's picture, read from the blog feed: { src, w, h, fx, fy } or null
+  function pictureOf(it) {
+    var html = (it.promotedBlock || '') + (it.body || '');
+    var m = html.match(/<img[^>]+data-src="([^"]+)"[^>]*>/i);
+    if (m) {
+      var tag = m[0];
+      var dims = (tag.match(/data-image-dimensions="(\d+)x(\d+)"/i) || []);
+      var fp = (tag.match(/data-image-focal-point="([\d.]+),([\d.]+)"/i) || []);
+      return {
+        src: m[1].replace(/&amp;/g, '&'),
+        w: +dims[1] || 0, h: +dims[2] || 0,
+        fx: fp[1] !== undefined ? +fp[1] : 0.5, fy: fp[2] !== undefined ? +fp[2] : 0.5
+      };
+    }
+    // No image in the article: the Featured Image, if one is set. A post without one
+    // still has an assetUrl, but it ends in a slash and serves a 300px placeholder.
+    var a = String(it.assetUrl || '');
+    if (/\/[^\/?]+\.[a-z0-9]{3,4}(\?|$)/i.test(a)) {
+      var f = it.mediaFocalPoint || {};
+      return { src: a, w: 0, h: 0, fx: f.x !== undefined ? f.x : 0.5, fy: f.y !== undefined ? f.y : 0.5 };
+    }
+    return null;
+  }
+
+  // The width of a picture whose size the feed didn't give (Featured Images).
+  // The image server never enlarges, so asking for 2500px returns the original width.
+  function measure(p) {
+    if (p.w) return Promise.resolve(p);
+    return new Promise(function (res) {
+      var im = new Image();
+      im.onload = function () { p.w = im.naturalWidth; p.h = im.naturalHeight; res(p); };
+      im.onerror = function () { res(p); };
+      im.src = p.src + (p.src.indexOf('?') < 0 ? '?' : '&') + 'format=2500w';
+    });
+  }
+
+  // The newest tagged articles with a sharp enough picture, newest first
+  function fetchList() {
+    var url = C.blog + '?format=json&tag=' + encodeURIComponent(TAG);
+    return fetch(url, { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : { items: [] }; })
+      .then(function (j) {
+        var now = Date.now();
+        var items = (j.items || []).filter(function (it) {
+          return it.fullUrl && (+it.publishOn || 0) <= now;
+        }).sort(function (a, b) { return (+b.publishOn || 0) - (+a.publishOn || 0); });
+        return Promise.all(items.map(function (it) {
+          var p = pictureOf(it);
+          return p ? measure(p).then(function (p2) { return { it: it, p: p2 }; }) : null;
+        }));
+      })
+      .then(function (rows) {
+        var out = [];
+        rows.forEach(function (r) {
+          if (!r || out.length >= C.max) return;
+          if (r.p.w < C.minWidth) {
+            try { console.info('Hero: skipped "' + r.it.title + '", picture is ' + (r.p.w || 'an unknown') + 'px wide (needs ' + C.minWidth + ')'); } catch (e) {}
+            return;
+          }
+          out.push({
+            url: r.it.fullUrl, title: r.it.title || '',
+            src: r.p.src, fx: r.p.fx, fy: r.p.fy
+          });
+        });
+        return out;
+      });
+  }
+
+  // How wide a picture to ask for: the slideshow's width on this screen, rounded up
+  // to one of the image server's sizes, so phones don't download desktop pictures
+  function bestSize(box) {
+    var need = (box.offsetWidth || window.innerWidth) * (window.devicePixelRatio || 1);
+    var sizes = [750, 1000, 1500, 2500];
+    for (var i = 0; i < sizes.length; i++) if (sizes[i] >= need) return sizes[i];
+    return 2500;
+  }
+
+  // Put the list into the gallery's slides, in order. Slides beyond the list are left alone.
+  function fill(list) {
+    if (!isHome() || !list || !list.length) return;
+    var gallery = document.querySelector('.sqs-block-gallery');
+    if (!gallery) return;
+    var slides = gallery.querySelectorAll('.slide');
+    var w = bestSize(gallery);
+    list.forEach(function (h, i) {
+      var s = slides[i];
+      if (!s) return;
+      var a = s.querySelector('a');
+      if (!a) return;
+      var href = h.url.charAt(0) === '/' ? location.origin + h.url : h.url;
+      if (s.getAttribute('data-pe-hero') === href) return;   // already showing this article
+      a.href = href;
+      s.setAttribute('data-click-through-url', href);
+      s.setAttribute('data-pe-hero', href);
+      var img = a.querySelector('img');
+      if (img) img.alt = h.title;
+      var t = s.querySelector('.meta-title');
+      if (t) t.textContent = h.title;
+      var pic = a.querySelector('.pe-hero-pic');
+      if (!pic) { pic = document.createElement('div'); pic.className = 'pe-hero-pic'; a.appendChild(pic); }
+      pic.classList.remove('pe-in');
+      pic.style.backgroundPosition = (h.fx * 100) + '% ' + (h.fy * 100) + '%';
+      var src = h.src + (h.src.indexOf('?') < 0 ? '?' : '&') + 'format=' + w + 'w';
+      // Show the picture once it has loaded, so the slide never flashes empty
+      var im = new Image();
+      im.onload = function () {
+        pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
+        s.classList.add('pe-hero-filled');
+        requestAnimationFrame(function () { pic.classList.add('pe-in'); });
+      };
+      im.src = src;
+    });
+  }
+
+  function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
+
+  function run() {
+    if (!isHome()) return;
+    addStyle();
+    // The last list this browser saw goes in straight away, then the feed is checked
+    var saved = !testTag && ls();
+    if (saved && saved.list) fill(saved.list);
+    fetchList().then(function (list) {
+      if (!testTag) ls({ t: Date.now(), list: list });
+      if (!saved || !same(saved.list, list) || testTag) fill(list);
+    }).catch(function (e) { try { console.warn('Hero: feed failed, gallery left as set', e); } catch (x) {} });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('mercury:load', function () { setTimeout(run, 100); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: homepage hero from the Hero tag', e); }
 
 /* ================================================================
  * Production Expert: light grey homepage with white story cards (v4.5, 2 Nov 2026)
