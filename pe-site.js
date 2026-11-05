@@ -1166,7 +1166,7 @@ try {
    *   4.9   4 Nov 2026  970b08b Homepage hero filled from the five newest articles tagged "Hero",
    *                              cropped on the focal point; pictures under 1500px wide skipped, and
    *                              the checks warn. Hero tag kept out of Related Content
-   *   5.0   5 Nov 2026  (commit) REVIEW label on homepage cards for anything with "review" in a
+   *   5.0   5 Nov 2026  d233115 REVIEW label on homepage cards for anything with "review" in a
    *                              category or tag (not Preview or Year In Review); order is MOST READ,
    *                              FREE, DEAL, REVIEW, NEWS */
   var PE_VERSION = '5.0';
