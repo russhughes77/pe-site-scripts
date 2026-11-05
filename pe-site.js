@@ -1165,8 +1165,11 @@ try {
    *                              suggestion has a Copy button beside Use
    *   4.9   4 Nov 2026  970b08b Homepage hero filled from the five newest articles tagged "Hero",
    *                              cropped on the focal point; pictures under 1500px wide skipped, and
-   *                              the checks warn. Hero tag kept out of Related Content */
-  var PE_VERSION = '4.9';
+   *                              the checks warn. Hero tag kept out of Related Content
+   *   5.0   5 Nov 2026  (commit) REVIEW label on homepage cards for anything with "review" in a
+   *                              category or tag (not Preview or Year In Review); order is MOST READ,
+   *                              FREE, DEAL, REVIEW, NEWS */
+  var PE_VERSION = '5.0';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -6267,8 +6270,8 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage banners in the article grid', e); }
 
 /* ================================================================
- * Production Expert: NEWS, FREE and DEAL labels on homepage cards
- * (NEWS v2.2/v2.3, 30 Oct 2026; FREE and DEAL added v2.5, 31 Oct 2026)
+ * Production Expert: NEWS, FREE, DEAL and REVIEW labels on homepage cards
+ * (NEWS v2.2/v2.3, 30 Oct 2026; FREE and DEAL added v2.5, 31 Oct 2026; REVIEW v5.0, 5 Nov 2026)
  * Puts a small orange label (Production Expert orange, #E87722) in the top-left
  * corner of the picture on homepage cards. Homepage only.
  *   FREE  anything in a Free / Free Plugins / Freebies category or tag
@@ -6277,13 +6280,20 @@ try {
  *         From the day after a deal ends, it loses the DEAL label (v2.7). The end date
  *         comes from, in order: an ends-2026-11-30 tag, the post's #expires or
  *         #offer ends line, or "Ends 29th October" in the title. No date, no change.
+ *   REVIEW  anything with the word "review" in any of its categories or tags (v5.0):
+ *         Review, Reviews, Expert Review, Plugin Reviews and so on. "Preview" doesn't
+ *         count, and nor does "Year In Review" (or Month / Week In Review), which are
+ *         round-ups, not reviews. Found two ways: the newest 60 posts in the main blog
+ *         are checked tag by tag, and the usual names are also looked up directly so
+ *         older reviews in the lists further down the homepage get labelled too.
  *   NEWS  anything in the News category or tagged News
  *   MOST READ  the three homepage stories with the most pageviews yesterday (v2.8).
  *         The numbers come from most-read.json beside this script, written each
  *         morning by the "Most read" job in this repo from Plausible. If the file
  *         is missing or empty, no MOST READ labels appear and nothing else changes.
- * One label per card. MOST READ wins, then FREE, then DEAL, then NEWS, so a free
- * plugin filed under News reads FREE, and a popular deal reads MOST READ.
+ * One label per card. MOST READ wins, then FREE, then DEAL, then REVIEW, then NEWS,
+ * so a free plugin filed under News reads FREE, a review that's also tagged News
+ * reads REVIEW, and a popular deal reads MOST READ.
  * The cards themselves don't say what an article is, so the lists come from the
  * site's own feeds. They are fetched after the page has loaded and kept in this
  * browser for an hour. A category or tag name that doesn't exist on the site
@@ -6294,7 +6304,7 @@ try {
 try {
 (function () {
   var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
-  var KEY = 'pe-card-labels-v28';   // renamed whenever the rules change so old cached lists are ignored
+  var KEY = 'pe-card-labels-v50';   // renamed whenever the rules change so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
   var MOST_READ = { text: 'Most Read', count: 3,
@@ -6307,6 +6317,12 @@ try {
   var LABELS = [
     { text: 'Free', names: ['Free', 'Free Plugins', 'Free Plugin', 'Freebies'] },
     { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'], blogs: ['/partner-deals'], dropEnded: true },
+    // Review (v5.0). match: any category or tag that passes this test gets the label, whatever
+    // it's called, so a new "Interface Reviews" tag works without touching this file. skip: names
+    // that contain the word but aren't reviews. names: looked up directly as well, for older
+    // reviews that have dropped out of the newest 60 posts but still show further down.
+    { text: 'Review', names: ['Review', 'Reviews', 'Expert Review', 'Expert Reviews', 'Product Review', 'Product Reviews'],
+      match: /\breview/i, skip: /\b(year|month|week)s?\s+in\s+review\b/i },
     { text: 'News', names: ['News'] }
   ];
 
@@ -6407,6 +6423,29 @@ try {
     });
   }
 
+  // The main blog's newest posts (3 pages, about 60), keeping those with a category or tag that
+  // passes L.match and not L.skip. Each post in the feed lists its own categories and tags, so
+  // this catches any spelling without knowing the names in advance (v5.0).
+  function matchFeed(L) {
+    var keep = function (j) {
+      return (j.items || []).filter(function (i) {
+        return (i.categories || []).concat(i.tags || []).some(function (n) {
+          return L.match.test(n) && !(L.skip && L.skip.test(n));
+        });
+      }).map(function (i) { return i.fullUrl ? { p: path(i.fullUrl), ended: false } : null; });
+    };
+    function page(url, left) {
+      return getJson(url).then(function (j) {
+        var got = keep(j);
+        var next = j.pagination && j.pagination.nextPage && j.pagination.nextPageUrl;
+        if (!next || left <= 1) return got;
+        return page(next + (next.indexOf('?') < 0 ? '?' : '&') + 'format=json', left - 1)
+          .then(function (more) { return got.concat(more); });
+      });
+    }
+    return page(BASE.replace(/&$/, ''), 3);
+  }
+
   // Yesterday's pageviews by page, { "/article-path": 1234, ... }; {} when unavailable.
   // The date in the address changes daily so browsers never hold an old copy past the morning.
   function fetchReads() {
@@ -6431,6 +6470,7 @@ try {
         qs.push('category=' + v, 'tag=' + v);
       });
       var jobs = qs.map(feed).concat((L.blogs || []).map(blogFeed));
+      if (L.match) jobs.push(matchFeed(L));   // any category or tag containing the word (v5.0)
       return Promise.all(jobs).then(function (lists) {
         return [].concat.apply([], lists)
           .filter(function (x) { return x && !(L.dropEnded && x.ended); })
@@ -6517,7 +6557,7 @@ try {
   if (document.readyState === 'complete') setTimeout(start, 300);
   else addEventListener('load', function () { setTimeout(start, 300); });
 })();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS, FREE and DEAL labels on homepage cards', e); }
+} catch (e) { if (window.console) console.warn('Production Expert script failed: NEWS, FREE, DEAL and REVIEW labels on homepage cards', e); }
 
 /* ================================================================
  * Production Expert: homepage hero headline lined up with the grid (v4.2, 2 Nov 2026)
