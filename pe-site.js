@@ -1178,8 +1178,14 @@ try {
    *                              waiting on the Content Manager's Socials tab
    *   5.2   6 Nov 2026  3377958 Phones: the photo credit under the article hero is hidden (it sat
    *                              against the screen edge with each link as a full-width bar).
-   *                              Partner Content captions are never hidden */
-  var PE_VERSION = '5.2';
+   *                              Partner Content captions are never hidden
+   *   5.3   6 Nov 2026  (this)  Featured Image filled by Joe: when a saved post has a hero but no Featured
+   *                              Image, Joe copies the hero into it (Facebook, LinkedIn, Google and the
+   *                              homepage take their picture from there; without it they get the site
+   *                              logo). Check 6a now reads the Featured Image only, in red, with a Fill it
+   *                              now button: Squarespace promotes heroes again, but the promoted hero no
+   *                              longer reaches the share picture, so 6a had been showing green */
+  var PE_VERSION = '5.3';
   var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
   var socialBusy = false, socialErr = '';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
@@ -2265,7 +2271,7 @@ try {
     if (!warnings.length) return;
     list.appendChild(sectionLabel('Needs fixing', C.amber));
     warnings.forEach(function (r) {
-      var hard = r.kind === 'embargo' || r.kind === 'flag'; // embargo problems and flagged issues are shown in red
+      var hard = r.kind === 'embargo' || r.kind === 'flag' || r.kind === 'featured'; // embargo problems, flagged issues and a missing Featured Image are shown in red
       var row = el('div', 'display:flex;gap:8px;align-items:flex-start;padding:3px 0;font:' + (hard ? 600 : 400) + ' 13px/1.4 ' + F + ';color:' + (hard ? C.red : '#5a3a00') + ';');
       row.appendChild(el('span', 'color:' + (hard ? C.red : C.amber) + ';', '⚠'));
       var t = el('span', 'flex:1;' + (r.els ? 'cursor:pointer;text-decoration:underline;text-underline-offset:2px;' : ''), r.text);
@@ -2277,6 +2283,13 @@ try {
         b.type = 'button';
         b.onclick = function () { openDrawer(fix); };
         row.appendChild(b);
+      }
+      if (r.kind === 'featured') {   // 5.3
+        var fb = el('button', 'flex:0 0 auto;padding:2px 8px;border:1px solid ' + C.red + ';border-radius:5px;background:#fff;font:600 11px/1.6 ' + F + ';color:' + C.red + ';cursor:pointer;', featuredBusy ? 'Filling…' : 'Fill it now');
+        fb.type = 'button';
+        fb.disabled = featuredBusy;
+        fb.onclick = function () { fillFeatured(true); };
+        row.appendChild(fb);
       }
       list.appendChild(row);
     });
@@ -2536,9 +2549,12 @@ try {
     // or the Featured Image on the Options tab (assetUrl then ends in a file name). Since midday on
     // 2 Nov 2026 Squarespace stopped promoting the first image of a post when it's saved, so a hero in
     // the body alone isn't enough any more. Read from the saved post, so it updates after Save.
-    var served = !!postData.promotedBlock || /\/[^\/?]+\.[a-z0-9]{3,4}(\?|$)/i.test(String(postData.assetUrl || ''));
+    // 5.3: only the Featured Image counts now. Found 6 Nov 2026: Squarespace promotes heroes again, but a post
+    // with a promoted hero and no Featured Image still shares the site logo (Vienna Performer, Logic Pro 13,
+    // MIXPrep 2.3.1, UAD Capitol Studios). An empty Featured Image comes back as a folder address ending in /.
+    var served = hasFeatured();
     if (!hero) out.push({ ok: false, text: 'No hero image, so search results will show no picture' });
-    else if (!served) out.push({ ok: false, text: 'Hero won’t show on the homepage tile or Facebook. Add the same picture as the Featured Image on the Options tab, then Save' });
+    else if (!served) out.push({ ok: false, kind: 'featured', text: featuredMsg || 'No Featured Image, so Facebook, LinkedIn, Google and the homepage tile get the site logo. Joe fills it when the post is saved with its Edit window open, or press Fill it now' });
     else out.push({ ok: true, text: 'Hero image in place' });
 
     // 6d (v4.9). Tagged "Hero" for the homepage slideshow: is the picture wide enough? The homepage
@@ -2652,6 +2668,7 @@ try {
   function refreshAuto() {
     return runAuto().then(function (res) {
       auto = res;
+      autoFeatured(); // 5.3: a saved post with a hero and no Featured Image gets one
       if (!planEditing) renderPlan(); // the planned date line turns amber or back as the schedule changes
     if (!embEditing) renderEmbargo(); // and the embargo link goes once the post is live
       if (loaded) draw();
@@ -4053,6 +4070,65 @@ try {
             : { bad: true, t: 'Featured Image didn’t take. Upload the same picture there by hand on the Options tab.' });
         });
       }).then(function () { settingsTab(doc, 'Content'); });
+    });
+  }
+
+  /* 5.3: Featured Image filled from the hero, whoever saved the post and however the hero went in.
+   * Runs when the checks find a hero and an empty Featured Image, the post's Edit window is open (the
+   * Featured Image box lives in its Settings), and Joe hasn't already tried since the last save. Uses the
+   * same upload as Place as hero (featuredImage), which only ever fills an empty box. The picture is the
+   * saved hero (the Promoted Block), else the first picture in the article, redrawn as a real JPEG
+   * (Squarespace's CDN hands browsers WebP, and the box turns a WebP away). */
+  var featuredBusy = false, featuredTried = '', featuredMsg = '';
+  function hasFeatured() {
+    var u = String(postData.assetUrl || '').replace(/\?.*$/, '');
+    return /\/[^\/]+\.[a-z0-9]{3,4}$/i.test(u);
+  }
+  function heroSource() {
+    var m = /(?:data-src|src)="(https:\/\/images\.squarespace-cdn\.com\/[^"]+)"/i.exec(String(postData.promotedBlock || '') + String(postData.body || ''));
+    return m ? m[1].replace(/&amp;/g, '&').replace(/\?.*$/, '') : '';
+  }
+  function editWindowOpen() {
+    return !!settingsDoc() || Array.prototype.some.call(document.querySelectorAll('.sqs-button-vanilla .label'), function (e) {
+      return e.textContent.trim() === 'Settings' && visible(e);
+    });
+  }
+  function autoFeatured() {
+    if (featuredBusy || !post || hasFeatured() || !heroSource() || !editWindowOpen()) return;
+    var key = post + ':' + (postData.updatedOn || '');
+    if (featuredTried === key) return;   // once per save
+    featuredTried = key;
+    fillFeatured(false);
+  }
+  function heroJpeg(src) {
+    return fetch(src + '?format=2500w', { mode: 'cors' }).then(function (r) {
+      if (!r.ok) throw new Error('picture ' + r.status);
+      return r.blob();
+    }).then(function (b) { return createImageBitmap(b); }).then(function (bmp) {
+      var cv = document.createElement('canvas'); cv.width = bmp.width; cv.height = bmp.height;
+      cv.getContext('2d').drawImage(bmp, 0, 0);
+      return new Promise(function (ok, no) { cv.toBlob(function (b) { b ? ok(b) : no(new Error('JPEG')); }, 'image/jpeg', 0.9); });
+    }).then(function (blob) {
+      var name = decodeURIComponent(src.split('/').pop() || 'hero').replace(/\+/g, ' ').replace(/\.[a-z0-9]{3,4}$/i, '') + '.jpg';
+      return { blob: blob, name: name.replace(/[^\w .-]/g, '').trim() || 'hero.jpg' };
+    });
+  }
+  function fillFeatured(byHand) {
+    if (featuredBusy) return;
+    var src = heroSource();
+    if (!src) { featuredMsg = 'No Featured Image, and no saved hero to copy into it. Add a hero, Save, then press Fill it now'; refreshAuto(); return; }
+    if (byHand && !editWindowOpen()) { featuredMsg = 'No Featured Image. Open the post\'s Edit window, then press Fill it now'; refreshAuto(); return; }
+    featuredBusy = true; featuredMsg = ''; draw();
+    var P = { placed: { notes: [] } };
+    heroJpeg(src).then(function (out) { return featuredImage(P, out); }).then(function () {
+      var bad = P.placed.notes.filter(function (n) { return n.bad; })[0];
+      featuredMsg = bad ? 'No Featured Image: ' + bad.t : '';
+      logEvent({ kind: 'featured', item: bad ? 'Featured Image not filled' : 'Featured Image filled from the hero', who: who() });
+    }).catch(function (e) {
+      featuredMsg = 'No Featured Image, and Joe couldn\'t copy the hero (' + String(e && e.message || e).slice(0, 60) + '). Upload it on the Options tab';
+    }).then(function () {
+      featuredBusy = false;
+      return wait(2500).then(checkSchedule).then(refreshAuto);
     });
   }
 
