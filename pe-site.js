@@ -1176,7 +1176,7 @@ try {
    *   5.1   6 Nov 2026  7f84086 Socials tick in the checks panel: asks for Instagram, Facebook and
    *                              LinkedIn posts, written by Claude when the article goes live and
    *                              waiting on the Content Manager's Socials tab
-   *   5.2   6 Nov 2026          Phones: the photo credit under the article hero is hidden (it sat
+   *   5.2   6 Nov 2026  3377958 Phones: the photo credit under the article hero is hidden (it sat
    *                              against the screen edge with each link as a full-width bar).
    *                              Partner Content captions are never hidden */
   var PE_VERSION = '5.2';
