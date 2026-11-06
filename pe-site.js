@@ -1175,8 +1175,11 @@ try {
    *                              FREE, DEAL, REVIEW, NEWS
    *   5.1   6 Nov 2026  7f84086 Socials tick in the checks panel: asks for Instagram, Facebook and
    *                              LinkedIn posts, written by Claude when the article goes live and
-   *                              waiting on the Content Manager's Socials tab */
-  var PE_VERSION = '5.1';
+   *                              waiting on the Content Manager's Socials tab
+   *   5.2   6 Nov 2026          Phones: the photo credit under the article hero is hidden (it sat
+   *                              against the screen edge with each link as a full-width bar).
+   *                              Partner Content captions are never hidden */
+  var PE_VERSION = '5.2';
   var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
   var socialBusy = false, socialErr = '';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
@@ -7054,10 +7057,36 @@ try {
     setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, 50);
   }
 
+  // v5.2: the photo credit under the hero is hidden on phones. Once the hero runs edge to edge
+  // (v4.3) the caption sat against the screen edge, and the theme's phone styles turned each
+  // link in it into a full-width bar (Russ, 6 Nov 2026). Tablet and desktop keep the credit.
+  // A hand-typed "This is Partner Content" caption is never hidden: older untagged partner
+  // posts still use it as their disclosure.
+  function hideHeroCredit(art) {
+    var wrap = heroFrom(art.querySelector('.special-content .sqs-layout')) ||
+               heroFrom(art.querySelector('.body.entry-content .sqs-layout'));
+    if (!wrap) return;
+    var block = wrap.closest('.sqs-block') || wrap.parentNode;
+    var caps = block.querySelectorAll('figcaption, .image-caption-wrapper, .image-caption');
+    var found = false;
+    for (var i = 0; i < caps.length; i++) {
+      if (/partner content/i.test(caps[i].textContent)) continue;
+      caps[i].classList.add('pe-hero-credit');
+      found = true;
+    }
+    if (found && !document.getElementById('pe-hero-credit-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-hero-credit-css';
+      st.textContent = '@media (max-width:767px){.pe-hero-credit{display:none!important}}';
+      document.head.appendChild(st);
+    }
+  }
+
   function run() {
     var art = document.querySelector('article.hentry');
     if (!art) return;
     rebuildHeroArea(art);
+    hideHeroCredit(art);
     if (art.classList.contains('tag-title-above')) return;
     var h1 = art.querySelector('h1.entry-title');
     if (!h1 || h1.classList.contains('pe-hero-title')) return;   // missing, or already done
