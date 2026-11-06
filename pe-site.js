@@ -1173,7 +1173,7 @@ try {
    *   5.0   5 Nov 2026  d233115 REVIEW label on homepage cards for anything with "review" in a
    *                              category or tag (not Preview or Year In Review); order is MOST READ,
    *                              FREE, DEAL, REVIEW, NEWS
-   *   5.1   6 Nov 2026  (this)  Socials tick in the checks panel: asks for Instagram, Facebook and
+   *   5.1   6 Nov 2026  7f84086 Socials tick in the checks panel: asks for Instagram, Facebook and
    *                              LinkedIn posts, written by Claude when the article goes live and
    *                              waiting on the Content Manager's Socials tab */
   var PE_VERSION = '5.1';
