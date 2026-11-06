@@ -1063,6 +1063,10 @@ try {
 (function () {
   var C = {
     store: 'https://script.google.com/macros/s/AKfycbzKBcQln1DzO_Ml9_5KWZG_Rh_M-Px2TgHDYtYIbncl_9IXEjICvYz0448k1E3H9UAYeQ/exec',
+    // 5.1: the Socials tick talks to the Partners script, which writes the posts (Content Manager > Socials).
+    // The token is public, like the rest of this file: it only lets the panel ask for, or cancel, posts for this article.
+    socials: 'https://script.google.com/macros/s/AKfycbw5_UxURgMgLtSdxdhYn6DeVtKtMkywtZ_8iL-Y8vt1A1S-Gci1NU8Acs9wJzHbx6k6/exec',
+    socialsToken: 'pe-social-tick-1',
     items: ['Title, SEO and URL', 'Content and grammar', 'Image check', 'Schedule'],
     blue: '#006eb3',
     green: '#3b6d11',
@@ -1168,8 +1172,13 @@ try {
    *                              the checks warn. Hero tag kept out of Related Content
    *   5.0   5 Nov 2026  d233115 REVIEW label on homepage cards for anything with "review" in a
    *                              category or tag (not Preview or Year In Review); order is MOST READ,
-   *                              FREE, DEAL, REVIEW, NEWS */
-  var PE_VERSION = '5.0';
+   *                              FREE, DEAL, REVIEW, NEWS
+   *   5.1   6 Nov 2026  (this)  Socials tick in the checks panel: asks for Instagram, Facebook and
+   *                              LinkedIn posts, written by Claude when the article goes live and
+   *                              waiting on the Content Manager's Socials tab */
+  var PE_VERSION = '5.1';
+  var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
+  var socialBusy = false, socialErr = '';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2195,6 +2204,7 @@ try {
     drawProblems();
     drawOverview(); // advisory Overview score, between the warnings and the checks
     drawChecks();
+    drawSocial(); // 5.1: the Socials tick, under the checks
     drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
     if (statusErr) list.appendChild(el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eceef1;color:#888;font:11px/1.5 ' + F + ';',
@@ -2310,6 +2320,48 @@ try {
         list.appendChild(r);
       });
     }
+  }
+
+  /* ---------- 5.1: Socials tick ---------- */
+  // Ticked: the Partners script makes Instagram, Facebook and LinkedIn posts for this article. Not live yet: they're
+  // written when it goes live. They wait on the Content Manager's Socials tab to be checked and sent.
+  function loadSocial() {
+    if (!post) return;
+    fetch(C.socials + '?socialtick=' + encodeURIComponent(post) + '&t=' + encodeURIComponent(C.socialsToken))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (d && d.ok) { social = d; socialErr = ''; }
+        else socialErr = d && d.error === 'key' ? 'Not switched on yet: the Partners script needs updating to v1.16' : (d && d.error) || 'no reply';
+        draw();
+      })
+      .catch(function () { socialErr = 'Couldn\'t reach the Partners sheet'; draw(); });
+  }
+  function setSocial(on) {
+    socialBusy = true; socialErr = '';
+    var by = who();
+    social = { on: on, status: on ? 'asking' : '', label: on ? 'Asking…' : '', by: on ? by + ' (panel)' : '' };
+    draw();
+    fetch(C.socials, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ op: 'socialtick', t: C.socialsToken, postId: post, on: on, by: by, title: postTitle() }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { socialBusy = false; if (d && d.ok) social = d; else { socialErr = (d && d.error) || 'That didn\'t save'; loadSocial(); } draw(); })
+      .catch(function () { socialBusy = false; socialErr = 'Couldn\'t reach the Partners sheet. Try again.'; loadSocial(); draw(); });
+    logEvent({ kind: on ? 'tick' : 'untick', item: 'Socials', who: by });
+  }
+  function drawSocial() {
+    list.appendChild(sectionLabel('Socials'));
+    var row = el('label', 'display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13.5px;cursor:pointer;');
+    var box = el('input', 'flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:' + C.blue + ';');
+    box.type = 'checkbox';
+    box.checked = !!(social && social.on);
+    box.disabled = socialBusy || !social;
+    box.onchange = function () { setSocial(box.checked); };
+    row.appendChild(box);
+    row.appendChild(el('span', 'flex:1;', 'Make Instagram, Facebook and LinkedIn posts'));
+    row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', social && social.on && social.by ? String(social.by).replace(/ \(panel\)$/, '') : ''));
+    list.appendChild(row);
+    var note = socialErr ? socialErr : !social ? 'Reading…' : social.on ? social.label : 'Claude writes them when the article goes live, ready to check on the Content Manager\'s Socials tab';
+    list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (socialErr || (social && social.status === 'failed') ? C.red : '#80868d') + ';', note));
   }
 
   // Tells the pipeline dashboard where this post is up to, whenever that changes
@@ -4916,6 +4968,8 @@ try {
     var ctx = (window.Static && Static.SQUARESPACE_CONTEXT) || {};
     post = ctx.itemId || (a && a.id.replace('article-', ''));
     if (!a || !post || panel || !isTeam()) return;
+    loadSocial(); // 5.1
+    setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
     panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
       'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 12px 32px rgba(17,24,39,.14),0 2px 6px rgba(17,24,39,.06);' +
