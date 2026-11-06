@@ -1179,7 +1179,7 @@ try {
    *   5.2   6 Nov 2026  3377958 Phones: the photo credit under the article hero is hidden (it sat
    *                              against the screen edge with each link as a full-width bar).
    *                              Partner Content captions are never hidden
-   *   5.3   6 Nov 2026  (this)  Featured Image filled by Joe: when a saved post has a hero but no Featured
+   *   5.3   6 Nov 2026  415d318 Featured Image filled by Joe: when a saved post has a hero but no Featured
    *                              Image, Joe copies the hero into it (Facebook, LinkedIn, Google and the
    *                              homepage take their picture from there; without it they get the site
    *                              logo). Check 6a now reads the Featured Image only, in red, with a Fill it
