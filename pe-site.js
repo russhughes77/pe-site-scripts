@@ -1184,8 +1184,14 @@ try {
    *                              homepage take their picture from there; without it they get the site
    *                              logo). Check 6a now reads the Featured Image only, in red, with a Fill it
    *                              now button: Squarespace promotes heroes again, but the promoted hero no
-   *                              longer reaches the share picture, so 6a had been showing green */
-  var PE_VERSION = '5.3';
+   *                              longer reaches the share picture, so 6a had been showing green
+   *   5.4   7 Nov 2026  (this)  Help: a ? button in Joe's title bar and in the Joe bar at the foot of the checks
+   *                              panel opens the team's help guide (pe-related-answers.pages.dev/help) in its own
+   *                              window, on the page for the Joe tab on screen, or on the checks panel */
+  var PE_VERSION = '5.4';
+  // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
+  // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
+  var HELP_URL = 'https://pe-related-answers.pages.dev/help';
   var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
   var socialBusy = false, socialErr = '';
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
@@ -1205,6 +1211,24 @@ try {
     if (css) e.style.cssText = css;
     if (text != null) e.textContent = text;
     return e;
+  }
+  // 5.4: opens the help guide on a topic, in one reusable window beside the editor (a second press reuses it)
+  function openHelp(topic, from) {
+    var url = HELP_URL + '#t=' + encodeURIComponent(topic) + (from ? '&from=' + encodeURIComponent(from) : '');
+    var w = null;
+    try { w = window.open(url, 'pe-help', 'popup=yes,width=1080,height=840'); } catch (e) { w = null; }
+    if (w) { try { w.focus(); } catch (e) {} }
+  }
+  // 5.4: the small round ? button used in Joe's title bar and the Joe bar
+  function helpButton(title, onclick) {
+    var q = el('button', 'flex:0 0 auto;width:20px;height:20px;padding:0;border:1px solid #c9ced4;border-radius:50%;background:#fff;' +
+      'font:700 12px/18px ' + F + ';color:#5f6368;cursor:pointer;text-align:center;', '?');
+    q.type = 'button';
+    q.className = 'pe-help-q';
+    q.title = title;
+    q.setAttribute('aria-label', title);
+    q.onclick = function (e) { e.stopPropagation(); onclick(); };
+    return q;
   }
 
   var state = {}, post, panel, pill, list, head, hideTimer, banner, drawer;
@@ -2798,6 +2822,11 @@ try {
       '<span title="Version of the site scripts this browser is running" style="font-size:11px;font-weight:600;letter-spacing:0;color:#9aa0a6;line-height:1;">v' + PE_VERSION + '</span>';
     joe.setAttribute('aria-label', 'Joe, help me write');
     drawerHead.appendChild(joe);
+    // 5.4: help on whichever tab Joe is showing
+    drawerHead.appendChild(helpButton('Help for this tab', function () {
+      var t = drawerTabs().filter(function (d) { return d[0] === drawerTab; })[0];
+      openHelp('joe-' + drawerTab, 'Joe \u203a ' + (t ? t[1] : 'Joe'));
+    }));
     var x = el('button', 'flex:0 0 auto;border:0;background:none;font-size:22px;font-weight:400;line-height:1;cursor:pointer;color:#8a9097;padding:0 2px;', '×');
     x.type = 'button';
     x.className = 'pe-x';
@@ -2889,6 +2918,8 @@ try {
       '<span style="font-size:13px;font-weight:800;letter-spacing:.14em;line-height:1;">JOE</span>';
     joeBarRow.appendChild(mark);
     joeBarRow.appendChild(el('span', 'flex:1;font-size:12px;color:' + C.blue + ';', open ? (drawerShut ? 'is open, shrunk' : 'is open') : ''));
+    // 5.4: help on the checks panel (and from there, every topic)
+    joeBarRow.appendChild(helpButton('Help: the checks panel, Joe and the whole system', function () { openHelp('checks', 'the checks panel'); }));
     var b = el('button', 'flex:0 0 auto;padding:4px 12px;border:1px solid ' + C.blue + ';border-radius:5px;background:' + (open ? '#fff' : C.blue) +
       ';font:700 12px/1.6 ' + F + ';color:' + (open ? C.blue : '#fff') + ';cursor:pointer;', open ? 'Bring to front' : 'Open Joe');
     b.type = 'button';
