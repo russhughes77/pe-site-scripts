@@ -1185,7 +1185,7 @@ try {
    *                              logo). Check 6a now reads the Featured Image only, in red, with a Fill it
    *                              now button: Squarespace promotes heroes again, but the promoted hero no
    *                              longer reaches the share picture, so 6a had been showing green
-   *   5.4   7 Nov 2026  (this)  Help: a ? button in Joe's title bar and in the Joe bar at the foot of the checks
+   *   5.4   7 Nov 2026  3145339 Help: a ? button in Joe's title bar and in the Joe bar at the foot of the checks
    *                              panel opens the team's help guide (pe-related-answers.pages.dev/help) in its own
    *                              window, on the page for the Joe tab on screen, or on the checks panel */
   var PE_VERSION = '5.4';
