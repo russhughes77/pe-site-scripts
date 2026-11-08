@@ -1192,7 +1192,7 @@ try {
    *                              insert) instead of writing the value in, and only count it as taken when
    *                              Squarespace's own copy of the value agrees, watched for 1.5 seconds. Fixes
    *                              Use showing the words but Save keeping the old ones. Alt text gets the same
-   *   5.6   8 Nov 2026  (this)  Alt text check only warns when the same picture has no alt on two checks in a
+   *   5.6   8 Nov 2026  5a559b6 Alt text check only warns when the same picture has no alt on two checks in a
    *                              row (the second runs 3 seconds after the first). Fixes a false "1 of 8 images
    *                              have no alt text" while Squarespace redraws image blocks as the editor opens */
   var PE_VERSION = '5.6';
