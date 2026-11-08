@@ -1187,8 +1187,12 @@ try {
    *                              longer reaches the share picture, so 6a had been showing green
    *   5.4   7 Nov 2026  3145339 Help: a ? button in Joe's title bar and in the Joe bar at the foot of the checks
    *                              panel opens the team's help guide (pe-related-answers.pages.dev/help) in its own
-   *                              window, on the page for the Joe tab on screen, or on the checks panel */
-  var PE_VERSION = '5.4';
+   *                              window, on the page for the Joe tab on screen, or on the checks panel
+   *   5.5   8 Nov 2026  PENDING Joe's Use buttons type into Squarespace's boxes like a person (focus, select,
+   *                              insert) instead of writing the value in, and only count it as taken when
+   *                              Squarespace's own copy of the value agrees, watched for 1.5 seconds. Fixes
+   *                              Use showing the words but Save keeping the old ones. Alt text gets the same */
+  var PE_VERSION = '5.5';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3339,16 +3343,40 @@ try {
   // Fills a field, then watches it for a moment: if Squarespace puts its own value back (it can
   // while a tab is still loading), fills it again, up to three times. Resolves true once the
   // value has held for over half a second.
+  // 5.5: the old check only read what the box showed. A React field keeps its own copy of the value,
+  // and when that copy missed the change the box still showed Joe's words for a moment, the check
+  // passed, then Squarespace's next redraw put the old value back (Russ, 8 Nov 2026: about 9 in 10
+  // Uses ended in copy and paste). Now the fill types like a person (typeInto) and "held" also needs
+  // React's own copy (reactValue) to agree, watched for about a second and a half.
   function fillAndHold(f, v) {
     var tries = 0;
+    function holds() { var rv = reactValue(f); return f.value === v && (rv === undefined || rv === v); }
     function attempt() {
-      setField(f, v);
-      return wait(350).then(function () {
-        if (f.value !== v && ++tries < 3) return attempt();
-        return wait(300).then(function () { return f.value === v; });
+      setField(f, v, tries > 0);
+      return wait(400).then(function () {
+        if (!holds() && ++tries < 4) return attempt();
+        // still there a second later? Squarespace's late redraws land within about a second
+        return wait(1100).then(function () {
+          if (!holds() && ++tries < 4) return attempt();
+          return holds();
+        });
       });
     }
     return attempt();
+  }
+
+  // The value React holds for a field (from its props on the element), or undefined when the field
+  // isn't a React-controlled one (the older YUI boxes), in which case only the box itself is checked
+  function reactValue(f) {
+    try {
+      for (var k in f) {
+        if (k.indexOf('__reactProps$') === 0 || k.indexOf('__reactEventHandlers$') === 0) {
+          var p = f[k];
+          return p && typeof p.value === 'string' ? p.value : undefined;
+        }
+      }
+    } catch (e) {}
+    return undefined;
   }
 
   // Checks find() every 100ms until it returns something, or gives up after ms
@@ -3369,12 +3397,38 @@ try {
     if (tab) tab.click();
   }
 
-  // Sets a field's value the way typing would, so YUI and React forms both take it
-  function setField(f, v) {
+  // Sets a field's value. 5.5: types it first (typeInto), which every form on the page treats as a
+  // person typing; falls back to the direct way if the browser refuses, or on a retry when typing
+  // didn't take. force skips straight to the direct way.
+  function setField(f, v, force) {
+    if (!force && typeInto(f, v)) return;
     var w = f.ownerDocument.defaultView;
     var proto = f.tagName === 'TEXTAREA' ? w.HTMLTextAreaElement.prototype : w.HTMLInputElement.prototype;
+    // React notices a change by comparing against its tracker; clearing it makes sure it sees one
+    try { if (f._valueTracker) f._valueTracker.setValue(''); } catch (e) {}
     Object.getOwnPropertyDescriptor(proto, 'value').set.call(f, v);
-    ['input', 'change', 'blur'].forEach(function (t) { f.dispatchEvent(new w.Event(t, { bubbles: true })); });
+    f.dispatchEvent(new w.InputEvent('input', { bubbles: true, inputType: 'insertReplacementText', data: v }));
+    f.dispatchEvent(new w.Event('change', { bubbles: true }));
+    try { f.blur(); } catch (e) {}
+  }
+
+  // 5.5: puts the text in as if typed: focuses the box, selects what's there, and inserts the new words
+  // with the browser's own insertText command. That raises the same events a keyboard does, which React
+  // fields, Squarespace's older YUI boxes (they only watch a box that has focus) and undo all follow.
+  // True if the box ended up holding the text.
+  function typeInto(f, v) {
+    try {
+      var doc = f.ownerDocument, w = doc.defaultView;
+      try { w.focus(); } catch (e) {}
+      f.focus();
+      if (doc.activeElement !== f) return false;
+      f.select();
+      var ok = doc.execCommand('insertText', false, v);
+      if (!ok || f.value !== v) return false;
+      // let the older boxes' watchers see the new value before focus moves on
+      setTimeout(function () { try { if (doc.activeElement === f) f.blur(); } catch (e) {} }, 250);
+      return true;
+    } catch (e) { return false; }
   }
 
   // The box under a label such as "SEO Title (Optional)", found by walking up from the label
@@ -3467,13 +3521,13 @@ try {
       var f = altField();
       if (!f && ++tries < 12) return setTimeout(look, 150);
       if (!f) { useDone[key] = { st: 'failed', why: 'Squarespace didn’t open the picture’s settings.' }; return drawDrawer(); }
-      setField(f, text);
-      setTimeout(function () {
-        useDone[key] = f.value === text
+      // 5.5: same typing and checks as the other fields (was one try, checked after 150ms)
+      fillAndHold(f, text).then(function (held) {
+        useDone[key] = held
           ? { st: 'used', at: Date.now(), field: 'alt', value: text, why: '✓ Filled in. Click away from the picture panel, then Save.' }
-          : { st: 'failed', why: 'Squarespace didn’t take the alt text.' };
+          : { st: 'failed', why: 'Squarespace didn’t take the alt text. Copy it and paste it in.' };
         drawDrawer();
-      }, 150);
+      });
     })();
   }
 
