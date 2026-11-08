@@ -1188,7 +1188,7 @@ try {
    *   5.4   7 Nov 2026  3145339 Help: a ? button in Joe's title bar and in the Joe bar at the foot of the checks
    *                              panel opens the team's help guide (pe-related-answers.pages.dev/help) in its own
    *                              window, on the page for the Joe tab on screen, or on the checks panel
-   *   5.5   8 Nov 2026  PENDING Joe's Use buttons type into Squarespace's boxes like a person (focus, select,
+   *   5.5   8 Nov 2026  2ed7c73 Joe's Use buttons type into Squarespace's boxes like a person (focus, select,
    *                              insert) instead of writing the value in, and only count it as taken when
    *                              Squarespace's own copy of the value agrees, watched for 1.5 seconds. Fixes
    *                              Use showing the words but Save keeping the old ones. Alt text gets the same */
