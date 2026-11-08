@@ -1191,8 +1191,11 @@ try {
    *   5.5   8 Nov 2026  2ed7c73 Joe's Use buttons type into Squarespace's boxes like a person (focus, select,
    *                              insert) instead of writing the value in, and only count it as taken when
    *                              Squarespace's own copy of the value agrees, watched for 1.5 seconds. Fixes
-   *                              Use showing the words but Save keeping the old ones. Alt text gets the same */
-  var PE_VERSION = '5.5';
+   *                              Use showing the words but Save keeping the old ones. Alt text gets the same
+   *   5.6   8 Nov 2026  (this)  Alt text check only warns when the same picture has no alt on two checks in a
+   *                              row (the second runs 3 seconds after the first). Fixes a false "1 of 8 images
+   *                              have no alt text" while Squarespace redraws image blocks as the editor opens */
+  var PE_VERSION = '5.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1241,6 +1244,8 @@ try {
   var editedAt = 0;             // when the post was last saved
   var postData = {};            // the post's own record from Squarespace
   var auto = [];                // results of the automatic checks
+  var altMiss = {};             // 5.6: image address: checks in a row it has had no alt
+  var altRecheck = false;       // 5.6: a first miss waiting to be confirmed
   var linkCache = {};           // internal link address: true if it works
   var lastReport = '';          // what was last sent to the pipeline dashboard
   var statusErr = '';           // why asking Squarespace for the post's status failed, if it did
@@ -2533,7 +2538,15 @@ try {
     // the same picture can appear twice in the page (e.g. lazy-load copies), so count each once
     var seenSrc = {};
     imgs = imgs.filter(function (i) { var k = imgSrc(i); if (seenSrc[k]) return false; seenSrc[k] = 1; return true; });
-    var noAlt = imgs.filter(function (i) { return !String(i.getAttribute('alt') || '').trim(); });
+    var noAltNow = imgs.filter(function (i) { return !String(i.getAttribute('alt') || '').trim(); });
+    // 5.6: Squarespace redraws image blocks as the editor opens, and for a moment a picture can have no
+    // alt. Only warn when the same picture has no alt on two checks in a row; a recheck runs 3 seconds
+    // after a first miss, so a real gap still shows within seconds
+    var miss = {};
+    noAltNow.forEach(function (i) { var k = imgSrc(i); miss[k] = (altMiss[k] || 0) + 1; });
+    altMiss = miss;
+    var noAlt = noAltNow.filter(function (i) { return altMiss[imgSrc(i)] >= 2; });
+    if (noAltNow.length > noAlt.length) altRecheck = true;
     out.push(noAlt.length
       ? { ok: false, kind: 'alt', text: noAlt.length + ' of ' + imgs.length + (imgs.length === 1 ? ' image has' : ' images have') + ' no alt text', els: noAlt }
       : { ok: true, text: imgs.length ? 'Alt text on all ' + imgs.length + ' images' : 'No images to check' });
@@ -2696,6 +2709,7 @@ try {
   function refreshAuto() {
     return runAuto().then(function (res) {
       auto = res;
+      if (altRecheck) { altRecheck = false; setTimeout(refreshAuto, 3000); } // 5.6: confirm a missing alt quickly
       autoFeatured(); // 5.3: a saved post with a hero and no Featured Image gets one
       if (!planEditing) renderPlan(); // the planned date line turns amber or back as the schedule changes
     if (!embEditing) renderEmbargo(); // and the embargo link goes once the post is live
