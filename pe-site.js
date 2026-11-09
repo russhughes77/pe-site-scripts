@@ -1199,12 +1199,12 @@ try {
    *   5.6   8 Nov 2026  5a559b6 Alt text check only warns when the same picture has no alt on two checks in a
    *                              row (the second runs 3 seconds after the first). Fixes a false "1 of 8 images
    *                              have no alt text" while Squarespace redraws image blocks as the editor opens
-   *   5.7   9 Nov 2026          Free Plug-in of the Week: on a blank post, while a draft from the dashboard waits, the
+   *   5.7   9 Nov 2026  588c8a0 Free Plug-in of the Week: on a blank post, while a draft from the dashboard waits, the
    *                              checks panel offers "Fill with this week's pick". It pastes the article into the first
    *                              text block, fills the headline, SEO title, meta description and URL, records the post
    *                              for the dashboard and ticks Socials. Copy buttons for whatever didn't take, and for the
    *                              picture file name and alt text
-   *   5.8   9 Nov 2026          Socials: a "Don't change title" tick under the Socials tick. The card headline is the
+   *   5.8   9 Nov 2026  6302a05 Socials: a "Don't change title" tick under the Socials tick. The card headline is the
    *                              article's own title instead of Claude's rewrite. Ticking it also ticks Socials; on posts
    *                              already written it swaps the headline straight away (Partners script v1.23) */
   var PE_VERSION = '5.8';
