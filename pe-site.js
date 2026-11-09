@@ -1067,6 +1067,10 @@ try {
     // The token is public, like the rest of this file: it only lets the panel ask for, or cancel, posts for this article.
     socials: 'https://script.google.com/macros/s/AKfycbw5_UxURgMgLtSdxdhYn6DeVtKtMkywtZ_8iL-Y8vt1A1S-Gci1NU8Acs9wJzHbx6k6/exec',
     socialsToken: 'pe-social-tick-1',
+    // 5.7: Free Plug-in of the Week. Drafts made on the dashboard (Tools > Plug-in of the Week) wait here for a
+    // blank post to be filled. The token is public, like the Socials one: it reads drafts and records which post holds one.
+    potw: 'https://pe-related-answers.pages.dev/api/freeplugins/potw/',
+    potwToken: 'pe-potw-1',
     items: ['Title, SEO and URL', 'Content and grammar', 'Image check', 'Schedule'],
     blue: '#006eb3',
     green: '#3b6d11',
@@ -1194,13 +1198,20 @@ try {
    *                              Use showing the words but Save keeping the old ones. Alt text gets the same
    *   5.6   8 Nov 2026  5a559b6 Alt text check only warns when the same picture has no alt on two checks in a
    *                              row (the second runs 3 seconds after the first). Fixes a false "1 of 8 images
-   *                              have no alt text" while Squarespace redraws image blocks as the editor opens */
-  var PE_VERSION = '5.6';
+   *                              have no alt text" while Squarespace redraws image blocks as the editor opens
+   *   5.7   9 Nov 2026          Free Plug-in of the Week: on a blank post, while a draft from the dashboard waits, the
+   *                              checks panel offers "Fill with this week's pick". It pastes the article into the first
+   *                              text block, fills the headline, SEO title, meta description and URL, records the post
+   *                              for the dashboard and ticks Socials. Copy buttons for whatever didn't take, and for the
+   *                              picture file name and alt text */
+  var PE_VERSION = '5.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
   var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
   var socialBusy = false, socialErr = '';
+  var potw = null;               // 5.7: Plug-in of the Week picks waiting for a post (or filled into this one), once read
+  var potwBusy = false, potwNotes = [];
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2246,6 +2257,7 @@ try {
     drawProblems();
     drawOverview(); // advisory Overview score, between the warnings and the checks
     drawChecks();
+    drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
     drawSocial(); // 5.1: the Socials tick, under the checks
     drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
@@ -2411,6 +2423,144 @@ try {
     list.appendChild(row);
     var note = socialErr ? socialErr : !social ? 'Reading…' : social.on ? social.label : 'Claude writes them when the article goes live, ready to check on the Content Manager\'s Socials tab';
     list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (socialErr || (social && social.status === 'failed') ? C.red : '#80868d') + ';', note));
+  }
+
+  /* ---------- 5.7: Free Plug-in of the Week ----------
+   * Mike picks Saturday's plug-in on the dashboard and Claude drafts the article there. Squarespace has no way
+   * for us to make a post from outside, so the draft waits until someone opens a blank post: this section then
+   * offers "Fill with this week's pick". Fill does, in order:
+   *   1. copies the article to the clipboard straight away (the browser only allows that during the click),
+   *   2. pastes it into the post's first text block when the post is open for editing, the same way Joe's
+   *      Links tab adds a link, so Squarespace knows the post changed,
+   *   3. opens the Edit Post window and fills the headline, SEO title, meta description and URL with Joe's
+   *      own fill-and-check (fieldFor, fillAndHold),
+   *   4. tells the dashboard which post holds the pick (so "This week's pick" on the free plug-ins page can
+   *      switch over once it's live), and ticks Socials so the posts are written with the developer tagged.
+   * Anything that didn't take gets a Copy button instead. The person still checks the [Check] lines, adds the
+   * picture, presses Save and schedules. */
+  function loadPotw() {
+    if (!post) return;
+    fetch(C.potw + 'pending?t=' + encodeURIComponent(C.potwToken) + '&post=' + encodeURIComponent(post))
+      .then(function (r) { return r.json(); })
+      .then(function (d) { potw = d && d.ok ? d.picks || [] : []; draw(); })
+      .catch(function () { potw = []; });
+  }
+  // The pick already filled into this post, if any
+  function potwHere() { return (potw || []).filter(function (p) { return p.postId === post; })[0] || null; }
+  // A post that hasn't been written yet: no headline, Squarespace's "Untitled", or no words in the body
+  function potwBlank() {
+    var t = String(postTitle() || '').trim();
+    if (!t || /^untitled/i.test(t)) return true;
+    var words = editorRoots().map(function (r) { return r.textContent; }).join(' ').trim();
+    return !words && (+postData.workflowState || 0) !== 1;   // never offer it on a published post
+  }
+  function potwNote(t, bad, copy) { potwNotes.push({ t: t, bad: !!bad, copy: copy }); }
+
+  function fillPotw(p) {
+    var d = p.draft || {};
+    potwBusy = true; potwNotes = []; draw();
+    // 1. Clipboard first, while the click still counts as the person's own action
+    var copied = false;
+    try {
+      if (window.ClipboardItem && navigator.clipboard && navigator.clipboard.write) {
+        navigator.clipboard.write([new ClipboardItem({ 'text/html': new Blob([d.html || ''], { type: 'text/html' }),
+          'text/plain': new Blob([plainOf(d.html)], { type: 'text/plain' }) })]).then(function () { copied = true; }, function () {});
+      } else if (navigator.clipboard) navigator.clipboard.writeText(plainOf(d.html)).then(function () { copied = true; }, function () {});
+    } catch (e) {}
+    // 2. The article into the first text block, if the post is open for editing
+    var root = editorRoots()[0], bodyIn = false;
+    if (root) {
+      try {
+        var doc = root.ownerDocument, W = doc.defaultView;
+        root.focus();
+        var r = doc.createRange(); r.selectNodeContents(root);
+        var sel = W.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+        pasteInto(root, d.html, plainOf(d.html));
+      } catch (e) {}
+    }
+    wait(600).then(function () {
+      bodyIn = !!root && root.textContent.replace(/\s+/g, ' ').length > 200;
+      if (bodyIn) potwNote('✓ Article put into the text block.');
+      else potwNote(root ? 'The article didn\'t go into the text block.' : 'The post isn\'t open for editing, so the article couldn\'t go in.', true);
+      if (!bodyIn) potwNote(copied ? 'It\'s on your clipboard: click into the first text block and paste (Cmd+V).' : 'Copy it and paste it into the first text block:', true, copied ? '' : d.html);
+      // 3. Headline, SEO title, meta description and URL in the Edit Post window
+      return openSettings();
+    }).then(function (doc) {
+      var fields = [['title', d.title, 'Headline'], ['seo', d.seoTitle, 'SEO title'], ['meta', d.meta, 'Meta description'], ['url', d.slug, 'URL']];
+      if (!doc) {
+        potwNote('Couldn\'t open the post\'s Settings. Copy these in:', true);
+        fields.forEach(function (f) { potwNote(f[2] + ': ' + f[1], true, f[1]); });
+        return;
+      }
+      return fields.reduce(function (chain, f) {
+        return chain.then(function () {
+          if (!f[1]) return;
+          return fieldFor(doc, f[0]).then(function (box) {
+            if (!box) { potwNote(f[2] + ' box not found: ' + f[1], true, f[1]); return; }
+            return fillAndHold(box, f[1]).then(function (held) {
+              potwNote(held ? '✓ ' + f[2] + ' filled.' : f[2] + ' didn\'t take: ' + f[1], !held, held ? '' : f[1]);
+            });
+          });
+        });
+      }, Promise.resolve()).then(function () { settingsTab(doc, 'Content'); });
+    }).then(function () {
+      // 4. Tell the dashboard, then tick Socials
+      return fetch(C.potw + 'filled', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ t: C.potwToken, id: p.id, postId: post }) })
+        .then(function (r) { return r.json(); })
+        .then(function (res) {
+          if (res && res.ok) { p.status = 'filled'; p.postId = post; }
+          else potwNote('The dashboard wasn\'t told this post holds the pick: ' + ((res && res.error) || 'no reply') + '. Fill again later.', true);
+        }, function () { potwNote('Couldn\'t reach the dashboard to record this post. Fill again later.', true); });
+    }).then(function () {
+      if (!(social && social.on) && social !== null) { setSocial(true); potwNote('✓ Socials ticked: the posts are written when it goes live, with ' + p.vendor + ' tagged if it\'s in the Brands tab.'); }
+      potwNote('Now: press Save in Settings, upload the picture, check the highlighted [Check] lines, add your take, then schedule.');
+      potwBusy = false; logEvent({ kind: 'potw', item: p.name, who: who() }); draw();
+    }).catch(function (e) { potwBusy = false; potwNote('Fill stopped: ' + (e && e.message || e), true); draw(); });
+  }
+  // Text without the tags, for the plain clipboard copy and the length check
+  function plainOf(html) { var t = document.createElement('div'); t.innerHTML = html || ''; return t.textContent.replace(/\s+\n/g, '\n').trim(); }
+
+  function drawPotw() {
+    if (!potw || !potw.length) return;
+    var here = potwHere(), waiting = potw.filter(function (p) { return p.status === 'drafted'; });
+    if (!here && (!waiting.length || !potwBlank())) return;
+    list.appendChild(sectionLabel('Free Plug-in of the Week', C.blue));
+    var box = el('div', 'padding:8px 10px;border-radius:6px;background:#eef5fb;font:12.5px/1.5 ' + F + ';color:#1f2d3a;');
+    if (here) {
+      var dd = here.draft || {};
+      box.appendChild(el('div', 'font-weight:700;margin-bottom:4px;', here.name + ' by ' + here.vendor + ' is in this post'));
+      [['Picture file name', dd.imageFile], ['Alt text', dd.imageAlt], ['Excerpt', dd.excerpt], ['Tags', (dd.tags || []).join(', ')]].forEach(function (x) {
+        if (!x[1]) return;
+        var row = el('div', 'display:flex;gap:8px;align-items:flex-start;margin:4px 0;');
+        row.appendChild(el('span', 'flex:1;min-width:0;overflow-wrap:anywhere;', x[0] + ': ' + x[1]));
+        row.appendChild(copyButton(x[1]));
+        box.appendChild(row);
+      });
+      if (dd.image) {
+        var a = el('a', 'color:' + C.blue + ';font-weight:600;', 'Open the picture to save it');
+        a.href = dd.image; a.target = '_blank'; a.rel = 'noopener';
+        box.appendChild(a);
+      }
+    } else {
+      waiting.forEach(function (p) {
+        var when = p.week ? new Date(p.week + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+        box.appendChild(el('div', 'margin-bottom:6px;', 'Drafted for ' + when + ': ' + p.name + ' by ' + p.vendor + '.'));
+        var b = el('button', 'width:100%;padding:6px 10px;border:0;border-radius:5px;background:' + C.blue + ';color:#fff;font:700 12.5px/1.5 ' + F + ';cursor:pointer;margin-bottom:6px;',
+          potwBusy ? 'Filling…' : 'Fill with this week\'s pick');
+        b.type = 'button'; b.disabled = potwBusy;
+        b.title = 'Puts in the article, headline, SEO title, meta description and URL, and ticks Socials';
+        b.onclick = function () { fillPotw(p); };
+        box.appendChild(b);
+      });
+    }
+    potwNotes.forEach(function (n) {
+      var row = el('div', 'display:flex;gap:8px;align-items:flex-start;margin-top:4px;color:' + (n.bad ? C.red : C.green) + ';');
+      row.appendChild(el('span', 'flex:1;min-width:0;overflow-wrap:anywhere;', n.t));
+      if (n.copy) row.appendChild(copyButton(n.copy));
+      box.appendChild(row);
+    });
+    list.appendChild(box);
   }
 
   // Tells the pipeline dashboard where this post is up to, whenever that changes
@@ -5147,6 +5297,7 @@ try {
     post = ctx.itemId || (a && a.id.replace('article-', ''));
     if (!a || !post || panel || !isTeam()) return;
     loadSocial(); // 5.1
+    loadPotw(); // 5.7
     setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
     panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
