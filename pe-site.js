@@ -1203,12 +1203,15 @@ try {
    *                              checks panel offers "Fill with this week's pick". It pastes the article into the first
    *                              text block, fills the headline, SEO title, meta description and URL, records the post
    *                              for the dashboard and ticks Socials. Copy buttons for whatever didn't take, and for the
-   *                              picture file name and alt text */
-  var PE_VERSION = '5.7';
+   *                              picture file name and alt text
+   *   5.8   9 Nov 2026          Socials: a "Don't change title" tick under the Socials tick. The card headline is the
+   *                              article's own title instead of Claude's rewrite. Ticking it also ticks Socials; on posts
+   *                              already written it swaps the headline straight away (Partners script v1.23) */
+  var PE_VERSION = '5.8';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
-  var social = null;            // 5.1: { on, status, label, by } for this post's Socials tick, once read
+  var social = null;            // 5.1: { on, status, label, by, keepTitle } for this post's Socials tick, once read (keepTitle 5.8)
   var socialBusy = false, socialErr = '';
   var potw = null;               // 5.7: Plug-in of the Week picks waiting for a post (or filled into this one), once read
   var potwBusy = false, potwNotes = [];
@@ -2397,17 +2400,26 @@ try {
       })
       .catch(function () { socialErr = 'Couldn\'t reach the Partners sheet'; draw(); });
   }
-  function setSocial(on) {
+  // 5.8: keepTitle is sent only when the Don't change title tick is used, so a plain Socials tick never clears it.
+  // Ticking Don't change title calls this with on = true, so it also ticks Socials.
+  function setSocial(on, keepTitle) {
     socialBusy = true; socialErr = '';
     var by = who();
-    social = { on: on, status: on ? 'asking' : '', label: on ? 'Asking…' : '', by: on ? by + ' (panel)' : '' };
+    var keep = keepTitle !== undefined ? !!keepTitle : !!(on && social && social.keepTitle);
+    var wasOn = !!(social && social.on);
+    // Shown straight away while the Partners sheet answers; the reply replaces it
+    social = { on: on, status: on ? (wasOn ? social.status : 'asking') : '', label: on ? (wasOn ? 'Saving…' : 'Asking…') : '',
+               by: on ? (wasOn && social.by ? social.by : by + ' (panel)') : '', keepTitle: on && keep };
     draw();
+    var body = { op: 'socialtick', t: C.socialsToken, postId: post, on: on, by: by, title: postTitle() };
+    if (keepTitle !== undefined) body.keepTitle = !!keepTitle;
     fetch(C.socials, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ op: 'socialtick', t: C.socialsToken, postId: post, on: on, by: by, title: postTitle() }) })
+      body: JSON.stringify(body) })
       .then(function (r) { return r.json(); })
       .then(function (d) { socialBusy = false; if (d && d.ok) social = d; else { socialErr = (d && d.error) || 'That didn\'t save'; loadSocial(); } draw(); })
       .catch(function () { socialBusy = false; socialErr = 'Couldn\'t reach the Partners sheet. Try again.'; loadSocial(); draw(); });
-    logEvent({ kind: on ? 'tick' : 'untick', item: 'Socials', who: by });
+    if (keepTitle !== undefined) logEvent({ kind: keepTitle ? 'tick' : 'untick', item: 'Socials: Don\'t change title', who: by });
+    else logEvent({ kind: on ? 'tick' : 'untick', item: 'Socials', who: by });
   }
   function drawSocial() {
     list.appendChild(sectionLabel('Socials'));
@@ -2423,6 +2435,23 @@ try {
     list.appendChild(row);
     var note = socialErr ? socialErr : !social ? 'Reading…' : social.on ? social.label : 'Claude writes them when the article goes live, ready to check on the Content Manager\'s Socials tab';
     list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (socialErr || (social && social.status === 'failed') ? C.red : '#80868d') + ';', note));
+
+    // 5.8: Don't change title, indented under the Socials tick. Ticking it ticks Socials too. Once the posts are in
+    // Buffer it's locked, the same as the Socials tick (the Partners script refuses the change anyway).
+    var sent = !!(social && ['buffered', 'scheduled', 'published'].indexOf(social.status) >= 0);
+    var krow = el('label', 'display:flex;align-items:center;gap:9px;padding:3px 0 0 25px;font-size:13px;cursor:pointer;');
+    var kbox = el('input', 'flex:0 0 auto;width:14px;height:14px;margin:0;accent-color:' + C.blue + ';');
+    kbox.type = 'checkbox';
+    kbox.checked = !!(social && social.on && social.keepTitle);
+    kbox.disabled = socialBusy || !social || sent;
+    kbox.onchange = function () { setSocial(true, kbox.checked); };
+    krow.appendChild(kbox);
+    krow.appendChild(el('span', 'flex:1;', 'Don\'t change title'));
+    list.appendChild(krow);
+    var knote = sent ? 'Already in Buffer: change the headline there'
+      : kbox.checked ? 'The card uses the headline exactly as written here'
+      : 'Tick to keep the article\'s headline on the card instead of Claude\'s version';
+    list.appendChild(el('div', 'margin:-1px 0 4px 48px;font:12px/1.45 ' + F + ';color:#80868d;', knote));
   }
 
   /* ---------- 5.7: Free Plug-in of the Week ----------
