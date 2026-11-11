@@ -971,9 +971,14 @@ try {
  * Never on partner posts, never twice, and never where a Kit form is already in the article.
  * clear:both keeps the box below any floated image, so it never runs behind one (30 Oct 2026).
  * Sign-ups go to the existing Kit form (2954485) and land on the existing thank-you page.
+ * OFF sitewide since 11 Nov 2026 (v6.2): set SIGNUP_ON to true below to bring it back.
  * ================================================================ */
 try {
 (function () {
+  // Switch: false keeps the box off every article (turned off 11 Nov 2026, it broke the SSL article layout).
+  // Set back to true to bring it back.
+  var SIGNUP_ON = false;
+  if (!SIGNUP_ON) return;
   var C = {
     action: 'https://app.kit.com/forms/2954485/subscriptions',
     headline: "Make sure you don't miss a thing!",
@@ -1213,8 +1218,10 @@ try {
    *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
    *   6.1   11 Nov 2026  6e0bd86 Refreshed articles on the homepage: an article tagged Updated in the last 24 hours gets
    *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
+   *   6.2   11 Nov 2026         Newsletter sign-up box inside articles switched off sitewide (SIGNUP_ON = false); it
+   *                              was breaking the layout of the updated SSL article
    */
-  var PE_VERSION = '6.1';
+  var PE_VERSION = '6.2';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
