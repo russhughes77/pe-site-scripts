@@ -1206,8 +1206,10 @@ try {
    *                              picture file name and alt text
    *   5.8   9 Nov 2026  6302a05 Socials: a "Don't change title" tick under the Socials tick. The card headline is the
    *                              article's own title instead of Claude's rewrite. Ticking it also ticks Socials; on posts
-   *                              already written it swaps the headline straight away (Partners script v1.23) */
-  var PE_VERSION = '5.8';
+   *                              already written it swaps the headline straight away (Partners script v1.23)
+   *   5.9   11 Nov 2026         Plug-in of the Week: the panel shows the day and slot chosen on the dashboard ("Drafted
+   *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled) */
+  var PE_VERSION = '5.9';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -2547,6 +2549,12 @@ try {
       potwBusy = false; logEvent({ kind: 'potw', item: p.name, who: who() }); draw();
     }).catch(function (e) { potwBusy = false; potwNote('Fill stopped: ' + (e && e.message || e), true); draw(); });
   }
+  // "Sat 14 Nov, 9am main slot" from a pick's date and slot
+  var POTW_SLOTS = { '9am': '9am main slot', '6pm': '6pm second slot', extra: 'additional content' };
+  function potwWhen(p) {
+    var d = p.week ? new Date(p.week + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
+    return d + (POTW_SLOTS[p.slot] ? ', ' + POTW_SLOTS[p.slot] : '');
+  }
   // Text without the tags, for the plain clipboard copy and the length check
   function plainOf(html) { var t = document.createElement('div'); t.innerHTML = html || ''; return t.textContent.replace(/\s+\n/g, '\n').trim(); }
 
@@ -2559,6 +2567,8 @@ try {
     if (here) {
       var dd = here.draft || {};
       box.appendChild(el('div', 'font-weight:700;margin-bottom:4px;', here.name + ' by ' + here.vendor + ' is in this post'));
+      // 5.8: the day and slot chosen on the dashboard, so it's scheduled where the editorial calendar expects it
+      if (here.week) box.appendChild(el('div', 'margin-bottom:6px;', 'Schedule it for ' + potwWhen(here) + '.'));
       [['Picture file name', dd.imageFile], ['Alt text', dd.imageAlt], ['Excerpt', dd.excerpt], ['Tags', (dd.tags || []).join(', ')]].forEach(function (x) {
         if (!x[1]) return;
         var row = el('div', 'display:flex;gap:8px;align-items:flex-start;margin:4px 0;');
@@ -2573,8 +2583,7 @@ try {
       }
     } else {
       waiting.forEach(function (p) {
-        var when = p.week ? new Date(p.week + 'T12:00:00Z').toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) : '';
-        box.appendChild(el('div', 'margin-bottom:6px;', 'Drafted for ' + when + ': ' + p.name + ' by ' + p.vendor + '.'));
+        box.appendChild(el('div', 'margin-bottom:6px;', 'Drafted for ' + potwWhen(p) + ': ' + p.name + ' by ' + p.vendor + '.'));
         var b = el('button', 'width:100%;padding:6px 10px;border:0;border-radius:5px;background:' + C.blue + ';color:#fff;font:700 12.5px/1.5 ' + F + ';cursor:pointer;margin-bottom:6px;',
           potwBusy ? 'Filling…' : 'Fill with this week\'s pick');
         b.type = 'button'; b.disabled = potwBusy;
