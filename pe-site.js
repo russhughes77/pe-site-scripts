@@ -1218,7 +1218,7 @@ try {
    *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
    *   6.1   11 Nov 2026  6e0bd86 Refreshed articles on the homepage: an article tagged Updated in the last 24 hours gets
    *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
-   *   6.2   11 Nov 2026         Newsletter sign-up box inside articles switched off sitewide (SIGNUP_ON = false); it
+   *   6.2   11 Nov 2026  8db2b67 Newsletter sign-up box inside articles switched off sitewide (SIGNUP_ON = false); it
    *                              was breaking the layout of the updated SSL article
    */
   var PE_VERSION = '6.2';
