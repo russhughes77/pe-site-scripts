@@ -60,6 +60,36 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: blog post date format', e); }
 
 /* ================================================================
+ * Production Expert: byline reads "By <name>" (v6.4, 11 Nov 2026)
+ * Squarespace prints "Posted by <name>" under the date on every article. This trims it to
+ * "By <name>". Only the loose words before the name are touched: the author link itself is
+ * left alone, so the author bio, author photo and useful vote, which all read the name from
+ * that link, carry on as before. Blog list pages are untouched.
+ * ================================================================ */
+try {
+(function () {
+  function shortenByline() {
+    var spans = document.querySelectorAll('article.hentry .sidebar .author, article.hentry address .author');
+    spans.forEach(function (span) {
+      if (span.dataset.peBy) return;                      // already done on this page
+      // Walk the span's own text pieces (not the link inside it) and swap the wording
+      for (var n = span.firstChild; n; n = n.nextSibling) {
+        if (n.nodeType === 3 && /posted\s+by/i.test(n.nodeValue)) {
+          n.nodeValue = n.nodeValue.replace(/posted\s+by/i, 'By');
+          span.dataset.peBy = '1';
+          break;
+        }
+      }
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', shortenByline);
+  else shortenByline();
+  window.addEventListener('mercury:load', shortenByline); // Ajax page loads
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: byline', e); }
+
+/* ================================================================
  * Production Expert: article enhancements
  * 1. A paragraph starting with "#H4 " becomes an H4 subheading.
  * 2. Read time badge (238 wpm, rounded up) and a reading progress bar.
@@ -1227,8 +1257,9 @@ try {
    *                              was breaking the layout of the updated SSL article
    *   6.3   11 Nov 2026  6b5bc5a Updated articles: a note above the comments ("updated on <date>; comments before that
    *                              date refer to the earlier version"); the Comments heading finds Hyvor as well as Disqus
+   *   6.4   11 Nov 2026         Article byline reads "By <name>" instead of Squarespace's "Posted by <name>"
    */
-  var PE_VERSION = '6.3';
+  var PE_VERSION = '6.4';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
