@@ -1209,7 +1209,7 @@ try {
    *                              already written it swaps the headline straight away (Partners script v1.23)
    *   5.9   11 Nov 2026         Plug-in of the Week: the panel shows the day and slot chosen on the dashboard ("Drafted
    *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled)
-   *   6.0   11 Nov 2026         Updated tag: a refreshed article tagged Updated shows "Updated <date>" beside its
+   *   6.0   11 Nov 2026  ac5d007 Updated tag: a refreshed article tagged Updated shows "Updated <date>" beside its
    *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
    */
   var PE_VERSION = '6.0';
