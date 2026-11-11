@@ -1211,8 +1211,10 @@ try {
    *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled)
    *   6.0   11 Nov 2026  ac5d007 Updated tag: a refreshed article tagged Updated shows "Updated <date>" beside its
    *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
+   *   6.1   11 Nov 2026         Refreshed articles on the homepage: an article tagged Updated in the last 24 hours gets
+   *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
    */
-  var PE_VERSION = '6.0';
+  var PE_VERSION = '6.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -7618,6 +7620,148 @@ try {
   window.addEventListener('mercury:load', run);   // Ajax page loads
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: Updated label', e); }
+
+/* ================================================================
+ * Production Expert: refreshed articles on the homepage for a day (v6.1, 11 Nov 2026)
+ * A refreshed article keeps its original date (tagged Updated, see "Updated label on refreshed
+ * articles"), so Squarespace's homepage grid, which runs in publish order, would never show it.
+ * Redating it would throw away its history, so instead: for 24 hours after an article tagged
+ * Updated was last edited, this adds a card for it to the top row of the homepage grid (second
+ * place, so the newest story still leads), with the orange UPDATED label. Then it simply stops.
+ * - The card is a copy of the grid's own first card with the refreshed article's link, title,
+ *   excerpt, original date and picture, so it looks and behaves like the rest.
+ * - Newest refresh first if there are several; at most MAX cards. Never a second card for an
+ *   article that is already in the grid.
+ * - "Last edited" is Squarespace's updatedOn, so editing a tagged article again gives it another day.
+ * - The tag's feed runs in publish order, so up to PAGES pages (20 posts each) are read.
+ * ================================================================ */
+try {
+(function () {
+  var HOURS = 24;          // how long a refreshed article stays on the homepage (Russ, 11 Nov 2026)
+  var MAX = 2;             // most refreshed cards at once
+  var PAGES = 5;           // pages of the Updated tag's feed to read
+  var POSITION = 1;        // 0 = first card; 1 = second
+  var KEY = 'pe-updated-cards-v1';
+  var KEEP_MS = 15 * 60 * 1000;
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  if (!document.body || !document.body.classList.contains('homepage')) return;
+  try { if (window.top !== window) return; } catch (e) { return; }   // not in the editor
+
+  function path(u) { try { return new URL(u, location.origin).pathname.replace(/\/$/, ''); } catch (e) { return ''; } }
+  function getJson(u) {
+    return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  }
+
+  // Refreshed articles edited in the last HOURS hours, newest edit first
+  function recent() {
+    try {
+      var o = JSON.parse(sessionStorage.getItem(KEY) || 'null');
+      if (o && Date.now() - o.t < KEEP_MS) return Promise.resolve(o.items);
+    } catch (e) {}
+    var since = Date.now() - HOURS * 3600 * 1000, out = [];
+    function page(u, left) {
+      return getJson(u).then(function (j) {
+        (j.items || []).forEach(function (i) {
+          if (+i.updatedOn >= since && i.fullUrl) {
+            var html = String(i.promotedBlock || '') + String(i.body || '');
+            var m = html.match(/<img[^>]+data-src="([^"]+)"/i);
+            out.push({ p: path(i.fullUrl), title: i.title || '', excerpt: String(i.excerpt || '').replace(/<[^>]+>/g, '').trim(),
+                       img: i.assetUrl || (m && m[1]) || '', pub: +i.publishOn || 0, upd: +i.updatedOn });
+          }
+        });
+        var next = j.pagination && j.pagination.nextPage && j.pagination.nextPageUrl;
+        if (!next || left <= 1) return out;
+        return page(next + (next.indexOf('?') < 0 ? '?' : '&') + 'format=json', left - 1);
+      });
+    }
+    return page('/production-expert-1?format=json&tag=Updated', PAGES).then(function (items) {
+      items.sort(function (a, b) { return b.upd - a.upd; });
+      try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), items: items })); } catch (e) {}
+      return items;
+    });
+  }
+
+  function css() {
+    if (document.getElementById('pe-updated-card-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-updated-card-css';
+    st.textContent =
+      '.pe-updated-card .summary-thumbnail-container{position:relative;display:block}' +
+      '.pe-updated-card-badge{position:absolute;z-index:3;top:14px;left:14px;padding:6px 11px 5px;background:#e87722;color:#fff;' +
+        "font-family:'Open Sans',sans-serif;font-weight:800;font-size:15px;line-height:1;letter-spacing:.12em;" +
+        'text-transform:uppercase;border-radius:3px;box-shadow:0 1px 6px rgba(0,0,0,.25);pointer-events:none}' +
+      '@media (max-width:640px){.pe-updated-card-badge{top:12px;left:12px;font-size:14px}}';
+    document.head.appendChild(st);
+  }
+
+  function card(tpl, a) {
+    var c = tpl.cloneNode(true);
+    c.classList.add('pe-updated-card');
+    c.removeAttribute('id');
+    c.setAttribute('data-pe-updated', a.p);
+    Array.prototype.forEach.call(c.querySelectorAll('a[href]'), function (x) { x.setAttribute('href', a.p); });
+    var t = c.querySelector('.summary-title a, a.summary-title-link');
+    if (t) t.textContent = a.title;
+    var ex = c.querySelector('.summary-excerpt');
+    if (ex) ex.innerHTML = a.excerpt ? '<p></p>' : '';
+    if (ex && a.excerpt) ex.querySelector('p').textContent = a.excerpt;
+    var dt = c.querySelector('time, .summary-metadata-item--date');
+    if (dt && a.pub) {
+      var d = new Date(a.pub);
+      dt.textContent = MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+      if (dt.setAttribute) dt.setAttribute('datetime', d.toISOString().slice(0, 10));
+    }
+    // Picture: rebuilt the way the blank-card fix builds one, so lazy loading can't keep the template's
+    var old = c.querySelector('.summary-thumbnail-outer-container');
+    if (old) old.parentNode.removeChild(old);
+    if (a.img) {
+      var outer = document.createElement('div');
+      outer.className = 'summary-thumbnail-outer-container';
+      outer.innerHTML =
+        '<a class="summary-thumbnail-container sqs-gallery-image-container" href="' + a.p + '">' +
+        '<div class="summary-thumbnail img-wrapper" style="position:relative;padding-bottom:56.25%;overflow:hidden">' +
+        '<img class="summary-thumbnail-image loaded" style="position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover" loading="lazy"></div></a>';
+      var img = outer.querySelector('img');
+      img.src = a.img + (a.img.indexOf('?') < 0 ? '?format=1000w' : '');
+      img.alt = a.title;
+      c.insertBefore(outer, c.firstChild);
+    }
+    Array.prototype.forEach.call(c.querySelectorAll('.pe-news-badge, .pe-updated-card-badge'), function (b) { b.parentNode.removeChild(b); });
+    var pic = c.querySelector('.summary-thumbnail-container');
+    if (pic) {
+      var badge = document.createElement('span');
+      badge.className = 'pe-news-badge pe-updated-card-badge';   // pe-news-badge too, so the card labels section leaves it alone
+      badge.textContent = 'Updated';
+      pic.appendChild(badge);
+    }
+    return c;
+  }
+
+  function run() {
+    var grid = document.querySelector('#container-content .sqs-block-summary-v2');
+    var first = grid && grid.querySelector('.summary-item');
+    if (!first || grid.querySelector('.pe-updated-card')) return;
+    recent().then(function (items) {
+      if (!items.length || grid.querySelector('.pe-updated-card')) return;
+      var have = {};
+      Array.prototype.forEach.call(grid.querySelectorAll('.summary-item .summary-title a, .summary-item a.summary-title-link'), function (x) {
+        have[path(x.getAttribute('href'))] = 1;
+      });
+      css();
+      var list = first.parentNode;
+      var at = list.querySelectorAll('.summary-item')[POSITION] || null;
+      items.filter(function (a) { return !have[a.p]; }).slice(0, MAX).forEach(function (a) {
+        list.insertBefore(card(first, a), at);
+      });
+      setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, 60);
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('mercury:load', function () { setTimeout(run, 100); });
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: refreshed articles on the homepage', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
