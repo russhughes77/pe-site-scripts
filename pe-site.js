@@ -1211,7 +1211,7 @@ try {
    *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled)
    *   6.0   11 Nov 2026  ac5d007 Updated tag: a refreshed article tagged Updated shows "Updated <date>" beside its
    *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
-   *   6.1   11 Nov 2026         Refreshed articles on the homepage: an article tagged Updated in the last 24 hours gets
+   *   6.1   11 Nov 2026  6e0bd86 Refreshed articles on the homepage: an article tagged Updated in the last 24 hours gets
    *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
    */
   var PE_VERSION = '6.1';
