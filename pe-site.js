@@ -1257,7 +1257,7 @@ try {
    *                              was breaking the layout of the updated SSL article
    *   6.3   11 Nov 2026  6b5bc5a Updated articles: a note above the comments ("updated on <date>; comments before that
    *                              date refer to the earlier version"); the Comments heading finds Hyvor as well as Disqus
-   *   6.4   11 Nov 2026         Article byline reads "By <name>" instead of Squarespace's "Posted by <name>"
+   *   6.4   11 Nov 2026  bdec203 Article byline reads "By <name>" instead of Squarespace's "Posted by <name>"
    */
   var PE_VERSION = '6.4';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
