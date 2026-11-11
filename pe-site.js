@@ -812,7 +812,9 @@ try {
   function go() {
     // Find the Disqus comments container. If this page has none, or the label
     // is already there, stop.
-    var t = document.getElementById('disqus_thread');
+    // Disqus until Nov 2026, Hyvor Talk since (v6.3): whichever this page has
+    var t = document.getElementById('disqus_thread') ||
+            document.querySelector('hyvor-talk-comments, #hyvor-talk-view, .hyvor-talk-comments');
     if (!t || document.querySelector('.pe-comments-label')) return;
 
     // Build the label. "pe-ui" marks it as site furniture so the read time
@@ -834,6 +836,9 @@ try {
 
   // Run again when Squarespace loads a new page without a full refresh.
   addEventListener('mercury:load', go);
+  // Hyvor can arrive after the page is built (v6.3): look again a little later
+  addEventListener('load', go);
+  setTimeout(go, 2500);
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: "Comments" label above the Disqus thread', e); }
 
@@ -1220,8 +1225,10 @@ try {
    *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
    *   6.2   11 Nov 2026  8db2b67 Newsletter sign-up box inside articles switched off sitewide (SIGNUP_ON = false); it
    *                              was breaking the layout of the updated SSL article
+   *   6.3   11 Nov 2026         Updated articles: a note above the comments ("updated on <date>; comments before that
+   *                              date refer to the earlier version"); the Comments heading finds Hyvor as well as Disqus
    */
-  var PE_VERSION = '6.2';
+  var PE_VERSION = '6.3';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -7570,6 +7577,10 @@ try {
  * The date is the post's own last-edited time from Squarespace (?format=json, updatedOn), so a
  * later edit to a tagged post moves it on too. If that can't be read, the label says "Updated".
  * Tags are hidden from readers elsewhere, so the tag itself never shows.
+ * v6.3: a note above the comments too: "This article was updated on <date>. Comments before that
+ * date refer to the earlier version." Old comments stay (Russ, 11 Nov 2026); Ask the Archive only
+ * quotes comments from the refresh on. The note sits under the "Comments" heading, just above
+ * the thread (Hyvor draws the thread in its own box, so nothing can go inside it).
  * ================================================================ */
 try {
 (function () {
@@ -7578,7 +7589,9 @@ try {
     '.pe-updated{display:inline-block;margin:0 0 0 10px;padding:4px 9px 3px;background:#e87722;color:#fff;border-radius:3px;' +
       "font-family:'Open Sans',sans-serif;font-weight:800;font-size:12px;line-height:1.2;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}" +
     '.pe-updated-block{display:block;margin:6px 0 0}' +
-    '@media (max-width:640px){.pe-updated{font-size:11px;margin-left:8px}}';
+    '@media (max-width:640px){.pe-updated{font-size:11px;margin-left:8px}}' +
+    ".pe-updated-note{margin:0 0 18px;padding:12px 16px;background:#f2f2f0;border-radius:6px;font-family:'Open Sans',sans-serif;font-size:14px;line-height:1.5;color:#3a3a3e}" +
+    'html.pe-dark .pe-updated-note,body.pe-dark .pe-updated-note{background:#26282c;color:#d6d7da}';
 
   function fmt(ms) {
     var d = new Date(+ms);
@@ -7609,6 +7622,22 @@ try {
     }
   }
 
+  // The note above the comments (v6.3). Hyvor may arrive after the page is built, so it looks a few times.
+  function note(d, tries) {
+    if (document.querySelector('.pe-updated-note')) return;
+    var thread = document.getElementById('disqus_thread') ||
+                 document.querySelector('hyvor-talk-comments, #hyvor-talk-view, .hyvor-talk-comments');
+    if (!thread) {
+      if ((tries || 0) < 8) setTimeout(function () { note(d, (tries || 0) + 1); }, 1500);
+      return;
+    }
+    var n = document.createElement('p');
+    n.className = 'pe-ui pe-updated-note';
+    n.textContent = d ? 'This article was updated on ' + d + '. Comments before that date refer to the earlier version.'
+                      : 'This article has been updated. Older comments refer to the earlier version.';
+    thread.parentNode.insertBefore(n, thread);   // after the "Comments" heading, which sits just above the thread
+  }
+
   function run() {
     try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
     var art = document.querySelector('article.hentry');
@@ -7620,6 +7649,7 @@ try {
         var on = j && j.item && (j.item.updatedOn || j.item.publishOn);
         var d = on ? fmt(on) : '';
         place(art, d ? 'Updated ' + d : 'Updated');
+        note(d, 0);
       });
   }
 
