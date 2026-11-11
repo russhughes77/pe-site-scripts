@@ -1225,7 +1225,7 @@ try {
    *                              a card in the top row of the homepage grid, labelled UPDATED, without redating it
    *   6.2   11 Nov 2026  8db2b67 Newsletter sign-up box inside articles switched off sitewide (SIGNUP_ON = false); it
    *                              was breaking the layout of the updated SSL article
-   *   6.3   11 Nov 2026         Updated articles: a note above the comments ("updated on <date>; comments before that
+   *   6.3   11 Nov 2026  6b5bc5a Updated articles: a note above the comments ("updated on <date>; comments before that
    *                              date refer to the earlier version"); the Comments heading finds Hyvor as well as Disqus
    */
   var PE_VERSION = '6.3';
