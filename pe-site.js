@@ -1208,8 +1208,11 @@ try {
    *                              article's own title instead of Claude's rewrite. Ticking it also ticks Socials; on posts
    *                              already written it swaps the headline straight away (Partners script v1.23)
    *   5.9   11 Nov 2026         Plug-in of the Week: the panel shows the day and slot chosen on the dashboard ("Drafted
-   *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled) */
-  var PE_VERSION = '5.9';
+   *                              for Sat 14 Nov, 9am main slot"; "Schedule it for …" once filled)
+   *   6.0   11 Nov 2026         Updated tag: a refreshed article tagged Updated shows "Updated <date>" beside its
+   *                              date, and its homepage card gets an UPDATED label (after FREE, before DEAL)
+   */
+  var PE_VERSION = '6.0';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -6707,12 +6710,15 @@ try {
  *         round-ups, not reviews. Found two ways: the newest 60 posts in the main blog
  *         are checked tag by tag, and the usual names are also looked up directly so
  *         older reviews in the lists further down the homepage get labelled too.
+ *   UPDATED  anything tagged Updated (v6.0, 11 Nov 2026): an older article that has been
+ *         properly refreshed. The team adds the tag when a refresh goes back up; the article
+ *         page then shows "Updated <date>" too (see "Updated label on refreshed articles").
  *   NEWS  anything in the News category or tagged News
  *   MOST READ  the three homepage stories with the most pageviews yesterday (v2.8).
  *         The numbers come from most-read.json beside this script, written each
  *         morning by the "Most read" job in this repo from Plausible. If the file
  *         is missing or empty, no MOST READ labels appear and nothing else changes.
- * One label per card. MOST READ wins, then FREE, then DEAL, then REVIEW, then NEWS,
+ * One label per card. MOST READ wins, then FREE, then UPDATED, then DEAL, then REVIEW, then NEWS,
  * so a free plugin filed under News reads FREE, a review that's also tagged News
  * reads REVIEW, and a popular deal reads MOST READ.
  * The cards themselves don't say what an article is, so the lists come from the
@@ -6725,7 +6731,7 @@ try {
 try {
 (function () {
   var SECTION_TOO = true;    // label the lists further down too (on since v2.3)
-  var KEY = 'pe-card-labels-v50';   // renamed whenever the rules change so old cached lists are ignored
+  var KEY = 'pe-card-labels-v60';   // renamed whenever the rules change so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
   var MOST_READ = { text: 'Most Read', count: 3,
@@ -6737,6 +6743,8 @@ try {
   // so the main blog's feed never sees those posts; that was the v2.5 bug).
   var LABELS = [
     { text: 'Free', names: ['Free', 'Free Plugins', 'Free Plugin', 'Freebies'] },
+    // Updated (v6.0): a refreshed older article, tagged Updated by the team. After Free (Russ, 11 Nov 2026).
+    { text: 'Updated', names: ['Updated'] },
     { text: 'Deal', names: ['Deal', 'Deals', 'Partner Deals'], blogs: ['/partner-deals'], dropEnded: true },
     // Review (v5.0). match: any category or tag that passes this test gets the label, whatever
     // it's called, so a new "Interface Reviews" tag works without touching this file. skip: names
@@ -7542,6 +7550,74 @@ try {
   setInterval(look, 1000);
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: Author list in A to Z order', e); }
+
+/* ================================================================
+ * Production Expert: Updated label on refreshed articles (v6.0, 11 Nov 2026)
+ * When an older article has been properly refreshed, the team adds the tag "Updated" to it
+ * in Squarespace. On the article this adds an orange "Updated November 11, 2026" label beside
+ * the original date, so readers can see at a glance that it's current. (The homepage card's
+ * UPDATED label comes from the card labels section; the dashboard's Evergreen panel reads the
+ * same tag to move a planned refresh to Refreshed.)
+ * The date is the post's own last-edited time from Squarespace (?format=json, updatedOn), so a
+ * later edit to a tagged post moves it on too. If that can't be read, the label says "Updated".
+ * Tags are hidden from readers elsewhere, so the tag itself never shows.
+ * ================================================================ */
+try {
+(function () {
+  var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+  var CSS =
+    '.pe-updated{display:inline-block;margin:0 0 0 10px;padding:4px 9px 3px;background:#e87722;color:#fff;border-radius:3px;' +
+      "font-family:'Open Sans',sans-serif;font-weight:800;font-size:12px;line-height:1.2;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}" +
+    '.pe-updated-block{display:block;margin:6px 0 0}' +
+    '@media (max-width:640px){.pe-updated{font-size:11px;margin-left:8px}}';
+
+  function fmt(ms) {
+    var d = new Date(+ms);
+    return isNaN(d) ? '' : MONTHS[d.getMonth()] + ' ' + d.getDate() + ', ' + d.getFullYear();
+  }
+
+  function place(art, text) {
+    if (art.querySelector('.pe-updated')) return;
+    if (!document.getElementById('pe-updated-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-updated-css';
+      st.textContent = CSS;
+      document.head.appendChild(st);
+    }
+    var lab = document.createElement('span');
+    lab.className = 'pe-updated';
+    lab.textContent = text;
+    lab.title = 'This article has been refreshed since it was first published';
+    var time = art.querySelector('time.published, time.dt-published, .entry-dateline time, time');
+    if (time && time.parentNode) {
+      time.parentNode.insertBefore(lab, time.nextSibling);
+    } else {
+      // No date shown: put it under the title instead
+      var h1 = art.querySelector('h1.entry-title') || document.querySelector('h1');
+      if (!h1) return;
+      lab.classList.add('pe-updated-block');
+      h1.parentNode.insertBefore(lab, h1.nextSibling);
+    }
+  }
+
+  function run() {
+    try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+    var art = document.querySelector('article.hentry');
+    if (!art || !art.classList.contains('tag-updated') || art.querySelector('.pe-updated')) return;
+    fetch(location.pathname + '?format=json', { credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : {}; })
+      .catch(function () { return {}; })
+      .then(function (j) {
+        var on = j && j.item && (j.item.updatedOn || j.item.publishOn);
+        var d = on ? fmt(on) : '';
+        place(art, d ? 'Updated ' + d : 'Updated');
+      });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  window.addEventListener('mercury:load', run);   // Ajax page loads
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: Updated label', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
