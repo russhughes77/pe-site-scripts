@@ -1280,8 +1280,12 @@ try {
    *                              (was anchored to the bottom, so it jumped up and down). Drag it anywhere; double-click
    *                              the title puts it back at the top right. The Partner tab shows on any post with a
    *                              fact-check under way, and is checked again once Squarespace's record of the post loads
+   *   7.2   12 Nov 2026         Joe sees tables, audio and video. The Overview check (and the text Joe's other tabs
+   *                              read) now counts tables, in a Code Block from the Tables tool or pasted into text, our
+   *                              own stem, A/B, blind test, clip and mixer players, and embeds whose player Squarespace
+   *                              only draws on play (read from the block's stored code). Roll back to v7.1 (704eaab)
    */
-  var PE_VERSION = '7.1';
+  var PE_VERSION = '7.2';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3457,21 +3461,72 @@ try {
 
   // Embedded video and audio a reader can watch or hear and an AI summary can't (v3.8).
   // Squarespace video and audio blocks, embed blocks holding a known player, and bare players.
-  var OV_MEDIA = /youtube\.com|youtu\.be|vimeo\.com|wistia|soundcloud\.com|spotify\.com|bandcamp\.com|mixcloud\.com|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack|loom\.com/i;
+  var OV_MEDIA = /youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|wistia|soundcloud\.com|spotify\.com|bandcamp\.com|mixcloud\.com|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack|loom\.com|pe-related-answers\.pages\.dev\/stem-player/i;
+  var OV_AUDIO_HOST = /soundcloud|spotify|bandcamp|mixcloud|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack/i;
+  // 7.2: our own players (stem, A/B, blind test, clip player, mixer), made on the dashboard's Stems pages.
+  // In a Code Block they're a plain div until stem-player.js runs, and the editor never runs it, so they
+  // have to be found by their class. All five are audio.
+  var OV_PE_PLAYERS = '.pe-stems, .pe-ab, .pe-blind, .pe-clips, .pe-mix';
+
+  // 7.2: what a block really holds. In the editor Squarespace often keeps an embed's or Code Block's code in
+  // the block's settings (data-block-json) or in a data-html attribute and only draws the player when it's
+  // played, so the page itself has no iframe to find. This returns the block itself plus that stored code,
+  // read with DOMParser, which never runs scripts or loads anything.
+  function ovSources(e) {
+    var out = [e], code = [];
+    try {
+      var info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {};
+      if (info.html) code.push(String(info.html));
+      if (info.url) code.push('<iframe src="' + String(info.url).replace(/"/g, '&quot;') + '"></iframe>');
+    } catch (x) {}
+    Array.prototype.forEach.call(e.querySelectorAll('[data-html]'), function (d) { code.push(d.getAttribute('data-html') || ''); });
+    code.forEach(function (h) {
+      if (!h) return;
+      try { out.push(new DOMParser().parseFromString(h, 'text/html').body); } catch (x) {}
+    });
+    return out;
+  }
+  // The first match for a selector across the block and its stored code
+  function ovFind(e, sel) {
+    var srcs = ovSources(e);
+    for (var i = 0; i < srcs.length; i++) {
+      if (srcs[i].matches && srcs[i].matches(sel)) return srcs[i];
+      var f = srcs[i].querySelector(sel);
+      if (f) return f;
+    }
+    return null;
+  }
+  // What kind of player a block or bare player is: 'Video', 'Audio', or '' if it isn't one
   function ovMedia(e) {
     if (e.matches('.sqs-block-video')) return 'Video';
     if (e.matches('.sqs-block-audio')) return 'Audio';
-    var players = e.matches('.sqs-block-embed, .sqs-block-code') ? e.querySelectorAll('iframe, video, audio') : [e];
-    for (var i = 0; i < players.length; i++) {
-      var f = players[i];
-      if (f.tagName === 'AUDIO') return 'Audio';
-      if (f.tagName === 'VIDEO') return 'Video';
-      var src = f.getAttribute('src') || f.getAttribute('data-src') || '';
-      if (f.tagName === 'IFRAME' && OV_MEDIA.test(src)) return /soundcloud|spotify|bandcamp|mixcloud|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack/i.test(src) ? 'Audio' : 'Video';
+    if (e.matches(OV_PE_PLAYERS) || ovFind(e, OV_PE_PLAYERS)) return 'Audio';   // 7.2: our own players
+    var srcs = ovSources(e);
+    for (var s = 0; s < srcs.length; s++) {
+      var root = srcs[s];
+      var players = root === e && !/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) ? root.querySelectorAll('iframe, video, audio')
+        : root === e ? [e] : root.querySelectorAll('iframe, video, audio');
+      for (var i = 0; i < players.length; i++) {
+        var f = players[i];
+        if (f.tagName === 'AUDIO') return 'Audio';
+        if (f.tagName === 'VIDEO') return 'Video';
+        var src = f.getAttribute('src') || f.getAttribute('data-src') || '';
+        if (f.tagName === 'IFRAME' && OV_MEDIA.test(src)) return OV_AUDIO_HOST.test(src) ? 'Audio' : 'Video';
+      }
     }
+    // Squarespace marks some embeds with the provider's name instead
+    var prov = e.querySelector('[data-provider-name]');
+    if (prov) return OV_AUDIO_HOST.test(prov.getAttribute('data-provider-name') || '') ? 'Audio' : 'Video';
     return '';
   }
-  // How each item is described to Claude: the text of a paragraph, or a label for a player
+  // 7.2: a table in the post, either in a Code Block (the dashboard's Tables tool) or pasted into a text block
+  function ovTable(e) {
+    if (e.tagName === 'TABLE') return e;
+    var t = ovFind(e, 'table');
+    return t && t.rows && t.rows.length >= 2 ? t : null;
+  }
+
+  // How each item is described to Claude: the text of a paragraph, or a label for a player, picture or table
   function ovText(e) {
     var kind = e.getAttribute('data-pe-ov');
     if (!kind) return squash(e.textContent);
@@ -3482,9 +3537,36 @@ try {
       var cap = squash((e.querySelector('figcaption, .image-caption') || {}).textContent || '').slice(0, 160);
       return '[Image' + (alt ? ': ' + alt : '') + (cap && cap !== alt ? '. Caption: ' + cap : '') + (file ? '. File: ' + file.slice(0, 80) : '') + ']';
     }
+    if (kind === 'Table') { // 7.2: the table's size, its header row and as many rows as fit, so Claude can judge whose data it is
+      var tb = ovTable(e);
+      if (!tb) return '[Table]';
+      var rows = Array.prototype.map.call(tb.rows, function (r) {
+        return Array.prototype.map.call(r.cells, function (c) { return squash(c.textContent); }).join(' | ');
+      }).filter(Boolean);
+      var cols = tb.rows[0] ? tb.rows[0].cells.length : 0;
+      var tcap = squash((tb.querySelector('caption') || {}).textContent || '');
+      var body = rows.slice(1).join('; ');
+      if (body.length > 900) body = body.slice(0, 900) + '…';
+      return '[Table: ' + rows.length + ' rows, ' + cols + ' columns' + (tcap ? '. Caption: ' + tcap : '') +
+        '. Header: ' + (rows[0] || '') + '. Rows: ' + body + ']';
+    }
+    // 7.2: our own players say so plainly, with their title and the clips they hold
+    var pe = e.matches(OV_PE_PLAYERS) ? e : ovFind(e, OV_PE_PLAYERS);
+    if (pe) {
+      var cl = pe.classList;
+      var what = cl.contains('pe-blind') ? 'blind test' : cl.contains('pe-ab') ? 'A/B player' :
+        cl.contains('pe-clips') ? 'clip player' : cl.contains('pe-mix') ? 'mixer' : 'stem player';
+      var names = [];
+      try {
+        names = (JSON.parse(pe.getAttribute('data-tracks') || '[]') || []).map(function (t) { return squash(t && (t.name || t.label)); }).filter(Boolean);
+      } catch (x) {}
+      var ptitle = squash(pe.getAttribute('data-title') || pe.getAttribute('data-label') || '');
+      return '[Audio' + (ptitle ? ': ' + ptitle : '') + ', our own ' + what + ' with audio Production Expert recorded or prepared for this post' +
+        (names.length ? '. Clips: ' + names.join(', ').slice(0, 200) : '') + ']';
+    }
     var info = {};
     try { info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {}; } catch (x) {}
-    var f = e.querySelector('iframe, video, audio') || e;
+    var f = ovFind(e, 'iframe, video, audio') || e;
     var src = info.url || info.audioAssetUrl || f.getAttribute('src') || f.getAttribute('data-src') || '';
     var host = '';
     try { host = new URL(src, location.href).hostname.replace(/^www\./, ''); } catch (x) {}
@@ -3494,14 +3576,18 @@ try {
     return '[' + kind + (title ? ': ' + title : '') + (host && !/squarespace/i.test(host) ? ', from ' + host : kind === 'Audio' ? ', uploaded to the post' : '') +
       (words && words !== title ? '. Caption: ' + words : '') + ']';
   }
-  // The article's paragraphs, list items and players in reading order, stopping at the related links block
+  // The article's paragraphs, list items, players, pictures and tables in reading order, stopping at the
+  // related links block
   function ovParas() {
     var body = articleBody();
     if (!body) return [];
+    // 7.2: start clean each time, so a block that changed since the last look is judged afresh
+    Array.prototype.forEach.call(body.querySelectorAll('[data-pe-ov]'), function (x) { x.removeAttribute('data-pe-ov'); });
     var out = [], stop = false;
-    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, .sqs-block-image, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, iframe, video, audio'), function (e) {
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, table, .sqs-block-image, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, .sqs-block-html, ' + OV_PE_PLAYERS + ', iframe, video, audio'), function (e) {
       if (stop) return;
       if (e.closest('.pe-ui, .pe-signup, .pe-author-bio, .pe-checklist, .pe-drawer')) return;
+      if (e.parentElement && e.parentElement.closest('[data-pe-ov]')) return; // counted with its block
       // Pictures in the body (v3.9). The hero (any picture before the first paragraph) and ad banners don't count
       if (e.matches('.sqs-block-image')) {
         var pic = e.querySelector('img');
@@ -3510,13 +3596,20 @@ try {
         out.push(e);
         return;
       }
-      if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code')) {
-        if (e.parentElement && e.parentElement.closest('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, [data-pe-ov]')) return; // counted with its block
+      // Text blocks are only looked at for a table inside them; their paragraphs are counted one by one below
+      if (e.matches('.sqs-block-html')) return;
+      // A table pasted into a text block (7.2)
+      if (e.tagName === 'TABLE') {
+        if (e.rows && e.rows.length >= 2) { e.setAttribute('data-pe-ov', 'Table'); out.push(e); }
+        return;
+      }
+      if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, ' + OV_PE_PLAYERS)) {
         var kind = ovMedia(e);
+        // 7.2: a Code Block holding a table (the dashboard's Tables tool) counts as one item
+        if (!kind && e.matches('.sqs-block-code, .sqs-block-embed') && ovTable(e)) kind = 'Table';
         if (kind) { e.setAttribute('data-pe-ov', kind); out.push(e); }
         return;
       }
-      if (e.closest('[data-pe-ov]')) return;
       var t = squash(e.textContent);
       if (/You Might Also Find These Articles Useful/i.test(t)) { stop = true; return; }
       if (e.tagName === 'LI' && e.querySelector('p')) return;          // its paragraphs count instead
@@ -3721,7 +3814,17 @@ try {
   function articleText() {
     var body = articleBody();
     if (!body) return '';
+    // 7.2: label the players and tables first, so the copy can say what they are. Without this Joe's other tabs
+    // saw nothing where a video, an audio example or a stem player sat, and a table as loose words.
+    try { ovParas(); } catch (x) {}
     var copy = body.cloneNode(true);
+    Array.prototype.forEach.call(copy.querySelectorAll('[data-pe-ov]'), function (x) {
+      var kind = x.getAttribute('data-pe-ov');
+      if (kind === 'Image') return;   // pictures stay as they were
+      var label = '';
+      try { label = ovText(x); } catch (y) {}
+      if (label) x.replaceWith(document.createTextNode('\n' + label + '\n'));
+    });
     Array.prototype.forEach.call(copy.querySelectorAll('.pe-ui, .pe-signup, .pe-author-bio, script, style, noscript'), function (x) { x.remove(); });
     var t = (copy.innerText || copy.textContent || '').replace(/\n{3,}/g, '\n\n');
     // stop at the related links block, which isn't part of the article itself
