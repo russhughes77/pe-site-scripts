@@ -1276,8 +1276,12 @@ try {
    *                              number when it needs you. Joe is a tab inside the panel instead of a second window
    *                              (Pop out wider still opens its own window). The panel shrinks to its pill when
    *                              someone types in the post. Roll back to v6.6 (dcc334a) if anything misbehaves
+   *   7.1   12 Nov 2026         The open panel keeps its top edge where it is and only changes height between tabs
+   *                              (was anchored to the bottom, so it jumped up and down). Drag it anywhere; double-click
+   *                              the title puts it back at the top right. The Partner tab shows on any post with a
+   *                              fact-check under way, and is checked again once Squarespace's record of the post loads
    */
-  var PE_VERSION = '7.0';
+  var PE_VERSION = '7.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -2552,8 +2556,10 @@ try {
    * is sent from here. The read below passes the post's last save and status, so the Content Manager can say
    * "Edited since approved", and the review closes once the article is live. */
   function fcPartner() {
-    return !!document.querySelector('body.view-item article.hentry.tag-partner') ||
-      (postData.tags || []).some(function (t) { return String(t).toLowerCase() === 'partner'; });
+    // 7.1: a post with a fact-check under way always counts, whatever its tags say right now
+    if (fc && fc.review) return true;
+    if (document.querySelector('body.view-item article.hentry.tag-partner')) return true;
+    return (postData.tags || []).concat(postData.categories || []).some(function (t) { return String(t).trim().toLowerCase() === 'partner'; });
   }
   function loadFc() {
     if (!post || !fcPartner()) return;
@@ -2896,7 +2902,9 @@ try {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var it = (d && d.item) || {};
+        var firstRead = !postData.id;
         postData = it;
+        if (firstRead && !fc) loadFc();   // 7.1: the Partner tag may only be known now, from Squarespace's record
         linksSeen(it); // after a save: did the links added from Help me write make it in?
         usesSeen(it);  // and the headlines, SEO titles, meta descriptions and URLs filled in by Use?
         var t = +it.publishOn || 0;
@@ -5557,16 +5565,29 @@ try {
 
   /* ---------- Moving the panel ---------- */
 
-  // The panel and pill share one spot, measured from the bottom-right corner of the window
+  // The pill sits at a spot measured from the bottom-right corner of the window.
+  // 7.1: the open panel is measured from the TOP-right corner instead (Russ, 12 Nov 2026: it should stay where it
+  // is and just be shorter). Its top edge never moves when a tab is shorter or longer; only its height changes.
   var pos = { r: 16, b: 16 };
+  var ppos = { r: 16, t: 80 };                 // the open panel: gap from the right and top edges
+  try { var psaved = JSON.parse(ls('pe-ck-ppos') || 'null'); if (psaved && psaved.r >= 0 && psaved.t >= 0) ppos = { r: psaved.r, t: psaved.t }; } catch (e) {}
   function place() {
     if (!panel) return;
     var w = panel.ownerDocument.defaultView;
     pos.r = Math.max(0, Math.min(w.innerWidth - 80, pos.r));
     pos.b = Math.max(0, Math.min(w.innerHeight - 44, pos.b));
-    [panel, pill].forEach(function (e) { e.style.right = pos.r + 'px'; e.style.bottom = pos.b + 'px'; });
-    panel.style.maxHeight = Math.max(160, w.innerHeight - pos.b - 16) + 'px';
+    pill.style.right = pos.r + 'px'; pill.style.bottom = pos.b + 'px';
+    ppos.r = Math.max(0, Math.min(w.innerWidth - 120, ppos.r));
+    ppos.t = Math.max(0, Math.min(w.innerHeight - 120, ppos.t));
+    panel.style.right = ppos.r + 'px'; panel.style.top = ppos.t + 'px'; panel.style.bottom = 'auto';
+    panel.style.maxHeight = Math.max(160, w.innerHeight - ppos.t - 16) + 'px';
   }
+  // How a drag of the panel's title bar moves it (top-right based)
+  var panelSpot = {
+    get: function () { return { r: ppos.r, t: ppos.t }; },
+    set: function (start, dx, dy) { ppos.r = start.r - dx; ppos.t = start.t + dy; place(); },
+    save: function () { ls('pe-ck-ppos', JSON.stringify(ppos)); }
+  };
   // A click does the usual thing; a drag of more than a few pixels moves it instead
   // onDouble (optional): a double-click does that instead, so the single click waits a moment
   // spot (optional): which box is being moved. Defaults to the checklist panel and pill.
@@ -5626,7 +5647,7 @@ try {
     setInterval(function () { if (!fcBusy && document.visibilityState === 'visible') loadFc(); }, 120000);
     setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
-    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
+    panel = el('div', 'display:none;position:fixed;right:16px;top:80px;z-index:9999;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
       'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 12px 32px rgba(17,24,39,.14),0 2px 6px rgba(17,24,39,.06);' +
       'font:14px/1.45 ' + F + ';color:#222;');
     panel.className = 'pe-checklist';
@@ -5674,7 +5695,7 @@ try {
     pill.appendChild(el('span'));
     pill.style.cursor = 'move';
     pill.style.touchAction = 'none';
-    movable(head, function () { mode = 'pill'; draw(); }, function () { pos = { r: 16, b: 16 }; ls('pe-ck-pos', ''); place(); });
+    movable(head, function () { mode = 'pill'; draw(); }, function () { ppos = { r: 16, t: 80 }; ls('pe-ck-ppos', ''); place(); }, panelSpot);
     movable(pill, function () { mode = 'open'; draw(); });
 
     // Like the drawer, the panel goes in the editor window itself, so the Edit Post window
