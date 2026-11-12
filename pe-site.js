@@ -1111,6 +1111,12 @@ try {
     // blank post to be filled. The token is public, like the Socials one: it reads drafts and records which post holds one.
     potw: 'https://pe-related-answers.pages.dev/api/freeplugins/potw/',
     potwToken: 'pe-potw-1',
+    // 6.6: partner fact-check review. The panel only reads where a review stands (public token, read only). Preparing
+    // opens the team preview, which is behind the team sign-in, and hands the saved article to it by postMessage.
+    fc: 'https://pe-related-answers.pages.dev/api/factcheck/',
+    fcTeam: 'https://pe-related-answers.pages.dev/api/partners/factcheck/',
+    fcOrigin: 'https://pe-related-answers.pages.dev',
+    fcToken: 'pe-factcheck-1',
     items: ['Title, SEO and URL', 'Content and grammar', 'Image check', 'Schedule'],
     blue: '#006eb3',
     green: '#3b6d11',
@@ -1260,8 +1266,13 @@ try {
    *   6.4   11 Nov 2026  bdec203 Article byline reads "By <name>" instead of Squarespace's "Posted by <name>"
    *   6.5   12 Nov 2026         Socials: the "Don't change title" tick (5.8) is gone. Social posts now always use the
    *                              article's own title and excerpt, never a rewrite (Partners script v1.28)
+   *   6.6   12 Nov 2026         Partner fact-check: on partner posts the checks panel shows where the brand's review
+   *                              stands and offers "Prepare for fact-check" (then "Prepare Version 1.1" …). It reads
+   *                              the post as saved and opens the team preview, which sends it to the brand. The
+   *                              preview frame on pe-related-answers.pages.dev sets window.PE_FC_PREVIEW, which every
+   *                              "leave the editor alone" check now respects, so the preview looks like the live page
    */
-  var PE_VERSION = '6.5';
+  var PE_VERSION = '6.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1269,6 +1280,8 @@ try {
   var socialBusy = false, socialErr = '';
   var potw = null;               // 5.7: Plug-in of the Week picks waiting for a post (or filled into this one), once read
   var potwBusy = false, potwNotes = [];
+  var fc = null;                 // 6.6: this post's partner fact-check, once read ({ review: {…} | null })
+  var fcBusy = false, fcErr = '', fcSent = false;
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1278,7 +1291,7 @@ try {
     if (/[?&]checklist\b/.test(location.search)) ls('pe-team', '1');
     var ctx = (window.Static && Static.SQUARESPACE_CONTEXT) || {};
     var inEditor = false;
-    try { inEditor = window.top !== window; } catch (e) { inEditor = true; }
+    try { inEditor = (window.top !== window && !window.PE_FC_PREVIEW); } catch (e) { inEditor = true; }
     return !!ctx.authenticatedAccount || inEditor || ls('pe-team') === '1';
   }
   function el(tag, css, text) {
@@ -2315,6 +2328,7 @@ try {
     drawOverview(); // advisory Overview score, between the warnings and the checks
     drawChecks();
     drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
+    drawFc();   // 6.6: partner fact-check, partner posts only
     drawSocial(); // 5.1: the Socials tick, under the checks
     drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
@@ -2438,6 +2452,98 @@ try {
         list.appendChild(r);
       });
     }
+  }
+
+  /* ---------- 6.6: partner fact-check ----------
+   * Partners never see a piece before it's published, but sometimes the brand checks a draft for factual accuracy
+   * only. On a partner post this section shows where that stands and offers "Prepare for fact-check". Prepare:
+   *   1. opens the team preview (pe-related-answers.pages.dev, behind the team sign-in) in a new tab, inside the click
+   *      so the browser allows it,
+   *   2. reads this post as Squarespace has it saved (the logged-in page, drafts included), takes out its article,
+   *   3. hands the article to the preview tab by postMessage once that tab says it's ready (only to that address).
+   * The preview files it as the next version and shows exactly what the brand will see, with the Send form. Nothing
+   * is sent from here. The read below passes the post's last save and status, so the Content Manager can say
+   * "Edited since approved", and the review closes once the article is live. */
+  function fcPartner() {
+    return !!document.querySelector('body.view-item article.hentry.tag-partner') ||
+      (postData.tags || []).some(function (t) { return String(t).toLowerCase() === 'partner'; });
+  }
+  function loadFc() {
+    if (!post || !fcPartner()) return;
+    var q = 'panel?t=' + encodeURIComponent(C.fcToken) + '&post=' + encodeURIComponent(post) +
+      '&u=' + (+postData.updatedOn || 0) + '&wf=' + (+postData.workflowState || 0) + '&pub=' + (+postData.publishOn || 0);
+    fetch(C.fc + q).then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok) { fc = d; if (!fcBusy) fcErr = ''; } draw(); })
+      .catch(function () { if (!fc) fcErr = 'Couldn\'t reach the fact-check system'; draw(); });
+  }
+  function fcOpen(url) {
+    var w = null;
+    try { w = window.open(url, 'pe-factcheck-' + post); } catch (e) { w = null; }
+    if (w) { try { w.focus(); } catch (e) {} }
+    return w;
+  }
+  function prepareFc() {
+    if (fcBusy) return;
+    fcBusy = true; fcErr = ''; fcSent = false;
+    var win = fcOpen(C.fcTeam + 'page?prepare=' + encodeURIComponent(post));   // during the click, or it's blocked
+    if (!win) { fcBusy = false; fcErr = 'Your browser blocked the new tab. Allow pop-ups for this site, then press Prepare again.'; draw(); return; }
+    draw();
+    var payload = null, ready = false;
+    function send() {
+      if (!payload || !ready || fcSent) return;
+      try { win.postMessage({ peFcArticle: payload }, C.fcOrigin); fcSent = true; } catch (e) { fcErr = 'Couldn\'t hand the article to the preview tab: ' + e.message; }
+      fcBusy = false; draw();
+      setTimeout(loadFc, 8000);
+    }
+    function onMsg(e) {
+      if (e.origin !== C.fcOrigin || !e.data || !e.data.peFcReady || String(e.data.post) !== String(post)) return;
+      ready = true; send();
+    }
+    window.addEventListener('message', onMsg);
+    setTimeout(function () { window.removeEventListener('message', onMsg); if (!fcSent) { fcBusy = false; if (!fcErr) fcErr = 'The preview tab didn\'t answer. Check you\'re signed in to the dashboard there, then press Prepare again.'; draw(); } }, 30000);
+    // The saved post, as Squarespace serves it to a signed-in member of the team (drafts too)
+    fetch(location.pathname + '?pe-fc=' + Date.now(), { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { if (!r.ok) throw new Error('Squarespace answered ' + r.status); return r.text(); })
+      .then(function (html) {
+        var doc = new DOMParser().parseFromString(html, 'text/html');
+        var art = doc.querySelector('article.hentry');
+        if (!art) throw new Error('the saved page has no article in it');
+        // Anything of ours that might be in the saved markup comes out; Squarespace's own markup stays exactly as it is
+        art.querySelectorAll('.pe-checklist, .pe-checklist-pill, .pe-drawer, .pe-ui, .pe-schedule-warning').forEach(function (x) { x.remove(); });
+        payload = { postId: post, postUrl: postData.fullUrl || location.pathname, title: postTitle(), author: authorOf().name,
+          updatedOn: +postData.updatedOn || 0, html: art.outerHTML, bodyClass: (doc.body && doc.body.className) || '' };
+        send();
+      })
+      .catch(function (e) { fcBusy = false; fcErr = 'Couldn\'t read the saved post: ' + (e && e.message || e) + '. Save it and press Prepare again.'; draw(); });
+  }
+  function drawFc() {
+    if (!fcPartner()) return;
+    list.appendChild(sectionLabel('Partner fact-check', '#c2410c'));
+    var box = el('div', 'padding:8px 10px;border-radius:6px;background:#fff7ed;border:1px solid #fed7aa;font:12.5px/1.5 ' + F + ';color:#431407;');
+    var r = fc && fc.review;
+    var btn = function (text, title, onclick, primary) {
+      var b = el('button', 'width:100%;margin-top:6px;padding:6px 10px;border-radius:5px;font:700 12.5px/1.5 ' + F + ';cursor:pointer;' +
+        (primary ? 'border:0;background:#c2410c;color:#fff;' : 'border:1px solid #c2410c;background:#fff;color:#c2410c;'), text);
+      b.type = 'button'; b.title = title; b.disabled = fcBusy; b.onclick = onclick;
+      return b;
+    };
+    if (!fc && !fcErr) box.appendChild(el('div', '', 'Reading…'));
+    else if (!r) {
+      box.appendChild(el('div', '', 'Send this draft to the brand to check facts only: no tone, no wording. Save the post first; the copy is of the last saved version.'));
+      box.appendChild(btn(fcBusy ? 'Preparing…' : 'Prepare for fact-check', 'Opens the preview of exactly what the brand will see, where you choose who it goes to and send it', prepareFc, true));
+    } else {
+      var colour = r.standing === 'approved' ? C.green : (r.standing === 'lapsed' || r.standing === 'edited') ? C.red : '#431407';
+      box.appendChild(el('div', 'font-weight:700;color:' + colour + ';', r.label));
+      if (r.open) box.appendChild(el('div', '', r.open + (r.open === 1 ? ' comment' : ' comments') + ' from the brand to answer.'));
+      if (r.standing === 'edited') box.appendChild(el('div', 'color:' + C.red + ';', 'Edited since they approved. If the change is factual, prepare Version ' + r.nextVersion + '.'));
+      if (r.pending) box.appendChild(el('div', '', 'Version ' + r.nextVersion + ' is prepared and waiting to be sent.'));
+      box.appendChild(btn('Open the review', 'The preview, the brand\'s comments and the record', function () { fcOpen(r.page); }, !!r.pending || r.open > 0));
+      if (!r.published) box.appendChild(btn(fcBusy ? 'Preparing…' : (r.standing === 'draft' ? 'Prepare again' : 'Prepare Version ' + r.nextVersion),
+        'Copies the saved post as the next version and opens the preview to check and send it', prepareFc, false));
+    }
+    if (fcSent && !fcErr) box.appendChild(el('div', 'margin-top:6px;color:' + C.green + ';', '✓ Sent to the preview tab. Check it there and press Send.'));
+    if (fcErr) box.appendChild(el('div', 'margin-top:6px;color:' + C.red + ';', fcErr));
+    list.appendChild(box);
   }
 
   /* ---------- 5.1: Socials tick ---------- */
@@ -2717,6 +2823,7 @@ try {
         // In the editor the reader extras are hidden while a post is a draft or in review.
         // Once it's scheduled or live, show them so the team sees what readers will see.
         if (guarded) document.documentElement.classList.toggle('pe-editor', !(scheduledFor || ((wfNow === 1 || wfNow === 2) && t && t <= Date.now())));
+        if (editedAt !== wasEdit && fc) loadFc();   // 6.6: a new save may mean "Edited since approved"
         if ((scheduledFor !== was || editedAt !== wasEdit) && loaded) draw();
         statusErr = '';
       }).catch(function (e) { statusErr = String(e && e.message || e).slice(0, 80); if (loaded) draw(); });
@@ -2942,7 +3049,7 @@ try {
   // Inside the Squarespace editor, the post sits in a frame and the editor's own toolbars float
   // over it, covering anything in the frame. So the drawer goes in the editor window itself.
   function hostDoc() {
-    try { if (window.top !== window && window.top.document && window.top.document.body) return window.top.document; } catch (e) {}
+    try { if ((window.top !== window && !window.PE_FC_PREVIEW) && window.top.document && window.top.document.body) return window.top.document; } catch (e) {}
     return document;
   }
 
@@ -5366,6 +5473,8 @@ try {
     if (!a || !post || panel || !isTeam()) return;
     loadSocial(); // 5.1
     loadPotw(); // 5.7
+    loadFc();   // 6.6
+    setInterval(function () { if (!fcBusy && document.visibilityState === 'visible') loadFc(); }, 120000);
     setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
     panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
@@ -5513,7 +5622,7 @@ try {
   };
   var path = location.pathname.replace(/\/+$/, '') || '/';
   var inEditor = false;
-  try { inEditor = window.top !== window; } catch (e) { inEditor = true; }
+  try { inEditor = (window.top !== window && !window.PE_FC_PREVIEW); } catch (e) { inEditor = true; }
   var YEAR = 31557600000;
 
   function track(query, source, results) {
@@ -6358,7 +6467,7 @@ try {
   var BLUE = '#006eb3';
 
   var inEditor = false;
-  try { inEditor = window.top !== window; } catch (e) { inEditor = true; }
+  try { inEditor = (window.top !== window && !window.PE_FC_PREVIEW); } catch (e) { inEditor = true; }
 
   // One small stylesheet: inline styles can't do the phone layout, and the site's
   // own paragraph styles are strong, so the text rules carry !important.
@@ -6614,7 +6723,7 @@ try {
   var SLOT_CSS = 'clear:both;float:none;width:100%;padding:8px 0 calc(0.877193% + 8px);';
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
-  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // leave the editor alone
 
   var ad, home, list, zone, slots = [];
 
@@ -6783,7 +6892,7 @@ try {
   ];
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
-  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // leave the editor alone
 
   var CSS =
     '.pe-news-card{position:relative;display:block}' +
@@ -7037,7 +7146,7 @@ try {
   var MIN_DESKTOP = 768;              // px; the wider headline (85% of the column) from here up
 
   function isHome() { return document.body && document.body.classList.contains('homepage'); }
-  if (window.top !== window) return;  // the Squarespace editor
+  if ((window.top !== window && !window.PE_FC_PREVIEW)) return;  // the Squarespace editor
 
   // The styles. --pe-hero-left is measured below; until it is, the fallback
   // works out the same edge from the 1200px page and its 30px padding.
@@ -7131,7 +7240,7 @@ try {
     key: 'pe-hero-v1'                 // this browser's copy of the last list, for an instant start
   };
 
-  try { if (window.top !== window) return; } catch (e) { return; }   // the Squarespace editor
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // the Squarespace editor
   function isHome() { return document.body && document.body.classList.contains('homepage'); }
 
   // A test tag from the address (?pe-hero-tag=News), otherwise the real one
@@ -7319,7 +7428,7 @@ try {
   var GREY = '#F6F6F6';               // page colour behind the cards
   var FROM = 768;                     // px; tablet and desktop only
 
-  if (window.top !== window) return;  // the Squarespace editor
+  if ((window.top !== window && !window.PE_FC_PREVIEW)) return;  // the Squarespace editor
 
   var L = 'body.homepage #container-content .summary-item-list';
   var CSS =
@@ -7379,7 +7488,7 @@ try {
   var MIN_WIDTH = 0.6;                // the picture must fill 60% of the article column
 
   if (!document.body || !document.body.classList.contains('view-item')) return;
-  try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // leave the editor alone
 
   var CSS =
     '.pe-hero-title-wrap{position:relative}' +
@@ -7650,7 +7759,7 @@ try {
   }
 
   function run() {
-    try { if (window.top !== window) return; } catch (e) { return; }   // leave the editor alone
+    try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // leave the editor alone
     var art = document.querySelector('article.hentry');
     if (!art || !art.classList.contains('tag-updated') || art.querySelector('.pe-updated')) return;
     fetch(location.pathname + '?format=json', { credentials: 'same-origin' })
@@ -7694,7 +7803,7 @@ try {
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
-  try { if (window.top !== window) return; } catch (e) { return; }   // not in the editor
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // not in the editor
 
   function path(u) { try { return new URL(u, location.origin).pathname.replace(/\/$/, ''); } catch (e) { return ''; } }
   function getJson(u) {
@@ -7933,7 +8042,7 @@ try {
  * ================================================================ */
 try {
 (function () {
-  try { if (window.top !== window) return; } catch (e) { return; }   // not in the editor
+  try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // not in the editor
   var done = {};                       // one fetch per article, shared by its cards
 
   function heroOf(url) {
