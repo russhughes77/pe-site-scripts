@@ -1283,7 +1283,7 @@ try {
    *   7.2   12 Nov 2026         Joe sees tables, audio and video. The Overview check (and the text Joe's other tabs
    *                              read) now counts tables, in a Code Block from the Tables tool or pasted into text, our
    *                              own stem, A/B, blind test, clip and mixer players, and embeds whose player Squarespace
-   *                              only draws on play (read from the block's stored code). Roll back to v7.1 (704eaab)
+   *                              only draws on play (read from the block's stored code). Commit d77db1c. Roll back to v7.1 (704eaab)
    */
   var PE_VERSION = '7.2';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
