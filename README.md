@@ -34,6 +34,9 @@ The history, with the commit for each version, is in the comment above `PE_VERSI
   and add the commit to the history once pushed.
 - To roll back, copy pe-site.js and pe-site.min.js from that version's commit back onto main and
   push. Everyone has the old version within about 10 minutes.
+- **Easiest:** the **Switch version** workflow (Actions tab > Switch version > Run workflow, type the version,
+  for example `v6.6`, then Run workflow). It does exactly that, and switching forward again works the same way.
+  Direct link: https://github.com/russhughes77/pe-site-scripts/actions/workflows/switch-version.yml
 
 ## Most read (v2.8)
 `most-read.json` holds yesterday's pageviews by page from Plausible. The "Most read" workflow

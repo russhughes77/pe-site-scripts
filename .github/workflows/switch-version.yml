@@ -1,0 +1,58 @@
+# Switch version: one button to put the site scripts back to an earlier version (or forward again).
+#
+# Actions tab > "Switch version" > Run workflow > type the version (for example v6.6) > Run workflow.
+# It finds the commit whose message starts with that version ("v6.6: ..."), copies that commit's pe-site.js
+# and pe-site.min.js onto main and pushes them. GitHub Pages republishes in about a minute and everyone has the
+# chosen version within about 10 minutes (browsers keep their copy for 10 minutes). The version shows beside
+# the checks panel's title, so anyone can see which one they're running.
+#
+# Nothing is lost: every version stays in the history, so switching back to the newest (for example v7.0)
+# works the same way.
+name: Switch version
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to switch to, for example v6.6 (before the tabbed panel) or v7.0 (tabbed panel)"
+        required: true
+        default: "v6.6"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: switch-version
+  cancel-in-progress: false
+
+jobs:
+  switch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Get the code, with its history
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Put that version's scripts back
+        env:
+          WANT: ${{ github.event.inputs.version }}
+        run: |
+          set -e
+          want="$(echo "$WANT" | tr -d ' ' | tr 'V' 'v')"
+          case "$want" in v[0-9]*) ;; *) want="v$want" ;; esac
+          if ! echo "$want" | grep -Eq '^v[0-9]+(\.[0-9]+)?$'; then echo "::error::'$WANT' isn't a version like v6.6"; exit 1; fi
+          # The newest commit whose message starts with exactly that version and a colon
+          sha="$(git log --format='%H %s' | awk -v v="$want:" 'index($2, v) == 1 && length($2) == length(v) { print $1; exit }')"
+          if [ -z "$sha" ]; then echo "::error::No commit starts with '$want:'. Versions available:"; git log --format='%s' | grep -Eo '^v[0-9]+(\.[0-9]+)?:' | tr -d ':' | sort -uV | tr '\n' ' '; exit 1; fi
+          echo "Switching to $want from commit $sha"
+          git checkout "$sha" -- pe-site.js pe-site.min.js
+          if git diff --cached --quiet && git diff --quiet; then echo "Already on $want: nothing to change."; exit 0; fi
+          git config user.name "Switch version"
+          git config user.email "actions@users.noreply.github.com"
+          git add pe-site.js pe-site.min.js
+          # Not starting with the version, so a later switch always finds the real version commit
+          git commit -m "Switched the site scripts to $want (commit ${sha:0:7})"
+          git push origin HEAD:main
+          echo "Done. Everyone has $want within about 10 minutes."
