@@ -1284,7 +1284,7 @@ try {
    *                              read) now counts tables, in a Code Block from the Tables tool or pasted into text, our
    *                              own stem, A/B, blind test, clip and mixer players, and embeds whose player Squarespace
    *                              only draws on play (read from the block's stored code). Commit d77db1c. Roll back to v7.1 (704eaab)
-   *   7.3   12 Nov 2026         Homepage hero keeps the hand-made slides from the Front Page Heroes gallery
+   *   7.3   12 Nov 2026  ce3ce3c Homepage hero keeps the hand-made slides from the Front Page Heroes gallery
    *                              (/front-page-heroes). They play first, then the five newest Hero-tagged articles;
    *                              the hidden slide is swapped as the slideshow moves on, so all of them show on the
    *                              gallery's own slides. Before this the tagged articles covered the hand-made ones.
