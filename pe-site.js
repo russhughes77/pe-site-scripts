@@ -1271,8 +1271,13 @@ try {
    *                              the post as saved and opens the team preview, which sends it to the brand. The
    *                              preview frame on pe-related-answers.pages.dev sets window.PE_FC_PREVIEW, which every
    *                              "leave the editor alone" check now respects, so the preview looks like the live page
+   *   7.0   12 Nov 2026         Tabbed checks panel (Russ chose option A of the mockups): Checks, Joe, Publish, Partner
+   *                              (partner posts only, marked Partner Team only) and Notes, one at a time, each with a
+   *                              number when it needs you. Joe is a tab inside the panel instead of a second window
+   *                              (Pop out wider still opens its own window). The panel shrinks to its pill when
+   *                              someone types in the post. Roll back to v6.6 (dcc334a) if anything misbehaves
    */
-  var PE_VERSION = '6.6';
+  var PE_VERSION = '7.0';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1281,6 +1286,11 @@ try {
   var potw = null;               // 5.7: Plug-in of the Week picks waiting for a post (or filled into this one), once read
   var potwBusy = false, potwNotes = [];
   var fc = null;                 // 6.6: this post's partner fact-check, once read ({ review: {…} | null })
+  // 7.0: the tabbed panel. panelTab is the tab on show (remembered in this browser); tabPicked is set once the
+  // panel has chosen for itself on load (Checks when something needs fixing); joePopped is true while Joe is in its
+  // own wider window instead of the panel's Joe tab.
+  var panelTab = ls('pe-ck-tab') || 'checks', tabPicked = false, joePopped = false;
+  var tabBar = null, joeHost = null, notesWrap = null, pubWrap = null;
   var fcBusy = false, fcErr = '', fcSent = false;
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
@@ -2322,15 +2332,32 @@ try {
     pill.lastChild.textContent = status;
 
     list.innerHTML = '';
-    drawHistory();
-    drawStale(c);
-    drawProblems();
-    drawOverview(); // advisory Overview score, between the warnings and the checks
-    drawChecks();
-    drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
-    drawFc();   // 6.6: partner fact-check, partner posts only
-    drawSocial(); // 5.1: the Socials tick, under the checks
-    drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
+    // 7.0: one tab at a time. Opens on Checks when something needs fixing, otherwise on the last tab used.
+    if (!tabPicked && loaded) { tabPicked = true; if (c.warn || c.stale || c.autoWarn > 0) panelTab = 'checks'; }
+    if (panelTab === 'partner' && !fcPartner()) panelTab = 'checks';
+    drawTabs(c);
+    var tab = panelTab;
+    pubWrap.style.display = tab === 'publish' ? '' : 'none';
+    notesWrap.style.display = tab === 'notes' ? '' : 'none';
+    list.style.display = tab === 'joe' ? 'none' : '';
+    joeHost.style.display = tab === 'joe' ? 'flex' : 'none';
+    if (tab === 'checks') {
+      drawStale(c);
+      drawProblems();
+      drawOverview(); // advisory Overview score, between the warnings and the checks
+      drawChecks();
+    } else if (tab === 'publish') {
+      drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
+      drawSocial(); // 5.1: the Socials tick
+    } else if (tab === 'partner') {
+      drawPartnerOnly();
+      drawFc();   // 6.6: partner fact-check, partner posts only
+    } else if (tab === 'notes') {
+      drawHistory();
+    } else if (tab === 'joe') {
+      showJoe();
+    }
+    drawJoeBar(); // not on screen since 7.0, kept up to date so nothing that reads it breaks
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
     if (statusErr) list.appendChild(el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eceef1;color:#888;font:11px/1.5 ' + F + ';',
       'Couldn\'t check the post with Squarespace: ' + statusErr + '. Trying again in 30 seconds.'));
@@ -2339,7 +2366,7 @@ try {
     var embBad = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
     warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue,
       auto.filter(function (r) { return (r.kind === 'plan' || r.kind === 'soon') && !r.ok && !r.live; }));
-    if (drawer && drawer.style.display !== 'none') drawDrawer();
+    if (joeIsOpen()) drawDrawer();
 
     clearTimeout(hideTimer);
     if (!loaded) return; // stay hidden until the sheet has answered
@@ -2452,6 +2479,66 @@ try {
         list.appendChild(r);
       });
     }
+  }
+
+  /* ---------- 7.0: the tabs ----------
+   * Checks: what needs fixing, the Overview score and the four checks. Joe: Joe itself. Publish: planned date,
+   * embargo, Plug-in of the Week and Socials. Partner (partner posts only): the fact-check, for the Partner Team only.
+   * Notes: notes, flags for the author and the edit history. A number on a tab means something there needs you. */
+  function panelTabs() {
+    var t = [['checks', 'Checks'], ['joe', 'Joe'], ['publish', 'Publish']];
+    if (fcPartner()) t.push(['partner', 'Partner']);
+    t.push(['notes', 'Notes']);
+    return t;
+  }
+  function setTab(t) {
+    panelTab = t; tabPicked = true; ls('pe-ck-tab', t);
+    draw();
+  }
+  function drawTabs(c) {
+    if (!tabBar) return;
+    var r = fc && fc.review;
+    var openFlags = (notes || []).filter(function (n) { return n.flag === 'open'; }).length;
+    var potwWaiting = potw && potw.length && !potwHere() && potw.some(function (p) { return p.status === 'drafted'; }) && potwBlank();
+    var badge = {
+      checks: (c.warn ? 1 : 0) + (c.stale ? 1 : 0) + Math.max(0, c.autoWarn || 0),
+      publish: socialErr ? '!' : potwWaiting ? 1 : 0,
+      partner: r ? (r.open || ((r.standing === 'lapsed' || r.standing === 'edited') ? '!' : 0)) : 0,
+      notes: openFlags || 0
+    };
+    var colour = { checks: c.warn || auto.some(function (x) { return !x.ok && (x.kind === 'embargo' || x.kind === 'flag'); }) ? C.red : C.amber, publish: C.amber, partner: '#c2410c', notes: C.red };
+    tabBar.innerHTML = '';
+    panelTabs().forEach(function (t) {
+      var on = t[0] === panelTab;
+      var b = el('button', 'display:flex;align-items:center;gap:5px;border:0;background:none;padding:10px 8px 8px;margin-bottom:-1px;cursor:pointer;' +
+        'font:' + (on ? 700 : 600) + ' 12.5px ' + F + ';color:' + (on ? C.blue : '#5f6368') + ';border-bottom:3px solid ' + (on ? C.blue : 'transparent') + ';', t[1]);
+      b.type = 'button';
+      b.setAttribute('role', 'tab');
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      var n = badge[t[0]];
+      if (n) b.appendChild(el('span', 'font-size:10.5px;font-weight:700;background:' + colour[t[0]] + ';color:#fff;border-radius:999px;padding:0 6px;line-height:16px;', String(n)));
+      b.onclick = function () { setTab(t[0]); };
+      tabBar.appendChild(b);
+    });
+  }
+  // The Partner tab is for the Partner Team only (Russ, 12 Nov 2026)
+  function drawPartnerOnly() {
+    var w = el('div', 'margin:12px 0 4px;padding:9px 11px;border-radius:6px;background:#fdecea;border:1px solid #f2c4c0;color:#791f1f;font:12.5px/1.45 ' + F + ';');
+    w.appendChild(el('b', '', 'Partner Team only. '));
+    w.appendChild(document.createTextNode('This tab is for Russ, Mike, Mel and PJ. If you’re not on the Partner Team, please leave everything here alone.'));
+    list.appendChild(w);
+  }
+  // Typing in the post (or Squarespace's own boxes) shrinks the panel to its pill, so it's out of the way while
+  // writing. A click on the pill opens it again. Only real key presses count, never the panel's own filling-in.
+  function typingShrink(e) {
+    if (!e.isTrusted || !panel || mode === 'pill' || panel.style.display === 'none') return;
+    var t = e.target;
+    if (!t || !t.closest || t.closest('.pe-checklist, .pe-checklist-pill, .pe-drawer')) return;
+    if (!(t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) return;
+    if (!(e.key && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete'))) return;
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    mode = 'pill';
+    draw();
   }
 
   /* ---------- 6.6: partner fact-check ----------
@@ -3131,7 +3218,7 @@ try {
     drawer.style.width = Math.min(DRAWER_W, w.innerWidth - 16) + 'px';
     // shrunk: just the title bar. Open: full size, or whatever room is left below it.
     drawer.style.height = drawerShut ? 'auto' : Math.max(220, Math.min(DRAWER_H, w.innerHeight - dpos.t - 16)) + 'px';
-    if (drawerInner) drawerInner.style.display = drawerShut ? 'none' : 'flex';
+    if (drawerInner && drawerInner.parentNode === drawer) drawerInner.style.display = drawerShut ? 'none' : 'flex';
     if (drawerChev) drawerChev.textContent = drawerShut ? '▸' : '▾';
   }
 
@@ -3175,7 +3262,8 @@ try {
     x.className = 'pe-x';
     x.setAttribute('aria-label', 'Close');
     x.title = 'Close';
-    x.onclick = function () { drawer.style.display = 'none'; drawJoeBar(); };
+    // 7.0: closing the popped-out window puts Joe back in the panel's Joe tab
+    x.onclick = function () { drawer.style.display = 'none'; joePopped = false; DRAWER_W = 380; draw(); };
     drawerHead.appendChild(x);
     movable(drawerHead,
       function () { setDrawerShut(!drawerShut); },                     // click: shrink or open
@@ -3187,9 +3275,21 @@ try {
     return drawerHead;
   }
 
+  // 7.0: everything that opened Joe (warning Suggest buttons, chips, Fill) now opens the panel's Joe tab on that
+  // tab. Only Pop out wider gives Joe its own window, as before 7.0.
   function openDrawer(tab) {
     if (tab) drawerTab = tab;
-    if (drawer && !drawer.isConnected) drawer = null;
+    if (!joePopped && panel) {
+      panelTab = 'joe'; ls('pe-ck-tab', 'joe'); tabPicked = true;
+      if (mode === 'pill' || panel.style.display === 'none') mode = 'open';
+      draw();
+      return;
+    }
+    popJoe();
+  }
+  // Builds Joe's window and its inner part once, hidden
+  function makeDrawer() {
+    if (drawer && !drawer.isConnected) { drawer = null; drawerInner = null; }
     if (!drawer) {
       drawer = el('div', 'position:fixed;z-index:10002;max-width:calc(100vw - 16px);display:flex;flex-direction:column;overflow:hidden;' +
         'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 16px 40px rgba(17,24,39,.16),0 2px 6px rgba(17,24,39,.06);' +
@@ -3211,13 +3311,60 @@ try {
       }
       doc.body.appendChild(drawer);
       doc.defaultView.addEventListener('resize', placeDrawer);
+      drawer.style.display = 'none';
     }
+  }
+  // Pop out wider: Joe in its own window, 560px wide, for the Image and Links tabs
+  function popJoe() {
+    makeDrawer();
+    joePopped = true;
+    DRAWER_W = 560;
+    if (drawerInner.parentNode !== drawer) drawer.appendChild(drawerInner);
     drawer.style.display = 'flex';
-    // Opened from a warning's fix button: the person wants that tab, so don't leave it shrunk
-    if (tab && drawerShut) setDrawerShut(false);
+    if (drawerShut) setDrawerShut(false);
     placeDrawer();
     drawDrawer();
-    drawJoeBar();
+    if (panel) draw();
+  }
+  // The Joe tab: Joe's inner part moved into the panel, under a slim bar with help and Pop out wider
+  function showJoe() {
+    if (joePopped) {
+      joeHost.innerHTML = '';
+      var box = el('div', 'padding:16px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.5;color:#444;');
+      box.appendChild(el('div', '', 'Joe is open in its own wider window.'));
+      var back = el('button', 'align-self:flex-start;padding:6px 14px;border:0;border-radius:6px;background:' + C.blue + ';color:#fff;font:700 12.5px ' + F + ';cursor:pointer;', 'Bring Joe back into the panel');
+      back.type = 'button';
+      back.onclick = function () { if (drawer) drawer.style.display = 'none'; joePopped = false; DRAWER_W = 380; draw(); };
+      box.appendChild(back);
+      joeHost.appendChild(box);
+      return;
+    }
+    makeDrawer();
+    if (drawerInner.parentNode !== joeHost) {
+      joeHost.innerHTML = '';
+      var bar = el('div', 'display:flex;align-items:center;gap:8px;padding:8px 14px 6px;');
+      var mark = el('span', 'flex:1;display:flex;align-items:center;gap:6px;color:' + C.blue + ';');
+      mark.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block">' +
+        '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/><path d="M12 17v4.5"/><path d="M8.5 21.5h7"/></svg>' +
+        '<span style="font-size:12px;font-weight:800;letter-spacing:.14em;">JOE</span>';
+      bar.appendChild(mark);
+      bar.appendChild(helpButton('Help for this tab', function () {
+        var t = drawerTabs().filter(function (d) { return d[0] === drawerTab; })[0];
+        openHelp('joe-' + drawerTab, 'Joe \u203a ' + (t ? t[1] : 'Joe'));
+      }));
+      var pop = el('button', 'padding:3px 10px;border:1px solid #d4d8dd;border-radius:5px;background:#fff;font:600 11.5px ' + F + ';color:#3c4043;cursor:pointer;', 'Pop out wider \u2197');
+      pop.type = 'button';
+      pop.title = 'Open Joe in its own wider window, handy for Image and Links';
+      pop.onclick = popJoe;
+      bar.appendChild(pop);
+      joeHost.appendChild(bar);
+      joeHost.appendChild(drawerInner);
+    }
+    drawerInner.style.display = 'flex';
+    // A fixed height inside the panel, so Joe's own list scrolls rather than the whole panel
+    var w = joeHost.ownerDocument.defaultView || window;
+    var h = Math.max(260, Math.min(560, w.innerHeight - 220));
+    drawerInner.style.height = (h - 36) + 'px';
   }
 
   /* ---------- Joe bar (v3.0) ----------
@@ -3235,7 +3382,9 @@ try {
 
   // Joe counts as open when its window is on the page and not closed with x
   function joeIsOpen() {
-    return !!(drawer && drawer.isConnected && drawer.style.display !== 'none');
+    if (joePopped) return !!(drawer && drawer.isConnected && drawer.style.display !== 'none');
+    // 7.0: docked in the panel's Joe tab, with the panel open
+    return !!(panel && panelTab === 'joe' && panel.style.display !== 'none' && drawerInner && joeHost && drawerInner.parentNode === joeHost);
   }
 
   // Built once by build(); position:sticky keeps it at the foot of the panel's scrolling area
@@ -3924,7 +4073,7 @@ try {
     if (!drawer) return false;
     if (joeMouseDown) return true;
     var s = drawer.ownerDocument.getSelection && drawer.ownerDocument.getSelection();
-    return !!(s && !s.isCollapsed && s.rangeCount && drawer.contains(s.anchorNode));
+    return !!(s && !s.isCollapsed && s.rangeCount && drawerInner && drawerInner.contains(s.anchorNode)); // 7.0: docked or popped
   }
   function watchJoeHighlight(box) {
     var doc = box.ownerDocument;
@@ -5477,7 +5626,7 @@ try {
     setInterval(function () { if (!fcBusy && document.visibilityState === 'visible') loadFc(); }, 120000);
     setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
-    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
+    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
       'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 12px 32px rgba(17,24,39,.14),0 2px 6px rgba(17,24,39,.06);' +
       'font:14px/1.45 ' + F + ';color:#222;');
     panel.className = 'pe-checklist';
@@ -5499,11 +5648,22 @@ try {
     embBox = el('div', 'padding:0 16px;');
     planBox = el('div', 'padding:0 16px;');
     panel.appendChild(head);
-    panel.appendChild(planBox);
-    panel.appendChild(embBox);
+    // 7.0: the tabs, under the title. The planned date and embargo lines live on the Publish tab and the notes on
+    // the Notes tab; each sits in a wrapper so its own code can show or hide it as before.
+    tabBar = el('div', 'display:flex;gap:2px;padding:0 8px;border-bottom:1px solid #e3e6ea;position:sticky;top:0;z-index:2;background:#fff;');
+    tabBar.setAttribute('role', 'tablist');
+    panel.appendChild(tabBar);
+    pubWrap = el('div');
+    pubWrap.appendChild(planBox);
+    pubWrap.appendChild(embBox);
+    panel.appendChild(pubWrap);
     panel.appendChild(list);
-    panel.appendChild(buildNotes()); // under the checks, outside the part draw() rebuilds
-    panel.appendChild(buildJoeBar()); // pinned to the foot of the panel, on every stage
+    joeHost = el('div', 'display:none;flex-direction:column;min-height:0;');   // Joe, docked in its tab
+    panel.appendChild(joeHost);
+    notesWrap = el('div');
+    notesWrap.appendChild(buildNotes()); // outside the part draw() rebuilds
+    panel.appendChild(notesWrap);
+    buildJoeBar(); // 7.0: built but not shown; the Joe tab replaces it
 
     pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
       ';border-radius:20px;background:#fff;box-shadow:0 6px 18px rgba(17,24,39,.16);font:700 13px ' + F + ';font-variant-numeric:tabular-nums;cursor:pointer;');
@@ -5531,6 +5691,7 @@ try {
     }
     doc.body.appendChild(panel);
     doc.body.appendChild(pill);
+    watchJoeHighlight(joeHost); // 7.0: highlighting text in the docked Joe holds off redraws, as in its own window
     try { var saved = JSON.parse(ls('pe-ck-pos') || 'null'); if (saved && saved.r >= 0 && saved.b >= 0) pos = saved; } catch (e) {}
     place();
     doc.defaultView.addEventListener('resize', place);
@@ -5541,6 +5702,7 @@ try {
       if (i && d === document) return; // outside the editor both are the same page
       d.addEventListener('pointerdown', noteActivity, true);
       d.addEventListener('keydown', noteActivity, true);
+      d.addEventListener('keydown', typingShrink, true); // 7.0: typing in the post shrinks the panel to its pill
     });
     if (doc !== document) {
       var again = [];
