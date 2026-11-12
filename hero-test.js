@@ -252,26 +252,34 @@ try {
     var state = { list: list, active: a0, slot: slot, timer: 0 };
     gallery.peHeroState = state;
 
-    function prepareAround(b) {
+    // Swap the slides either side of slide b to the next and previous entries. The slide
+    // that is still fading out (outgoing) is left alone; it gets its turn after swapDelay.
+    function prepareAround(b, outgoing) {
       var k = slot[b];
       var next = (b + 1) % n, prev = (b - 1 + n) % n;
-      slot[next] = (k + 1) % T;
-      paint(slides[next], list[slot[next]], w);
-      if (prev !== next) {                     // two slides only: the forward one wins
+      if (next !== outgoing) {
+        slot[next] = (k + 1) % T;
+        paint(slides[next], list[slot[next]], w);
+      }
+      if (prev !== next && prev !== outgoing) {   // two slides only: the forward one wins
         slot[prev] = (k - 1 + T) % T;
         paint(slides[prev], list[slot[prev]], w);
       }
     }
 
-    prepareAround(a0);
+    prepareAround(a0, -1);
 
-    // Watch for the slideshow moving on (autoplay, arrows or a swipe)
+    // Watch for the slideshow moving on (autoplay, arrows or a swipe). The neighbour that
+    // isn't fading out is swapped at once, so quick clicks on the arrows find it ready;
+    // the one fading out is swapped once it has gone.
     state.observer = new MutationObserver(function () {
       var b = activeIndex();
       if (b === state.active) return;
+      var outgoing = state.active;
       state.active = b;
+      prepareAround(b, outgoing);
       clearTimeout(state.timer);
-      state.timer = setTimeout(function () { prepareAround(state.active); }, C.swapDelay);
+      state.timer = setTimeout(function () { prepareAround(state.active, -1); }, C.swapDelay);
     });
     slides.forEach(function (s) { state.observer.observe(s, { attributes: true, attributeFilter: ['class'] }); });
   }
