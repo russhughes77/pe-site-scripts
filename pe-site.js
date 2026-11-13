@@ -1289,8 +1289,12 @@ try {
    *                              the hidden slide is swapped as the slideshow moves on, so all of them show on the
    *                              gallery's own slides. Before this the tagged articles covered the hand-made ones.
    *                              Roll back to v7.2 (2d0d3cf)
+   *   7.4   13 Nov 2026         Refreshed articles reach the homepage only on the day Mel schedules them in the Content
+   *                              Manager (09:00 UK, for 24 hours), read from the dashboard's public list
+   *                              (pe-related-answers.pages.dev/api/refresh/live). Tagging or editing an article
+   *                              Updated no longer puts it on the homepage by itself. Roll back to v7.3 (ce3ce3c)
    */
-  var PE_VERSION = '7.3';
+  var PE_VERSION = '7.4';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -8189,63 +8193,64 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: Updated label', e); }
 
 /* ================================================================
- * Production Expert: refreshed articles on the homepage for a day (v6.1, 11 Nov 2026)
+ * Production Expert: refreshed articles on the homepage on their scheduled day (v7.4, 13 Nov 2026; was v6.1)
  * A refreshed article keeps its original date (tagged Updated, see "Updated label on refreshed
  * articles"), so Squarespace's homepage grid, which runs in publish order, would never show it.
- * Redating it would throw away its history, so instead: for 24 hours after an article tagged
- * Updated was last edited, this adds a card for it to the top row of the homepage grid (second
- * place, so the newest story still leads), with the orange UPDATED label. Then it simply stops.
+ * Russ, 13 Nov 2026: a refresh is treated like a new piece. Tagging it Updated puts it in Mel's review
+ * queue in the Content Manager; she schedules it for a day there, and at 09:00 UK time that day it
+ * "goes back out": this adds a card for it to the top row of the homepage grid for 24 hours (second
+ * place, so the newest story still leads), with the orange UPDATED label, while the socials and the
+ * mailshot follow from the Partners script.
+ * - Which articles, and from when, comes from the dashboard's public list (REFRESH_API): only
+ *   articles whose scheduled moment has come and is less than 24 hours old. Tagging or editing an
+ *   article no longer puts it on the homepage by itself (it did under v6.1, 24 hours after any edit).
  * - The card is a copy of the grid's own first card with the refreshed article's link, title,
- *   excerpt, original date and picture, so it looks and behaves like the rest.
- * - Newest refresh first if there are several; at most MAX cards. Never a second card for an
- *   article that is already in the grid.
- * - "Last edited" is Squarespace's updatedOn, so editing a tagged article again gives it another day.
- * - The tag's feed runs in publish order, so up to PAGES pages (20 posts each) are read.
+ *   excerpt, original date and picture (read from the article's own ?format=json), so it looks and
+ *   behaves like the rest.
+ * - Newest first if there are several; at most MAX cards. Never a second card for an article that
+ *   is already in the grid. If the list can't be read, nothing is added.
  * ================================================================ */
 try {
 (function () {
-  var HOURS = 24;          // how long a refreshed article stays on the homepage (Russ, 11 Nov 2026)
+  var REFRESH_API = 'https://pe-related-answers.pages.dev/api/refresh/live';   // [{path, at}] live on the homepage now
   var MAX = 2;             // most refreshed cards at once
-  var PAGES = 5;           // pages of the Updated tag's feed to read
   var POSITION = 1;        // 0 = first card; 1 = second
-  var KEY = 'pe-updated-cards-v1';
-  var KEEP_MS = 15 * 60 * 1000;
+  var KEY = 'pe-updated-cards-v2';
+  var KEEP_MS = 5 * 60 * 1000;   // a reader moving between pages doesn't ask again for 5 minutes
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // not in the editor
 
   function path(u) { try { return new URL(u, location.origin).pathname.replace(/\/$/, ''); } catch (e) { return ''; } }
-  function getJson(u) {
-    return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  function getJson(u, cred) {
+    return fetch(u, { credentials: cred || 'same-origin' }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
   }
 
-  // Refreshed articles edited in the last HOURS hours, newest edit first
+  // Refreshes whose day has come (from the dashboard), each filled in from the article's own data, newest first
   function recent() {
     try {
       var o = JSON.parse(sessionStorage.getItem(KEY) || 'null');
       if (o && Date.now() - o.t < KEEP_MS) return Promise.resolve(o.items);
     } catch (e) {}
-    var since = Date.now() - HOURS * 3600 * 1000, out = [];
-    function page(u, left) {
-      return getJson(u).then(function (j) {
-        (j.items || []).forEach(function (i) {
-          if (+i.updatedOn >= since && i.fullUrl) {
-            var html = String(i.promotedBlock || '') + String(i.body || '');
-            var m = html.match(/<img[^>]+data-src="([^"]+)"/i);
-            out.push({ p: path(i.fullUrl), title: i.title || '', excerpt: String(i.excerpt || '').replace(/<[^>]+>/g, '').trim(),
-                       img: i.assetUrl || (m && m[1]) || '', pub: +i.publishOn || 0, upd: +i.updatedOn });
-          }
+    return getJson(REFRESH_API, 'omit').then(function (d) {
+      var live = (d && d.ok && Array.isArray(d.items)) ? d.items.slice() : [];
+      live.sort(function (a, b) { return (+b.at || 0) - (+a.at || 0); });
+      live = live.filter(function (x) { return x && typeof x.path === 'string' && x.path.charAt(0) === '/'; }).slice(0, MAX + 2);
+      return Promise.all(live.map(function (x) {
+        return getJson(x.path + '?format=json').then(function (j) {
+          var i = j && j.item;
+          if (!i || !i.fullUrl) return null;
+          var html = String(i.promotedBlock || '') + String(i.body || '');
+          var m = html.match(/<img[^>]+data-src="([^"]+)"/i);
+          return { p: path(i.fullUrl), title: i.title || '', excerpt: String(i.excerpt || '').replace(/<[^>]+>/g, '').trim(),
+                   img: i.assetUrl || (m && m[1]) || '', pub: +i.publishOn || 0, at: +x.at || 0 };
         });
-        var next = j.pagination && j.pagination.nextPage && j.pagination.nextPageUrl;
-        if (!next || left <= 1) return out;
-        return page(next + (next.indexOf('?') < 0 ? '?' : '&') + 'format=json', left - 1);
+      })).then(function (items) {
+        items = items.filter(Boolean);
+        try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), items: items })); } catch (e) {}
+        return items;
       });
-    }
-    return page('/production-expert-1?format=json&tag=Updated', PAGES).then(function (items) {
-      items.sort(function (a, b) { return b.upd - a.upd; });
-      try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), items: items })); } catch (e) {}
-      return items;
     });
   }
 
