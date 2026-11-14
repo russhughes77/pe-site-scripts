@@ -1293,7 +1293,7 @@ try {
    *                              Manager (09:00 UK, for 24 hours), read from the dashboard's public list
    *                              (pe-related-answers.pages.dev/api/refresh/live). Tagging or editing an article
    *                              Updated no longer puts it on the homepage by itself. Roll back to v7.3 (ce3ce3c)
-   *   7.5   14 Nov 2026         Dark mode tables: article tables (Tables tool and skill) get dark rows, light text,
+   *   7.5   14 Nov 2026  1c19e0c Dark mode tables: article tables (Tables tool and skill) get dark rows, light text,
    *                              softer green and amber, and keep their orange header, instead of white rows on a dark
    *                              page. The subscription calculator, drawn in a Shadow DOM, gets dark colour roles
    *                              switched on with the page. Roll back to v7.4 (f68219e)
