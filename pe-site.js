@@ -1293,8 +1293,12 @@ try {
    *                              Manager (09:00 UK, for 24 hours), read from the dashboard's public list
    *                              (pe-related-answers.pages.dev/api/refresh/live). Tagging or editing an article
    *                              Updated no longer puts it on the homepage by itself. Roll back to v7.3 (ce3ce3c)
+   *   7.5   14 Nov 2026         Dark mode tables: article tables (Tables tool and skill) get dark rows, light text,
+   *                              softer green and amber, and keep their orange header, instead of white rows on a dark
+   *                              page. The subscription calculator, drawn in a Shadow DOM, gets dark colour roles
+   *                              switched on with the page. Roll back to v7.4 (f68219e)
    */
-  var PE_VERSION = '7.4';
+  var PE_VERSION = '7.5';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -8334,6 +8338,105 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: refreshed articles on the homepage', e); }
+
+/* ================================================================
+ * Production Expert: tables and the subscription calculator in dark mode (v7.5, 14 Nov 2026)
+ * Tables in articles carry their colours inline (white and #fafafa rows, dark text, an orange header),
+ * from the Tables tool and the pe-table-formatter skill. In dark mode the site's dark stylesheet only
+ * darkened the header and the borders, so readers got white rows on a dark page with a grey header.
+ * This adds dark rows, light text, softer green and amber, and keeps the orange header.
+ * Inline styles lose to !important rules, so nothing in the articles needs changing.
+ *
+ * The subscription calculator (#pe-sub-calc) draws inside a Shadow DOM, which the site's stylesheets
+ * can't reach, and its colours were light only, so its text went near-black on the dark page. Its colour
+ * roles live in CSS variables on .viz-root, so this puts a second set of variables inside its shadow
+ * root and switches them on with a class on the host whenever the page is dark. Any later embed built
+ * the same way (an open shadow root with a .viz-root) picks this up too.
+ * ================================================================ */
+try {
+(function () {
+  // Where article tables live: Code Blocks (the Tables tool) and Text Blocks (pasted tables)
+  var T = 'html.pe-dark .sqs-block-code table,html.pe-dark .sqs-block-html table,html.pe-dark .entry-content table';
+  // Builds a selector list: each part of T followed by the given ending
+  function each(end) { return T.split(',').map(function (s) { return s + end; }).join(','); }
+
+  var CSS =
+    // Rows: dark, with the same gentle stripe the light version has
+    each(' tbody tr') + '{background-color:#1a1b1f!important}' +
+    each(' tbody tr:nth-child(even)') + '{background-color:#1f2125!important}' +
+    each(' td') + '{background-color:transparent!important}' +
+    // Dividers inside the table (rows set their own bottom border inline)
+    each(' tr') + '{border-color:#33363c!important}' +
+    // Text: light for everything except the green and amber values handled below
+    each(' td') + ',' + each(' td span') + ',' + each(' td p') + ',' + each(' td strong') + '{color:#e6e7ea!important}' +
+    // The first-column labels and the sentence under a value read a touch quieter
+    each(' td span[style*="font-size:12px"]') + '{color:#c4c7cd!important}' +
+    // Highlighted column: green text and a faint green wash, readable on dark
+    each(' td[style*="234,243,222"]') + '{background-color:rgba(95,207,141,.10)!important}' +
+    each(' [style*="#3b6d11" i]') + '{color:#8fd16a!important}' +
+    // Amber for No, Not supported and the like
+    each(' [style*="#b85c00" i]') + '{color:#f1b452!important}' +
+    // Header: keep the orange from its row (the dark stylesheet had painted every th grey)
+    each(' thead tr[style*="background"] th') + '{background-color:inherit!important}' +
+    each(' th[style*="#E38501" i]') + '{background-color:#E38501!important}' +
+    // Header text that isn't white (plain grey headings, as in the calculator's price table) goes lighter
+    each(' th:not([style*="color:#fff"])') + '{color:#b8bcc3!important}' +
+    // The calculator's "See every price" panel sits outside its shadow root: its note text
+    'html.pe-dark .sqs-block-code details p[style*="#52514e"],html.pe-dark .sqs-block-code details summary{color:#c4c7cd!important}';
+
+  // The dark colour roles for embeds drawn in a shadow root with a .viz-root (the calculator)
+  var SHADOW_CSS =
+    ':host(.pe-dark-on) .viz-root{color-scheme:dark;' +
+      '--surface-0:#141518;--surface-1:#1d1f23;' +            // page and cards
+      '--text-primary:#e6e7ea;--text-secondary:#b8bcc3;--text-muted:#8d919a;' +
+      '--grid:#2c2e34;--border:#3a3d44;' +                    // lines
+      '--control-bg:#26282d;--control-on:#3a3d44;' +          // pick-list hover, segmented buttons
+      '--series-daw:#F08A3A;--series-plugins:#5a9be8;--accent:#4d93e6}' +
+    // Tooltip shadow is heavier on dark so it still lifts off the page
+    ':host(.pe-dark-on) .tooltip{box-shadow:0 4px 16px rgba(0,0,0,.5)}';
+
+  // Add the table rules to the page once
+  function addCss() {
+    if (document.getElementById('pe-dark-tables-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-dark-tables-css';
+    st.textContent = CSS;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  // Put the dark roles into each shadow-root embed, and match its host to the page's mode
+  function syncShadows() {
+    var dark = document.documentElement.classList.contains('pe-dark');
+    var hosts = document.querySelectorAll('[id^="pe-"]');
+    for (var i = 0; i < hosts.length; i++) {
+      var sr = hosts[i].shadowRoot;
+      if (!sr || !sr.querySelector('.viz-root')) continue;   // not one of ours, or not drawn yet
+      if (!sr.getElementById('pe-dark-roles')) {
+        var st = document.createElement('style');
+        st.id = 'pe-dark-roles';
+        st.textContent = SHADOW_CSS;
+        sr.appendChild(st);                                   // last in the root, so it wins ties
+      }
+      hosts[i].classList.toggle('pe-dark-on', dark);
+    }
+  }
+
+  function run() {
+    addCss();
+    syncShadows();
+    // Embeds can draw a moment after this script runs, so look again for a few seconds
+    var n = 0, t = setInterval(function () { syncShadows(); if (++n >= 10) clearInterval(t); }, 500);
+  }
+
+  // Follow the reader's light/dark switch: the toggle changes the class on <html>
+  try {
+    new MutationObserver(syncShadows).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+  } catch (e) {}
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
+  addEventListener('mercury:load', function () { setTimeout(run, 100); });   // Ajax page loads
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: dark mode tables', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
