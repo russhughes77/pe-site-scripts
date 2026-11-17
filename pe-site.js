@@ -1297,8 +1297,13 @@ try {
    *                              softer green and amber, and keep their orange header, instead of white rows on a dark
    *                              page. The subscription calculator, drawn in a Shadow DOM, gets dark colour roles
    *                              switched on with the page. Roll back to v7.4 (f68219e)
+   *   7.6   17 Nov 2026         Client review tick (the team's request): on partner posts the Publish tab has a "Client
+   *                              review" tick, so Mel and PJ know the piece needs sending to the brand for a fact-check.
+   *                              Ticking emails them once and shows "Client review needed" on the Content Manager; the
+   *                              Partner tab shows who asked and gets a "!" until a version is sent, then the tick reads
+   *                              as done. Stored by pe-related-answers (/api/factcheck/ask). Roll back to v7.5 (1c19e0c)
    */
-  var PE_VERSION = '7.5';
+  var PE_VERSION = '7.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1313,6 +1318,7 @@ try {
   var panelTab = ls('pe-ck-tab') || 'checks', tabPicked = false, joePopped = false;
   var tabBar = null, joeHost = null, notesWrap = null, pubWrap = null;
   var fcBusy = false, fcErr = '', fcSent = false;
+  var askBusy = false, askErr = '';   // 7.6: the Client review tick (its state arrives with the fact-check read, as fc.ask)
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -2370,6 +2376,7 @@ try {
     } else if (tab === 'publish') {
       drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
       drawSocial(); // 5.1: the Socials tick
+      drawAsk();    // 7.6: the Client review tick, partner posts only
     } else if (tab === 'partner') {
       drawPartnerOnly();
       drawFc();   // 6.6: partner fact-check, partner posts only
@@ -2527,6 +2534,7 @@ try {
       partner: r ? (r.open || ((r.standing === 'lapsed' || r.standing === 'edited') ? '!' : 0)) : 0,
       notes: openFlags || 0
     };
+    if (!badge.partner && fc && fc.ask && !fc.ask.done) badge.partner = '!';   // 7.6: Client review ticked, nothing sent yet
     var colour = { checks: c.warn || auto.some(function (x) { return !x.ok && (x.kind === 'embargo' || x.kind === 'flag'); }) ? C.red : C.amber, publish: C.amber, partner: '#c2410c', notes: C.red };
     tabBar.innerHTML = '';
     panelTabs().forEach(function (t) {
@@ -2637,6 +2645,9 @@ try {
       b.type = 'button'; b.title = title; b.disabled = fcBusy; b.onclick = onclick;
       return b;
     };
+    // 7.6: who ticked Client review, while nothing has gone to the brand since
+    if (fc && fc.ask && !fc.ask.done) box.appendChild(el('div', 'margin-bottom:6px;padding:5px 8px;border-radius:5px;background:#c2410c;color:#fff;font-weight:700;',
+      'Client review asked for by ' + (fc.ask.by || 'someone') + (fc.ask.at ? ', ' + askWhen(fc.ask.at) : '') + '. Prepare it and send it to the brand.'));
     if (!fc && !fcErr) box.appendChild(el('div', '', 'Reading…'));
     else if (!r) {
       box.appendChild(el('div', '', 'Send this draft to the brand to check facts only: no tone, no wording. Save the post first; the copy is of the last saved version.'));
@@ -2654,6 +2665,63 @@ try {
     if (fcSent && !fcErr) box.appendChild(el('div', 'margin-top:6px;color:' + C.green + ';', '✓ Sent to the preview tab. Check it there and press Send.'));
     if (fcErr) box.appendChild(el('div', 'margin-top:6px;color:' + C.red + ';', fcErr));
     list.appendChild(box);
+  }
+
+  /* ---------- 7.6: Client review tick ----------
+   * The team asked (17 Nov 2026) for a way for whoever writes a partner piece to say "this needs a client review", so
+   * Mel and PJ know to send it to the brand for a fact-check. On partner posts the Publish tab has a Client review tick.
+   * Ticking it tells pe-related-answers (/api/factcheck/ask), which records who asked, emails Mel and PJ once and puts
+   * an orange "Client review needed" tag on the post's row in the Content Manager. Its state comes back with the
+   * fact-check read (loadFc) as fc.ask: { by, at, done }. done means a version has been sent to the brand since it
+   * was ticked, so the tick shows as finished and can't be changed. Unticking clears it (a mistake, or no longer
+   * needed). The tick clears itself once the post is live. */
+  function askWhen(iso) {
+    try { return new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { return ''; }
+  }
+  function setAsk(on) {
+    if (askBusy) return;
+    askBusy = true; askErr = '';
+    var by = who();
+    var was = fc ? fc.ask : null;
+    if (!fc) fc = { review: null };
+    // Shown straight away; the reply replaces it
+    fc.ask = on ? (was || { by: by, at: new Date().toISOString(), done: false }) : null;
+    draw();
+    fetch(C.fc + 'ask', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ t: C.fcToken, post: post, on: on, by: by, title: postTitle(), url: postData.fullUrl || location.pathname }) })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        askBusy = false;
+        if (d && d.ok) { fc.ask = d.ask; askErr = d.warning || ''; }
+        else { fc.ask = was; askErr = (d && d.error) || 'That didn\'t save'; }
+        draw();
+      })
+      .catch(function () { askBusy = false; fc.ask = was; askErr = 'Couldn\'t reach the fact-check system. Try again.'; draw(); });
+    logEvent({ kind: on ? 'tick' : 'untick', item: 'Client review', who: by });
+  }
+  function drawAsk() {
+    if (!fcPartner()) return;
+    var a = fc && fc.ask, r = fc && fc.review;
+    var already = !a && r && r.standing && r.standing !== 'draft';   // with the brand already, ticked or not
+    list.appendChild(sectionLabel('Client review', '#c2410c'));
+    var row = el('label', 'display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13.5px;cursor:pointer;');
+    var box = el('input', 'flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:#c2410c;');
+    box.type = 'checkbox';
+    box.checked = !!a || !!already;
+    box.disabled = askBusy || !fc || !!already || !!(a && a.done);
+    box.onchange = function () { setAsk(box.checked); };
+    row.appendChild(box);
+    row.appendChild(el('span', 'flex:1;', 'Send to the brand for a fact-check'));
+    row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', a && a.by ? a.by : ''));
+    list.appendChild(row);
+    var note = askErr ? askErr
+      : !fc ? 'Reading…'
+      : already ? 'Already with the brand: ' + r.label
+      : a && a.done ? '✓ Done: a version has gone to the brand' + (r && r.label ? ' (' + r.label + ')' : '')
+      : a ? 'Mel and PJ have been told. Shows as "Client review needed" on the Content Manager until a version is sent.'
+      : 'Tick if this piece needs a client review. Mel and PJ are emailed and send it to the brand to check facts only.';
+    list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (askErr ? C.red : a && a.done ? C.green : '#80868d') + ';', note));
   }
 
   /* ---------- 5.1: Socials tick ---------- */
