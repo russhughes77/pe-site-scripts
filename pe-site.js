@@ -1305,7 +1305,7 @@ try {
    *   7.7   17 Nov 2026         Socials by default (Mel asked why news didn't post itself): the Socials tick sends the
    *                              post's publish time and status, so the Partners script (v1.34) can show the tick as on
    *                              for every new article and off for older ones. Unticked, the note under it is the
-   *                              script's ("Left off socials. Tick to make the posts."). Roll back to v7.6
+   *                              script's ("Left off socials. Tick to make the posts."). Commit 4f228d8. Roll back to v7.6
    */
   var PE_VERSION = '7.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
