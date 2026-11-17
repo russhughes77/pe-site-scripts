@@ -1302,8 +1302,12 @@ try {
    *                              Ticking emails them once and shows "Client review needed" on the Content Manager; the
    *                              Partner tab shows who asked and gets a "!" until a version is sent, then the tick reads
    *                              as done. Stored by pe-related-answers (/api/factcheck/ask). Roll back to v7.5 (1c19e0c)
+   *   7.7   17 Nov 2026         Socials by default (Mel asked why news didn't post itself): the Socials tick sends the
+   *                              post's publish time and status, so the Partners script (v1.34) can show the tick as on
+   *                              for every new article and off for older ones. Unticked, the note under it is the
+   *                              script's ("Left off socials. Tick to make the posts."). Roll back to v7.6
    */
-  var PE_VERSION = '7.6';
+  var PE_VERSION = '7.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -2729,7 +2733,10 @@ try {
   // written when it goes live. They wait on the Content Manager's Socials tab to be checked and sent.
   function loadSocial() {
     if (!post) return;
-    fetch(C.socials + '?socialtick=' + encodeURIComponent(post) + '&t=' + encodeURIComponent(C.socialsToken))
+    // 7.7: the post's publish time and status, so the script knows whether it's covered by Socials by default
+    // (left off until Squarespace's record is read, so the script looks the post up itself rather than guessing)
+    fetch(C.socials + '?socialtick=' + encodeURIComponent(post) + '&t=' + encodeURIComponent(C.socialsToken) +
+          (postData && postData.id ? '&pub=' + (+postData.publishOn || 0) + '&wf=' + (+postData.workflowState || 0) : ''))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok) { social = d; socialErr = ''; }
@@ -2766,7 +2773,7 @@ try {
     row.appendChild(el('span', 'flex:1;', 'Make Instagram, Facebook and LinkedIn posts'));
     row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', social && social.on && social.by ? String(social.by).replace(/ \(panel\)$/, '') : ''));
     list.appendChild(row);
-    var note = socialErr ? socialErr : !social ? 'Reading…' : social.on ? social.label : 'Made from the article\'s own title and excerpt when it goes live, ready to check on the Content Manager\'s Socials tab';
+    var note = socialErr ? socialErr : !social ? 'Reading…' : social.on || social.label ? social.label : 'Made from the article\'s own title and excerpt when it goes live, ready to check on the Content Manager\'s Socials tab';
     list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (socialErr || (social && social.status === 'failed') ? C.red : '#80868d') + ';', note));
   }
 
@@ -2990,6 +2997,7 @@ try {
         var firstRead = !postData.id;
         postData = it;
         if (firstRead && !fc) loadFc();   // 7.1: the Partner tag may only be known now, from Squarespace's record
+        if (firstRead && !socialBusy) loadSocial();   // 7.7: ask again now its publish time and status are known
         linksSeen(it); // after a save: did the links added from Help me write make it in?
         usesSeen(it);  // and the headlines, SEO titles, meta descriptions and URLs filled in by Use?
         var t = +it.publishOn || 0;
