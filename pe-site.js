@@ -1329,7 +1329,7 @@ try {
    *                              and cards sat against its border), and the heading no longer turns light grey in light
    *                              mode (it used to copy its colour from the page, which was wrong if dark mode had been
    *                              on). Roll back to v7.7 (46bdaa9)
-   *   7.9   18 Nov 2026         Breathing room at the top of site pages: Contact Us, About and the other ordinary pages
+   *   7.9   18 Nov 2026  11e0f64 Breathing room at the top of site pages: Contact Us, About and the other ordinary pages
    *                              get 48px above their content (28px on phones) so the first heading no longer sits
    *                              hard under the menu. Articles and the homepage are unchanged. Roll back to v7.8 (f98f9d5)
    */
