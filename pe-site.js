@@ -709,7 +709,21 @@ try {
       .catch(function (e) { log('feed failed', url, e); return []; });
   }
 
+  // v7.8: dark mode gives every .pe-ui section a dark box with a border (html.pe-dark .pe-ui in the Header),
+  // but this section had no padding, so the heading and cards sat hard against the border. This adds the
+  // padding only when that box is drawn; light mode has no box, so it stays flush with the article.
+  function css() {
+    if (document.getElementById('pe-related-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-related-css';
+    st.textContent =
+      'html.pe-dark .pe-ui.pe-related,body.pe-dark .pe-ui.pe-related{padding:24px 28px 28px!important;border-radius:6px!important}' +
+      '@media (max-width:640px){html.pe-dark .pe-ui.pe-related,body.pe-dark .pe-ui.pe-related{padding:18px 16px 20px!important}}';
+    document.head.appendChild(st);
+  }
+
   function build(items, a) {
+    css();
     var ref = a.querySelector('.body.entry-content h3');
     var cs = ref ? getComputedStyle(ref) : null;
 
@@ -721,7 +735,12 @@ try {
     var h = document.createElement('h3');
     h.textContent = C.heading;
     h.style.cssText = 'margin:0 0 16px;';
-    if (cs) { h.style.fontFamily = cs.fontFamily; h.style.fontWeight = cs.fontWeight; h.style.color = cs.color; h.style.fontSize = cs.fontSize; }
+    // Copy the article's H3 font, weight and size so the heading matches the page.
+    // v7.8: the colour is no longer copied. Copied while the page was in dark mode it stayed light grey after
+    // switching to light mode. It now uses the same dark ink as the card titles, and the dark mode rule
+    // (html.pe-dark .pe-ui *) turns it light when dark mode is on.
+    h.style.color = C.ink;
+    if (cs) { h.style.fontFamily = cs.fontFamily; h.style.fontWeight = cs.fontWeight; h.style.fontSize = cs.fontSize; }
     sec.appendChild(h);
 
     var grid = document.createElement('div');
@@ -1306,8 +1325,12 @@ try {
    *                              post's publish time and status, so the Partners script (v1.34) can show the tick as on
    *                              for every new article and off for older ones. Unticked, the note under it is the
    *                              script's ("Left off socials. Tick to make the posts."). Commit 4f228d8. Roll back to v7.6
+   *   7.8   18 Nov 2026         Related Content fixes: in dark mode the section's box gets proper padding (the heading
+   *                              and cards sat against its border), and the heading no longer turns light grey in light
+   *                              mode (it used to copy its colour from the page, which was wrong if dark mode had been
+   *                              on). Roll back to v7.7 (46bdaa9)
    */
-  var PE_VERSION = '7.7';
+  var PE_VERSION = '7.8';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
