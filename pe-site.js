@@ -1329,8 +1329,11 @@ try {
    *                              and cards sat against its border), and the heading no longer turns light grey in light
    *                              mode (it used to copy its colour from the page, which was wrong if dark mode had been
    *                              on). Roll back to v7.7 (46bdaa9)
+   *   7.9   18 Nov 2026         Breathing room at the top of site pages: Contact Us, About and the other ordinary pages
+   *                              get 48px above their content (28px on phones) so the first heading no longer sits
+   *                              hard under the menu. Articles and the homepage are unchanged. Roll back to v7.8 (f98f9d5)
    */
-  var PE_VERSION = '7.8';
+  var PE_VERSION = '7.9';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -8536,6 +8539,38 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 100); });   // Ajax page loads
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: dark mode tables', e); }
+
+/* ================================================================
+ * Production Expert: breathing room at the top of site pages (v7.9, 18 Nov 2026)
+ * On ordinary pages (Contact Us, About, Write For Us, the free plug-ins and sound effects pages and so on)
+ * the first heading sat about 12px under the menu bar, so pages looked pushed up against it.
+ * This adds space above the page content: 48px on desktop, 28px on phones.
+ * - Only Squarespace "page" pages get it (body.collection-type-page). Articles open with their hero
+ *   picture and the blog lists have their own spacing, so they're left alone.
+ * - The homepage is skipped (body.homepage) so the hero banner stays tight under the menu.
+ * - !important is needed because a Squarespace stylesheet already sets this padding with !important.
+ * To change the amount, edit the two numbers below.
+ * ================================================================ */
+try {
+(function () {
+  var CSS =
+    // Desktop and tablet: the space above the page content
+    'body.collection-type-page:not(.homepage) #container-content{padding-top:48px!important}' +
+    // Phones: a little less, as the screen is shorter
+    '@media (max-width:767px){body.collection-type-page:not(.homepage) #container-content{padding-top:28px!important}}';
+
+  // Add the rule to the page once (the id stops a second copy on Ajax page loads)
+  function addCss() {
+    if (document.getElementById('pe-page-top-css')) return;
+    var st = document.createElement('style');
+    st.id = 'pe-page-top-css';
+    st.textContent = CSS;
+    (document.head || document.documentElement).appendChild(st);
+  }
+
+  addCss();
+})();
+} catch (e) { if (window.console) console.warn('Production Expert script failed: breathing room at the top of site pages', e); }
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
