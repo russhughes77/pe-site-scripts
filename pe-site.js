@@ -1325,7 +1325,7 @@ try {
    *                              post's publish time and status, so the Partners script (v1.34) can show the tick as on
    *                              for every new article and off for older ones. Unticked, the note under it is the
    *                              script's ("Left off socials. Tick to make the posts."). Commit 4f228d8. Roll back to v7.6
-   *   7.8   18 Nov 2026         Related Content fixes: in dark mode the section's box gets proper padding (the heading
+   *   7.8   18 Nov 2026  f98f9d5 Related Content fixes: in dark mode the section's box gets proper padding (the heading
    *                              and cards sat against its border), and the heading no longer turns light grey in light
    *                              mode (it used to copy its colour from the page, which was wrong if dark mode had been
    *                              on). Roll back to v7.7 (46bdaa9)
