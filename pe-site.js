@@ -1361,7 +1361,7 @@ try {
    *                              feature as news from its "What's New" headline. Every other post now carries a note telling
    *                              Claude it isn't news and to judge it as the piece its headline promises; any news-style
    *                              headline note or prompt is dropped; 8.5 results are cleared. Roll back to v8.5 (27ea5aa)
-   *   8.7  19 Nov 2026         Joe's advice rebuilt around the promise in the headline (Russ, 19 Nov 2026). The writer says
+   *   8.7  19 Nov 2026  2e6cf41 Joe's advice rebuilt around the promise in the headline (Russ, 19 Nov 2026). The writer says
    *                              in one line what the piece is for; Joe answers under four fixed headings (What I understood,
    *                              Is the promise kept?, Why would someone click past Google?, What to do). He reads the
    *                              author's bio and the team's, points to our earlier coverage, and can suggest a colleague for
