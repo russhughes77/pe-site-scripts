@@ -1355,8 +1355,12 @@ try {
    *                              panel section and Joe's tab are now "Advice": suggestions only, each saying where, what and
    *                              why; advice from the last check is sent with the next so it stays put, and covered points are
    *                              ticked off as done. Results saved before 8.5 are cleared. Roll back to v8.4 (352e053)
+   *   8.6  19 Nov 2026         News means the News tag or category, nothing else: Joe's server judged the WaveRider v5
+   *                              feature as news from its "What's New" headline. Every other post now carries a note telling
+   *                              Claude it isn't news and to judge it as the piece its headline promises; any news-style
+   *                              headline note or prompt is dropped; 8.5 results are cleared. Roll back to v8.5 (27ea5aa)
    */
-  var PE_VERSION = '8.5';
+  var PE_VERSION = '8.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3788,8 +3792,10 @@ try {
     try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
     // 8.2: a news result saved before news was judged as news is dropped, so the next check starts clean
     if (ovRes && ovNews() && !ovRes.news) ovRes = null;
-    // 8.5: a result from before the advice rules is dropped too, so its looser advice isn't carried into the next check
-    if (ovRes && !(ovRes.v >= 85)) ovRes = null;
+    // 8.5: a result from before the advice rules is dropped too, so its looser advice isn't carried into the next check.
+    // 8.6: and 8.5 results, which could judge a post as news without the News tag; otherwise the next check would be
+    // told to repeat that advice word for word
+    if (ovRes && !(ovRes.v >= 86)) ovRes = null;
   }
 
   /* 8.2: news is judged as news. On announcement day there is nothing to review: no testing, no hands-on time,
@@ -3812,6 +3818,27 @@ try {
     r.searches = (r.searches || []).filter(function (x) { return !OV_REVIEW_ASK.test(String(x.q || '')); });
     return r;
   }
+  /* 8.6: a post is news only when it has the News tag or category (adHoc, Site 54). Joe's server (Code.gs) also tells
+   * Claude to spot news "from the piece itself", so on 19 Nov it judged "Quiet Art WaveRider v5 - What's New And Do
+   * You Need It?" as news, with no News tag or category, and told Russ to retitle it to "report the news, not a
+   * verdict". Russ: tags and categories decide, nothing else. So every post that isn't News now carries this note,
+   * which overrides the server's guess, and any headline note or prompt that still treats it as news is dropped. */
+  var OV_NOT_NEWS_NOTE = '[Note to the checker, not part of the article: this post is NOT a news story. At Production Expert a post is ' +
+    'news only when it carries the News tag or category, and this one carries neither, so ignore the NEWS POSTS rules completely, ' +
+    'whatever the headline or text looks like. Never call it news, never suggest changing the headline to report news or to avoid ' +
+    'a verdict, and never ask for questions to put to the brand as if it were announcement day. Judge it as the kind of piece its ' +
+    'headline says it is. A headline that asks whether readers need something promises an answer, so a verdict, who should buy or ' +
+    'skip it, first-hand impressions and comparisons are all in scope, and if the draft doesn\'t yet answer its own headline, ' +
+    'that is the first thing to say.]';
+  var OV_NEWS_TALK = /\b(report(s|ing)? the news|news (story|post|piece|item|angle)|as news|not a verdict|announcement[- ]day|put (the|this|that) claim to)\b/i;
+  function ovNotNewsClean(r) {
+    if (!r) return r;
+    r.news = false;
+    if (r.headline && OV_NEWS_TALK.test(String(r.headline))) r.headline = '';
+    r.prompts = (r.prompts || []).filter(function (p) { return !OV_NEWS_TALK.test(String(p)); });
+    return r;
+  }
+
   function ovPartner() { return !!document.querySelector('body.view-item article.hentry.tag-partner'); }
 
   /* 8.5: advice, no score (Russ, 19 Nov 2026). Following Joe's prompts on the Quiet Art WaveRider v5 piece took
@@ -3880,7 +3907,7 @@ try {
     if (news) payload.news = 1;
     // 8.5: the notes go first (news rules, then the advice rules, then last check's advice), then the article,
     // cut to fit the 15,000 characters Code.gs reads
-    var notes = (news ? OV_NEWS_NOTE + '\n' : '') + OV_ADVICE_NOTE + '\n' + (prev.length ? ovEarlierNote(prev) + '\n' : '');
+    var notes = (news ? OV_NEWS_NOTE : OV_NOT_NEWS_NOTE) + '\n' + OV_ADVICE_NOTE + '\n' + (prev.length ? ovEarlierNote(prev) + '\n' : '');
     payload.text = notes + paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000 - notes.length);
     fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
@@ -3888,12 +3915,12 @@ try {
         ovBusy = false;
         if (d && d.overview) {
           var res = d.overview;
-          if (news) ovNewsClean(res);
+          if (news) ovNewsClean(res); else ovNotNewsClean(res);   // 8.6
           // 8.5: earlier points no longer given are the ones the draft now covers
           res.done = prev.filter(function (p) { return !(res.prompts || []).some(function (q) { return ovSame(p, q); }); });
           // carry earlier done points forward until the advice is all done, so the writer sees progress
           if (ovRes && ovRes.done && (res.prompts || []).length) res.done = ovRes.done.concat(res.done).filter(function (p, i, a) { return a.indexOf(p) === i; }).slice(-6);
-          res.sig = ovSig(paras); res.at = Date.now(); res.partner = partner; res.v = 85;
+          res.sig = ovSig(paras); res.at = Date.now(); res.partner = partner; res.v = 86;
           ovRes = res;
           ls('pe-ov-' + post, JSON.stringify(ovRes));
         } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
