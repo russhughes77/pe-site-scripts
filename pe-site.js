@@ -1355,7 +1355,7 @@ try {
    *                              panel section and Joe's tab are now "Advice": suggestions only, each saying where, what and
    *                              why; advice from the last check is sent with the next so it stays put, and covered points are
    *                              ticked off as done. Results saved before 8.5 are cleared. Roll back to v8.4 (352e053)
-   *   8.6  19 Nov 2026         News means the News tag or category, nothing else: Joe's server judged the WaveRider v5
+   *   8.6  19 Nov 2026  1575571 News means the News tag or category, nothing else: Joe's server judged the WaveRider v5
    *                              feature as news from its "What's New" headline. Every other post now carries a note telling
    *                              Claude it isn't news and to judge it as the piece its headline promises; any news-style
    *                              headline note or prompt is dropped; 8.5 results are cleared. Roll back to v8.5 (27ea5aa)
