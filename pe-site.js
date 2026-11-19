@@ -1347,8 +1347,12 @@ try {
    *                              Heroes, Squarespace drew no slideshow, so the Hero-tagged articles had nowhere to play.
    *                              A gallery slide titled "Placeholder" is now never shown as itself, only as a blank for
    *                              the tagged articles. Keep two or three in the gallery. Roll back to v8.2 (6245c45)
+   *   8.4  19 Nov 2026         Homepage hero fixes after the first placeholder went up: a slide counts as a placeholder
+   *                              when its picture's file name has "placeholder" in it (titles are optional); a slide with
+   *                              no title gets a headline box, so headlines show; with one slide in the gallery the script
+   *                              plays the tagged articles on it every 6 seconds and the arrows work. Roll back to v8.3 (4a4d09f)
    */
-  var PE_VERSION = '8.3';
+  var PE_VERSION = '8.4';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -7705,12 +7709,14 @@ try {
  * - The tag stays hidden from readers and out of Related Content (both
  *   handled by their own sections).
  * - Placeholder slides (v8.3): a gallery slide titled "Placeholder" (any
- *   capitals) is never shown as itself. It is only a blank slide for the
- *   tagged articles to play on. Squarespace draws no slideshow from an empty
+ *   capitals), or whose picture's file name has "placeholder" in it, is never
+ *   shown as itself. It is only a blank slide for the tagged articles to play on. Squarespace draws no slideshow from an empty
  *   gallery, so with no hand-made slides the tagged ones had nowhere to go.
- *   Keep at least two (three is smoother) placeholder slides in the gallery,
- *   each with a click-through link (any, / will do). With fewer tagged
+ *   Each needs a click-through link (any, / will do). With fewer tagged
  *   articles than placeholders, the tagged ones repeat to fill them.
+ * - One-slide gallery (v8.4): Squarespace never moves on from a single slide,
+ *   so the script plays the list on it itself (every oneSlideEvery ms) and
+ *   works the arrows. A slide with no title gets a headline box made for it.
  * - Testing: add ?pe-hero-tag=News to the homepage address to fill the tagged
  *   part from another tag. Only that browser tab sees it.
  * - Homepage only. Leaves the editor alone.
@@ -7725,6 +7731,7 @@ try {
     minWidth: 1500,                   // px; narrower tagged pictures are skipped (same number in the checks)
     swapDelay: 1500,                  // ms after a slide change before the hidden slides are swapped, so a
                                       // slide is never changed while it is still fading out
+    oneSlideEvery: 6000,              // ms between slides when the gallery has only one slide
     key: 'pe-hero-v2'                 // this browser's copy of the last tagged list, for an instant start
   };
 
@@ -7748,10 +7755,27 @@ try {
     '.pe-hero-ph:not(.pe-hero-filled) img{visibility:hidden !important}' +
     '.pe-hero-ph:not(.pe-hero-filled) .meta-title,.pe-hero-ph:not(.pe-hero-filled) .meta-description{visibility:hidden !important}';
 
+  // A placeholder: titled "Placeholder", or its picture's file name has "placeholder" in it
+  // (hero-placeholder-1.webp), so a slide uploaded with no title still counts (v8.4)
   function isPlaceholder(s) {
     var t = s.querySelector('.meta-title'), img = s.querySelector('img');
-    var name = (t && t.textContent.trim()) || (img && (img.alt || img.getAttribute('data-title'))) || '';
-    return /^placeholder\b/i.test(String(name).trim());
+    var name = (t && t.textContent.trim()) || '';
+    var alt = (img && (img.alt || img.getAttribute('data-title'))) || '';
+    var src = (img && (img.getAttribute('data-src') || img.getAttribute('data-image') || img.getAttribute('src'))) || '';
+    var file = src.replace(/[?#].*$/, '').split('/').pop();
+    return /^placeholder\b/i.test(name) || /placeholder/i.test(alt) || /placeholder/i.test(file);
+  }
+
+  // A slide with no title has no headline box, so make one in Squarespace's own shape,
+  // which the site's hero headline styles already cover (v8.4)
+  function titleBox(s) {
+    var t = s.querySelector('.meta-title');
+    if (t) return t;
+    var m = document.createElement('div');
+    m.className = 'meta pe-hero-meta';
+    m.innerHTML = '<div class="meta-inside"><div class="meta-title"></div></div>';
+    s.appendChild(m);
+    return m.querySelector('.meta-title');
   }
 
   function addStyle() {
@@ -7881,7 +7905,7 @@ try {
   }
 
   // Put one entry (hand-made or tagged) into one slide: link, headline, picture
-  function paint(s, h, w) {
+  function paint(s, h, w, late) {
     var a = s && s.querySelector('a');
     if (!a || !h) return;
     var href = full(h.url);
@@ -7891,8 +7915,9 @@ try {
     s.setAttribute('data-pe-hero', href);
     var img = a.querySelector('img');
     if (img) img.alt = h.title;
-    var t = s.querySelector('.meta-title');
-    if (t) t.textContent = h.title;
+    var t = titleBox(s);
+    // On a slide that is showing (one-slide gallery), the headline changes with the picture
+    if (!late) t.textContent = h.title;
     var pic = a.querySelector('.pe-hero-pic');
     if (!pic) { pic = document.createElement('div'); pic.className = 'pe-hero-pic'; a.appendChild(pic); }
     pic.classList.remove('pe-in');
@@ -7904,6 +7929,7 @@ try {
     im.onload = function () {
       if (s.getAttribute('data-pe-hero') !== href) return;
       pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
+      if (late) t.textContent = h.title;
       s.classList.add('pe-hero-filled');
       requestAnimationFrame(function () { pic.classList.add('pe-in'); });
     };
@@ -7923,6 +7949,34 @@ try {
     var st = gallery.peHeroState;
     if (st && st.observer) st.observer.disconnect();
     clearTimeout(st && st.timer);
+    clearInterval(st && st.tick);
+
+    // One slide in the gallery: Squarespace never moves on from it and its arrows do nothing,
+    // so the script plays the list itself on that slide, every C.oneSlideEvery ms, and the
+    // arrows step back and forward (v8.4)
+    if (n === 1 && T > 1) {
+      var one = { list: list, k: 0, tick: 0 };
+      gallery.peHeroState = one;
+      paint(slides[0], list[0], w);
+      one.step = function (d) {
+        one.k = ((one.k + d) % T + T) % T;
+        paint(slides[0], list[one.k], w, true);
+      };
+      one.tick = setInterval(function () { if (!document.hidden) one.step(1); }, C.oneSlideEvery);
+      if (!gallery.peHeroArrows) {
+        gallery.peHeroArrows = true;
+        gallery.addEventListener('click', function (e) {
+          var b = e.target.closest && e.target.closest('.sqs-gallery-controls .previous, .sqs-gallery-controls .next');
+          var s2 = gallery.peHeroState;
+          if (!b || !s2 || !s2.step) return;
+          e.preventDefault(); e.stopPropagation();
+          s2.step(b.classList.contains('previous') ? -1 : 1);
+          clearInterval(s2.tick);   // a click restarts the timer, so the next change isn't straight after
+          s2.tick = setInterval(function () { if (!document.hidden) s2.step(1); }, C.oneSlideEvery);
+        }, true);
+      }
+      return;
+    }
 
     function activeIndex() {
       for (var i = 0; i < n; i++) if (slides[i].classList.contains('sqs-active-slide')) return i;
