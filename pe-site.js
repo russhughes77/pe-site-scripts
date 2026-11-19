@@ -1342,7 +1342,7 @@ try {
    *   8.2  News is judged as news in Joe's Overview: the check tells the checker it's announcement-day news, any prompt or
    *                              search asking for a verdict, review, testing, hands-on or buy/skip advice is dropped, the
    *                              score shows in neutral grey with a note that low is normal for news, and news results saved
-   *                              before 8.2 are cleared. Roll back to v8.1 (16cc0fc)
+   *                              before 8.2 are cleared. Commit 2fb1c01. Roll back to v8.1 (16cc0fc)
    */
   var PE_VERSION = '8.2';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
