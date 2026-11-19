@@ -1338,7 +1338,7 @@ try {
    *                              desktop menu, with dropdowns; Search moves to the centre of the top bar. Roll back to v7.9 (11e0f64)
    *   8.1  News and deals are ad hoc: no Ahead of plan or Went live early warning in the checks panel, no amber
    *                              title or scheduled bar for it, and the planned date box says the date isn't checked.
-   *                              Matches the Content Manager's Site 54 rule. Roll back to v8.0 (3a3c60a)
+   *                              Matches the Content Manager's Site 54 rule. Commit 60bb3c2. Roll back to v8.0 (3a3c60a)
    */
   var PE_VERSION = '8.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
