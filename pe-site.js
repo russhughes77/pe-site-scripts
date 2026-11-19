@@ -1347,7 +1347,7 @@ try {
    *                              Heroes, Squarespace drew no slideshow, so the Hero-tagged articles had nowhere to play.
    *                              A gallery slide titled "Placeholder" is now never shown as itself, only as a blank for
    *                              the tagged articles. Keep two or three in the gallery. Roll back to v8.2 (6245c45)
-   *   8.4  19 Nov 2026         Homepage hero fixes after the first placeholder went up: a slide counts as a placeholder
+   *   8.4  19 Nov 2026  eb8d4c6 Homepage hero fixes after the first placeholder went up: a slide counts as a placeholder
    *                              when its picture's file name has "placeholder" in it (titles are optional); a slide with
    *                              no title gets a headline box, so headlines show; with one slide in the gallery the script
    *                              plays the tagged articles on it every 6 seconds and the arrows work. Roll back to v8.3 (4a4d09f)
