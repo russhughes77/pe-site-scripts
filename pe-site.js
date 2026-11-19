@@ -1351,7 +1351,7 @@ try {
    *                              when its picture's file name has "placeholder" in it (titles are optional); a slide with
    *                              no title gets a headline box, so headlines show; with one slide in the gallery the script
    *                              plays the tagged articles on it every 6 seconds and the arrows work. Roll back to v8.3 (4a4d09f)
-   *   8.5  19 Nov 2026         Overview score removed: following its advice took the WaveRider v5 piece from 39 to 12. The
+   *   8.5  19 Nov 2026  02f5613 Overview score removed: following its advice took the WaveRider v5 piece from 39 to 12. The
    *                              panel section and Joe's tab are now "Advice": suggestions only, each saying where, what and
    *                              why; advice from the last check is sent with the next so it stays put, and covered points are
    *                              ticked off as done. Results saved before 8.5 are cleared. Roll back to v8.4 (352e053)
