@@ -1351,8 +1351,12 @@ try {
    *                              when its picture's file name has "placeholder" in it (titles are optional); a slide with
    *                              no title gets a headline box, so headlines show; with one slide in the gallery the script
    *                              plays the tagged articles on it every 6 seconds and the arrows work. Roll back to v8.3 (4a4d09f)
+   *   8.5  19 Nov 2026         Overview score removed: following its advice took the WaveRider v5 piece from 39 to 12. The
+   *                              panel section and Joe's tab are now "Advice": suggestions only, each saying where, what and
+   *                              why; advice from the last check is sent with the next so it stays put, and covered points are
+   *                              ticked off as done. Results saved before 8.5 are cleared. Roll back to v8.4 (352e053)
    */
-  var PE_VERSION = '8.4';
+  var PE_VERSION = '8.5';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -2439,7 +2443,7 @@ try {
     if (tab === 'checks') {
       drawStale(c);
       drawProblems();
-      drawOverview(); // advisory Overview score, between the warnings and the checks
+      drawOverview(); // Joe's advice (8.5, was the Overview score), between the warnings and the checks
       drawChecks();
     } else if (tab === 'publish') {
       drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
@@ -3543,7 +3547,7 @@ try {
   var joeBar = null, joeBarRow = null, joeChips = null;
 
   // Short chip labels, so all six fit on two rows at most in a 300px panel
-  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image', overview: 'Overview' };
+  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image', overview: 'Advice' };
 
   // Joe counts as open when its window is on the page and not closed with x
   function joeIsOpen() {
@@ -3608,7 +3612,8 @@ try {
    * Advisory only: never a warning, never counted, never blocks Ready to schedule.
    * Runs once by itself when a post reaches review, otherwise on Check. Results are kept per post
    * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours.
-   * Partner posts are treated the same, prompts included (v3.6). */
+   * Partner posts are treated the same, prompts included (v3.6).
+   * Since 8.5 the score isn't shown: the section is Joe's advice (see the 8.5 note further down). */
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
   var ovOpen = ls('pe-ov-open') === '1';
 
@@ -3783,6 +3788,8 @@ try {
     try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
     // 8.2: a news result saved before news was judged as news is dropped, so the next check starts clean
     if (ovRes && ovNews() && !ovRes.news) ovRes = null;
+    // 8.5: a result from before the advice rules is dropped too, so its looser advice isn't carried into the next check
+    if (ovRes && !(ovRes.v >= 85)) ovRes = null;
   }
 
   /* 8.2: news is judged as news. On announcement day there is nothing to review: no testing, no hands-on time,
@@ -3805,9 +3812,51 @@ try {
     r.searches = (r.searches || []).filter(function (x) { return !OV_REVIEW_ASK.test(String(x.q || '')); });
     return r;
   }
-  function ovColour(n) { return n >= 70 ? C.green : n >= 40 ? C.amber : C.red; }
-  function ovTint(n) { return n >= 70 ? ['#eef6e6', '#cfe3b9', '#27500a'] : n >= 40 ? ['#fff8ec', '#f0dcb8', '#5a3a00'] : ['#fdecea', '#f2c4c0', '#791f1f']; }
   function ovPartner() { return !!document.querySelector('body.view-item article.hentry.tag-partner'); }
+
+  /* 8.5: advice, no score (Russ, 19 Nov 2026). Following Joe's prompts on the Quiet Art WaveRider v5 piece took
+   * its score from 39 to 12. The score was unstable by design: Claude invented a fresh set of likely searches on
+   * every check, and the "only ours" half was a percentage, so adding the facts Joe asked for lowered it. Russ:
+   * remove the score, keep advice on how to improve the article, and make the advice better.
+   * Code.gs still answers in the same shape (it still works out a score), but the panel no longer shows the score,
+   * the likely searches or the percentages. What changed in how the advice is chosen:
+   *  - every check carries OV_ADVICE_NOTE, which tells Claude what good advice looks like: say where it goes,
+   *    exactly what to add and why a reader would care; only what the writer can really supply within what the
+   *    piece sets out to do; never padding with facts a summary could repeat anyway; most important first;
+   *  - every check after the first carries the advice from the last check. Claude repeats any point the draft
+   *    still doesn't cover word for word and drops any it now covers, so advice stays put from check to check
+   *    instead of wandering. A point that disappears is shown as done (ovSame matches a lightly reworded repeat). */
+  var OV_ADVICE_NOTE = '[Note to the checker, not part of the article: the team no longer sees a score. Your prompts are the whole ' +
+    'point of this check, so make each one advice a writer can act on in five minutes to make the article more useful to a working ' +
+    'audio professional than a Google summary of it would be. For every prompt: (1) say where it goes, quoting the first few words ' +
+    'of the nearest paragraph in double quotes; (2) say exactly what to add, naming the specific detail (a setting, a figure, a ' +
+    'comparison with the previous version or a rival, a step in a workflow, a judgement), not a category such as "more detail"; ' +
+    '(3) in a few words, say why a reader would care. Only ask for what this writer can supply within what the piece sets out to do. ' +
+    'Never ask for anything the draft already says, and never ask for more facts that a summary could repeat anyway, such as spec ' +
+    'lists or release notes: ask for what only Production Expert can add, such as our experience, a view, context from our ' +
+    'coverage, what it means in a real session, or a worked example. Most important first, up to three, fewer or none if the draft ' +
+    'already does the job. Write in British English with no dashes as punctuation.]';
+  // The advice from the last check, sent with the next one so Claude keeps to it
+  function ovEarlierNote(prev) {
+    if (!prev || !prev.length) return '';
+    return '[Note to the checker, not part of the article: these prompts were given at the last check of this post: ' +
+      prev.map(function (p, i) { return '(' + (i + 1) + ') ' + p; }).join(' ') +
+      ' The writer may have acted on them. For each one, if the draft now covers it, leave it out. If it doesn\'t, repeat it word ' +
+      'for word so the writer sees the same advice. Only add a new prompt if there is room within three, and never give advice ' +
+      'that contradicts an earlier prompt unless the draft has changed in a way that makes it wrong.]';
+  }
+  // Words of a prompt, for telling a lightly reworded repeat from a new point
+  function ovWords(s) {
+    return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length > 3; });
+  }
+  // True when two prompts are the same advice: two thirds of the shorter one's words appear in the other
+  function ovSame(a, b) {
+    var x = ovWords(a), y = ovWords(b);
+    if (!x.length || !y.length) return a === b;
+    var short = x.length <= y.length ? x : y, long = x.length <= y.length ? y : x, hit = 0;
+    short.forEach(function (w) { if (long.indexOf(w) >= 0) hit++; });
+    return hit / short.length >= 0.66;
+  }
 
   function ovRun() {
     if (ovBusy) return;
@@ -3816,6 +3865,7 @@ try {
     ovBusy = true; ovErr = '';
     draw();
     var partner = ovPartner();
+    var prev = (ovRes && ovRes.prompts) || [];          // 8.5: last check's advice, to keep it steady
     var payload = {
       action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
       meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
@@ -3824,23 +3874,27 @@ try {
       mediaItems: paras.map(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') ? i + 1 : 0; }).filter(Boolean).join(','),
       images: paras.filter(function (e) { return e.getAttribute('data-pe-ov') === 'Image'; }).length,
       imageItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' ? i + 1 : 0; }).filter(Boolean).join(','),
-      text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
     };
     var news = ovNews();
-    if (news) { payload.news = 1; payload.text = OV_NEWS_NOTE + '\n' + payload.text.slice(0, 15000 - OV_NEWS_NOTE.length - 1); }
+    if (news) payload.news = 1;
+    // 8.5: the notes go first (news rules, then the advice rules, then last check's advice), then the article,
+    // cut to fit the 15,000 characters Code.gs reads
+    var notes = (news ? OV_NEWS_NOTE + '\n' : '') + OV_ADVICE_NOTE + '\n' + (prev.length ? ovEarlierNote(prev) + '\n' : '');
+    payload.text = notes + paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000 - notes.length);
     fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         ovBusy = false;
         if (d && d.overview) {
-          ovRes = d.overview;
-          if (news) ovNewsClean(ovRes);
-          ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
-          ovRes.media = payload.media;
-          ovRes.images = payload.images;
-          ovRes.mediaOurs = paras.filter(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
-          ovRes.imagesOurs = paras.filter(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
+          var res = d.overview;
+          if (news) ovNewsClean(res);
+          // 8.5: earlier points no longer given are the ones the draft now covers
+          res.done = prev.filter(function (p) { return !(res.prompts || []).some(function (q) { return ovSame(p, q); }); });
+          // carry earlier done points forward until the advice is all done, so the writer sees progress
+          if (ovRes && ovRes.done && (res.prompts || []).length) res.done = ovRes.done.concat(res.done).filter(function (p, i, a) { return a.indexOf(p) === i; }).slice(-6);
+          res.sig = ovSig(paras); res.at = Date.now(); res.partner = partner; res.v = 85;
+          ovRes = res;
           ls('pe-ov-' + post, JSON.stringify(ovRes));
         } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
         if (ovMarked) ovMark(true);
@@ -3849,7 +3903,7 @@ try {
       .catch(function () { ovBusy = false; ovErr = 'Could not reach the Google Sheet'; draw(); });
   }
 
-  // Show in the post: paragraphs only we have get a green edge, restated ones a grey wash
+  // Show in the post: paragraphs only we have get a green edge, ones that restate what's public a grey wash
   function ovMark(on) {
     ovMarked = on;
     var ours = (ovRes && ovRes.ours) || [];
@@ -3858,7 +3912,7 @@ try {
       e.style.background = on ? (mine ? '#eef6e6' : '#eceef1') : '';
       e.style.boxShadow = on && mine ? 'inset 3px 0 0 ' + C.green : '';
       e.style.borderRadius = on ? '3px' : '';
-      e.title = on ? (mine ? 'Only ours' : 'Restates what\'s already public') : '';
+      e.title = on ? (mine ? 'Only we can say this' : 'A Google summary could repeat this') : '';
     });
     if (on) {
       var first = ovParas().filter(function (e, i) { return ours.indexOf(i + 1) < 0; })[0];
@@ -3873,114 +3927,89 @@ try {
     b.onclick = fn;
     return b;
   }
-  function ovNeeds(r) { return (r.searches || []).filter(function (s) { return s.needs; }).length; }
-  function ovPct(r) { return r.total ? Math.round(100 * (r.ours || []).length / r.total) : 0; }
+  // One piece of advice, with a green edge (or ticked and struck through when it's done)
+  function ovPoint(text, done) {
+    var d = el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + (done ? '#c9ced4' : C.green) + ';font-size:12.5px;line-height:1.45;color:' + (done ? '#80868d' : '#333') + ';');
+    if (done) { d.appendChild(el('span', 'color:' + C.green + ';font-weight:700;', '✓ ')); d.appendChild(el('span', 'text-decoration:line-through;', text)); }
+    else d.textContent = text;
+    return d;
+  }
+  // How many points are waiting, as words for the panel line
+  function ovCount(r) {
+    var n = (r.prompts || []).length;
+    return n ? n + (n === 1 ? ' suggestion' : ' suggestions') : 'Nothing to add';
+  }
 
-  // The Overview section of the checks panel: one line with the score, opening to a summary
+  // The Advice section of the checks panel: one line with how many suggestions are waiting, opening to the first
   function drawOverview() {
     ovLoad();
     var wf = +postData.workflowState || 0;
     // Runs once by itself when the post reaches review, if this browser has no result yet
     if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3) { ovAuto = true; setTimeout(ovRun, 0); }
     if (!ovRes && !ovBusy && wf === 1) return; // nothing to show on a live post never checked
-    list.appendChild(sectionLabel('Overview'));
+    list.appendChild(sectionLabel('Advice'));
     if (!ovRes) {
       var r = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr ? C.red : '#555') + ';');
-      r.appendChild(el('span', 'flex:1;', ovBusy ? 'Checking how much a Google summary could give away…'
-        : ovErr || 'How much of this could a Google summary give away?'));
+      r.appendChild(el('span', 'flex:1;', ovBusy ? 'Joe is reading the post…'
+        : ovErr || 'What would make this worth the click over a Google summary?'));
       if (!ovBusy) r.appendChild(ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
       list.appendChild(r);
       return;
     }
-    var n = +ovRes.score || 0, stale = ovRes.sig !== ovSig(ovParas());
-    var nw = !!ovRes.news, t = nw ? ['#f6f7f9', '#e1e4e8', '#3a4048'] : ovTint(n), nc = nw ? '#5f6368' : ovColour(n);
-    var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid ' + t[1] + ';border-radius:6px;background:' + t[0] +
-      ';text-align:left;font:13px/1.4 ' + F + ';color:' + t[2] + ';cursor:pointer;');
+    var stale = ovRes.sig !== ovSig(ovParas()), waiting = (ovRes.prompts || []).length;
+    var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid #e1e4e8;border-radius:6px;background:#f6f7f9' +
+      ';text-align:left;font:13px/1.4 ' + F + ';color:#3a4048;cursor:pointer;');
     row.type = 'button';
-    row.title = 'How much of this post a Google AI summary could give away. Higher is better.';
-    row.appendChild(el('span', 'flex:1;', 'Overview score' + (nw ? ' (news)' : '') + (stale ? ' (edited since)' : '')));
-    row.appendChild(el('span', 'font-weight:700;font-variant-numeric:tabular-nums;color:' + nc + ';', ovBusy ? '…' : n + '/100'));
-    row.appendChild(el('span', 'font-size:11px;color:' + nc + ';', ovOpen ? '▴' : '▾'));
+    row.title = 'Joe\'s advice on what to add that a Google summary couldn\'t give a reader';
+    row.appendChild(el('span', 'flex:1;', 'Joe\'s advice' + (stale ? ' (edited since)' : '')));
+    row.appendChild(el('span', 'font-weight:700;color:' + (waiting ? C.green : '#5f6368') + ';', ovBusy ? '…' : ovCount(ovRes)));
+    row.appendChild(el('span', 'font-size:11px;color:#5f6368;', ovOpen ? '▴' : '▾'));
     row.onclick = function () { ovOpen = !ovOpen; ls('pe-ov-open', ovOpen ? '1' : '0'); draw(); };
     list.appendChild(row);
     if (!ovOpen) return;
     var box = el('div', 'padding:6px 2px 4px;font-size:12.5px;line-height:1.45;color:#444;');
-    var s = ovRes.searches || [];
-    if (nw) box.appendChild(el('div', 'margin-bottom:5px;color:#5f6368;', 'News is judged as news. A summary can always repeat the facts of an announcement, so a low score is normal here.'));
-    box.appendChild(el('div', '', ovNeeds(ovRes) + ' of ' + s.length + ' likely searches need us. ' + ovPct(ovRes) + '% of the post is only ours.'));
     var p = (ovRes.prompts || [])[0];
-    if (p) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
+    if (p) box.appendChild(ovPoint(p, false));
+    else box.appendChild(el('div', '', 'Nothing to add. The draft already gives readers more than a summary could.'));
+    var dn = (ovRes.done || []).length;
+    if (dn) box.appendChild(el('div', 'color:#5f6368;', dn + (dn === 1 ? ' point' : ' points') + ' from earlier checks done.'));
+    if (stale) box.appendChild(el('div', 'margin-top:4px;color:#5a3a00;', 'The post has changed since. Check again to update the advice.'));
     if (ovErr) box.appendChild(el('div', 'margin:4px 0;color:' + C.red + ';', ovErr));
     var btns = el('div', 'display:flex;gap:6px;margin-top:6px;');
-    btns.appendChild(ovSmall('Full report in Joe', function () { openDrawer('overview'); }, true));
+    btns.appendChild(ovSmall('All advice in Joe', function () { openDrawer('overview'); }, true));
     btns.appendChild(ovSmall(ovBusy ? 'Checking…' : 'Check again', ovRun));
     box.appendChild(btns);
     box.appendChild(el('div', 'margin-top:6px;font-size:11.5px;color:#80868d;', 'Advisory only. Doesn\'t count as a warning.'));
     list.appendChild(box);
   }
 
-  // Joe's Overview tab: the full report
+  // Joe's Advice tab: every suggestion, what's been done, the headline note
   function drawOverviewTab(body) {
     ovLoad();
     if (!ovRes) {
       body.appendChild(el('div', 'margin:14px 0 0;font-size:13px;line-height:1.5;color:#444;',
-        'Claude reads the post, works out the searches it\'s likely to rank for, and checks how much a Google AI summary could answer without anyone clicking through. Then it suggests what to add that only Production Expert can say.'));
+        'Joe reads the post and suggests what to add that a Google summary couldn\'t give a reader: where it goes, exactly what to add and why it matters. Check again after you\'ve made changes and the advice you\'ve covered is ticked off.'));
       if (ovBusy) body.appendChild(el('div', 'padding:12px 0;color:#777;', 'Checking…'));
       else body.appendChild(actionButton('Check this post', ovRun, true));
       if (ovErr) body.appendChild(el('div', 'color:' + C.red + ';font-size:13px;', ovErr));
       return;
     }
-    var r = ovRes, n = +r.score || 0, stale = r.sig !== ovSig(ovParas());
-    var nw = !!r.news, nc = nw ? '#5f6368' : ovColour(n);
-    var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;');
-    top.appendChild(el('span', 'font:700 26px/1 ' + F + ';color:' + nc + ';font-variant-numeric:tabular-nums;', String(n)));
-    top.appendChild(el('span', 'font-size:13px;color:#80868d;', '/ 100'));
-    top.appendChild(el('span', 'flex:1;'));
-    top.appendChild(el('span', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at)));
+    var r = ovRes, stale = r.sig !== ovSig(ovParas()), nw = !!r.news;
+    var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;font-size:11.5px;color:#80868d;');
+    top.appendChild(el('span', 'flex:1;', nw ? 'Judged as news: no reviews, testing or buying advice asked for.' : ''));
+    top.appendChild(el('span', '', 'Checked ' + when(r.at)));
     body.appendChild(top);
-    var bar = el('div', 'height:6px;margin:8px 0 6px;border-radius:3px;background:#eceef1;overflow:hidden;');
-    bar.appendChild(el('div', 'height:100%;width:' + Math.max(2, Math.min(100, n)) + '%;background:' + nc + ';'));
-    body.appendChild(bar);
-    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:' + (nw ? '#3a4048' : ovTint(n)[2]) + ';',
-      nw ? 'This is a news story, so it\'s judged as news. A summary can always repeat the facts of an announcement and a low score is normal. The prompts only ask for what news can add: context, history, what it means for you, and what\'s still unclear.'
-        : n >= 70 ? 'Most of this needs a click. A summary can\'t give it away.'
-        : n >= 40 ? 'A summary could cover a fair part of this. The prompts below would strengthen it.'
-        : 'Most of this a Google summary can give away. Add what only you know.'));
-    if (stale) {
-      var st = el('div', 'margin:10px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
-        'The post has changed since this check.');
-      body.appendChild(st);
-    }
+    if (stale) body.appendChild(el('div', 'margin:10px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
+      'The post has changed since this check. Check again to tick off what you\'ve covered.'));
 
-    body.appendChild(sectionLabel('Likely searches'));
-    (r.searches || []).forEach(function (s, i) {
-      var q = el('div', 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:12.5px;line-height:1.4;' + (i ? 'border-top:1px solid #eceef1;' : ''));
-      q.appendChild(el('span', 'flex:1;', s.q));
-      q.appendChild(el('span', 'flex:0 0 auto;font-weight:600;color:' + (s.needs ? C.green : C.red) + ';', s.needs ? 'Needs us' : 'Answered'));
-      body.appendChild(q);
-    });
-
-    body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
-    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
-      (r.ours || []).length + ' of ' + r.total + (nw ? ' items carry context, history from our own coverage, what the change means for a working engineer, open questions or our own quotes. The rest restate the announcement.'
-        : ' items carry testing, numbers, named people, opinion, or our own screenshots, audio and video. The rest restate what\'s already public.')));
-    if (r.media) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
-      r.media + (r.media === 1 ? ' player' : ' players') + ' in the post' + (r.mediaOurs != null ? ', ' + r.mediaOurs + ' counted as ours' : '') + '. A summary can\'t play them' +
-      (r.mediaBonus ? ', so they add ' + r.mediaBonus + ' to the score.' : '.')));
-    if (r.images) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
-      r.images + (r.images === 1 ? ' picture' : ' pictures') + ' in the body, ' + (r.imagesOurs || 0) + ' counted as our own screenshots or graphics' +
-      (r.imageBonus ? ', adding ' + r.imageBonus + ' to the score.' : '.')));
-    var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show in the post', function () { ovMark(!ovMarked); drawDrawer(); });
-    sh.style.marginTop = '7px';
-    body.appendChild(sh);
-
-    // Partner posts get prompts too: our own view is what makes partner content credible (v3.6)
+    // Partner posts get advice too: our own view is what makes partner content credible (v3.6)
     body.appendChild(sectionLabel('Add what Google can\'t'));
-    if ((r.prompts || []).length) r.prompts.forEach(function (p) {
-      body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
-    });
-    // Joe can now return fewer than three prompts, or none, when the draft already does the job (v3.7)
-    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', nw ? 'Nothing to add. For a news story the draft does the job.' : 'Nothing to add. The draft already gives a summary little to take.'));
+    if ((r.prompts || []).length) r.prompts.forEach(function (p) { body.appendChild(ovPoint(p, false)); });
+    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', nw ? 'Nothing to add. For a news story the draft does the job.' : 'Nothing to add. The draft already gives readers more than a summary could.'));
+    if ((r.done || []).length) {
+      body.appendChild(sectionLabel('Done since earlier checks'));
+      r.done.forEach(function (p) { body.appendChild(ovPoint(p, true)); });
+    }
     if (r.headline) {
       body.appendChild(sectionLabel('Headline'));
       var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
@@ -3990,6 +4019,10 @@ try {
       h.appendChild(sg);
       body.appendChild(h);
     }
+    // Which paragraphs a summary could repeat: useful for spotting padding, so it stays
+    var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show what a summary could repeat', function () { ovMark(!ovMarked); drawDrawer(); });
+    sh.style.marginTop = '12px';
+    body.appendChild(sh);
     if (ovErr) body.appendChild(el('div', 'margin-top:10px;color:' + C.red + ';font-size:13px;', ovErr));
     body.appendChild(actionButton(ovBusy ? 'Checking…' : 'Check again', ovRun));
     body.appendChild(el('div', 'font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
@@ -5289,7 +5322,7 @@ try {
   function drawerTabs() {
     var t = linksOn() ? TABS.concat([['links', 'Links']]) : TABS;
     t = imageOn() ? t.concat([['image', 'Image']]) : t;
-    return t.concat([['overview', 'Overview']]); // v3.5, for everyone
+    return t.concat([['overview', 'Advice']]); // v3.5, for everyone; called Advice since 8.5 (no score)
   }
 
   function tierOf(v) {
