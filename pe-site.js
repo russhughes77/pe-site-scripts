@@ -1369,8 +1369,14 @@ try {
    *                              (pe-related-answers /api/joe), where the rules are applied in code. Headline suggestions
    *                              carry the promise rule. The Google Sheet's "overview" task is no longer called.
    *                              Roll back to v8.6 (3e472d8)
+   *   8.8  19 Nov 2026         Joe's advice after an edit (Russ: "it still gave the same advice"). Joe's server must now say
+   *                              done or open for every earlier suggestion and judge by substance; a suggestion still open
+   *                              says what the change did and what is missing; the tab says how many paragraphs Joe saw
+   *                              change and how many suggestions were ticked, or that he can see no change at all. In the
+   *                              Edit Post window Joe reads the text being edited, where he used to read the unsaved
+   *                              preview behind it. Roll back to v8.7 (71a5605)
    */
-  var PE_VERSION = '8.7';
+  var PE_VERSION = '8.8';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3634,6 +3640,7 @@ try {
    * Runs once by itself when a post reaches review, if the writer's line is there; otherwise on Check.
    * The old Google Sheet task "overview" (Code.gs) is no longer called. */
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
+  var ovSameNote = false;   // 8.8: true when the last check found nothing changed, so the saved answer came back
   var ovPointNow = '', ovPointBy = '', ovReady = false;   // the writer's one line, who wrote it, and whether the server has answered
   var ovOpen = ls('pe-ov-open') === '1';
 
@@ -3756,8 +3763,20 @@ try {
   }
   // The article's paragraphs, list items, players, pictures and tables in reading order, stopping at the
   // related links block
+  /* 8.8: where the article's text is read from. Editing on the page itself, the page holds the live text. In the
+   * Edit Post window (Edit from the post list) the page behind is only a preview that doesn't change until the
+   * post is saved, so Joe read the old text and gave the same advice after an edit. When that window is open,
+   * its own text is read instead. Any trouble finding it falls back to the page. */
+  function ovBody() {
+    var page = articleBody(), live = null;
+    try {
+      editDocs().some(function (doc) { live = doc.querySelector('.sqs-layout.sqs-editing'); return !!live; });
+      if (live && !(page && page.contains(live)) && live.querySelector('p')) return live;
+    } catch (e) {}
+    return page;
+  }
   function ovParas() {
-    var body = articleBody();
+    var body = ovBody();
     if (!body) return [];
     // 7.2: start clean each time, so a block that changed since the last look is judged afresh
     Array.prototype.forEach.call(body.querySelectorAll('[data-pe-ov]'), function (x) { x.removeAttribute('data-pe-ov'); });
@@ -3857,7 +3876,7 @@ try {
     if (!ovPointNow) { ovErr = 'Add your one line first: what is the point of this piece?'; draw(); return; }
     var paras = ovParas();
     if (paras.length < 4) { ovErr = 'There isn\'t enough article text yet to check'; draw(); return; }
-    ovBusy = true; ovErr = '';
+    ovBusy = true; ovErr = ''; ovSameNote = false;
     draw();
     var au = authorOf();
     var payload = {
@@ -3871,7 +3890,7 @@ try {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         ovBusy = false;
-        if (d && d.ok && d.advice) { ovRes = d.advice; ovKeep(); }
+        if (d && d.ok && d.advice) { ovRes = d.advice; ovSameNote = !!d.same; ovKeep(); }
         else ovErr = (d && d.message) || 'No answer came back';
         if (ovMarked) ovMark(true);
         draw();
@@ -3922,6 +3941,8 @@ try {
       d.appendChild(a);
     }
     if (s.why) d.appendChild(el('div', 'margin-top:2px;color:#5f6368;', 'Why: ' + s.why));
+    // 8.8: on a later check, what the writer's change did and what is still missing
+    if (s.note) d.appendChild(el('div', 'margin-top:4px;padding:4px 7px;border-radius:4px;background:#fff4e0;color:#5a3a00;', 'Still open: ' + s.note));
     return d;
   }
   // The one-line summary shown on the Checks tab
@@ -4003,6 +4024,16 @@ try {
 
     var r = ovRes, stale = ovStale();
     body.appendChild(el('div', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at) + (r.by ? ' by ' + r.by : '') + '.'));
+    // 8.8: Joe says what he saw change, so an author is never left wondering whether their edit was read
+    if (ovSameNote) {
+      body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
+        'I can\'t see any change to the headline, description, your line or the article since the last check, so my answer is the same. If you\'ve made changes that aren\'t showing here, save the post and check again.'));
+    } else if (r.last && r.last.later && !stale) {
+      var ch = r.last.changed || 0, tk = r.last.ticked || 0;
+      body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#eef6e6;color:#2c4a1c;font-size:12.5px;line-height:1.45;',
+        'Since the last check I read ' + (ch ? ch + (ch === 1 ? ' new or changed paragraph' : ' new or changed paragraphs') : 'no changed paragraphs (the headline or description changed)') + '. ' +
+        (tk ? tk + (tk === 1 ? ' suggestion is' : ' suggestions are') + ' now ticked off.' : 'No earlier suggestion is fully covered yet. Each one below says what is still missing.')));
+    }
     if (stale) body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
       'The post has changed since this check. Check again to tick off what you\'ve covered.'));
 
