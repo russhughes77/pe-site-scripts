@@ -1339,8 +1339,12 @@ try {
    *   8.1  News and deals are ad hoc: no Ahead of plan or Went live early warning in the checks panel, no amber
    *                              title or scheduled bar for it, and the planned date box says the date isn't checked.
    *                              Matches the Content Manager's Site 54 rule. Commit 60bb3c2. Roll back to v8.0 (3a3c60a)
+   *   8.2  News is judged as news in Joe's Overview: the check tells the checker it's announcement-day news, any prompt or
+   *                              search asking for a verdict, review, testing, hands-on or buy/skip advice is dropped, the
+   *                              score shows in neutral grey with a note that low is normal for news, and news results saved
+   *                              before 8.2 are cleared. Roll back to v8.1 (16cc0fc)
    */
-  var PE_VERSION = '8.1';
+  var PE_VERSION = '8.2';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3769,6 +3773,29 @@ try {
     if (ovFor === post) return;
     ovFor = post;
     try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
+    // 8.2: a news result saved before news was judged as news is dropped, so the next check starts clean
+    if (ovRes && ovNews() && !ovRes.news) ovRes = null;
+  }
+
+  /* 8.2: news is judged as news. On announcement day there is nothing to review: no testing, no hands-on time,
+   * no verdict. Code.gs has news rules (17 Nov), but Joe still slipped review asks through, so the panel now
+   * (1) tells the checker in plain words that this is a news story, (2) drops any prompt or search that asks
+   * for review material, and (3) shows the score in neutral grey, because a summary can always repeat the facts
+   * of an announcement and a low score is normal for news. */
+  function ovNews() { try { return adHoc() === 'News'; } catch (e) { return false; } }
+  var OV_NEWS_NOTE = '[Note to the checker, not part of the article: this is a NEWS story written on the day of the announcement. ' +
+    'Nobody has tested, used or heard the product yet, so never ask for a verdict, a review, testing, hands-on impressions, ' +
+    'sound examples, screen recordings of it in use, or advice on who should buy or skip it, and never judge the post down ' +
+    'for lacking them. Likely searches are announcement searches (what is new, what changed, release date, price, compatibility, ' +
+    'upgrade path). Only ask for what a news story can add: context, history from our own coverage, what the change means for ' +
+    'a working engineer, what is still unclear, or a question for the brand.]';
+  var OV_REVIEW_ASK = /\b(verdicts?|reviews?|reviewed|hands[- ]on|tests?|tested|testing|tried|try it|worth (buying|it|the money|the upgrade)|(who|whether) (should|to) (buy|skip)|buy or skip|skip it|first impressions|impressions|in use|in action|screen recordings?|sounds? like|sound examples?|audio examples?|listening|a\/b|blind test|shoot[- ]?out|which (one )?to buy|should (i|you) buy|best .* (to buy|for))\b/i;
+  function ovNewsClean(r) {
+    if (!r) return r;
+    r.news = true;
+    r.prompts = (r.prompts || []).filter(function (p) { return !OV_REVIEW_ASK.test(String(p)); });
+    r.searches = (r.searches || []).filter(function (x) { return !OV_REVIEW_ASK.test(String(x.q || '')); });
+    return r;
   }
   function ovColour(n) { return n >= 70 ? C.green : n >= 40 ? C.amber : C.red; }
   function ovTint(n) { return n >= 70 ? ['#eef6e6', '#cfe3b9', '#27500a'] : n >= 40 ? ['#fff8ec', '#f0dcb8', '#5a3a00'] : ['#fdecea', '#f2c4c0', '#791f1f']; }
@@ -3792,12 +3819,15 @@ try {
       text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
     };
+    var news = ovNews();
+    if (news) { payload.news = 1; payload.text = OV_NEWS_NOTE + '\n' + payload.text.slice(0, 15000 - OV_NEWS_NOTE.length - 1); }
     fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         ovBusy = false;
         if (d && d.overview) {
           ovRes = d.overview;
+          if (news) ovNewsClean(ovRes);
           ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
           ovRes.media = payload.media;
           ovRes.images = payload.images;
@@ -3854,19 +3884,21 @@ try {
       list.appendChild(r);
       return;
     }
-    var n = +ovRes.score || 0, t = ovTint(n), stale = ovRes.sig !== ovSig(ovParas());
+    var n = +ovRes.score || 0, stale = ovRes.sig !== ovSig(ovParas());
+    var nw = !!ovRes.news, t = nw ? ['#f6f7f9', '#e1e4e8', '#3a4048'] : ovTint(n), nc = nw ? '#5f6368' : ovColour(n);
     var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid ' + t[1] + ';border-radius:6px;background:' + t[0] +
       ';text-align:left;font:13px/1.4 ' + F + ';color:' + t[2] + ';cursor:pointer;');
     row.type = 'button';
     row.title = 'How much of this post a Google AI summary could give away. Higher is better.';
-    row.appendChild(el('span', 'flex:1;', 'Overview score' + (stale ? ' (edited since)' : '')));
-    row.appendChild(el('span', 'font-weight:700;font-variant-numeric:tabular-nums;color:' + ovColour(n) + ';', ovBusy ? '…' : n + '/100'));
-    row.appendChild(el('span', 'font-size:11px;color:' + ovColour(n) + ';', ovOpen ? '▴' : '▾'));
+    row.appendChild(el('span', 'flex:1;', 'Overview score' + (nw ? ' (news)' : '') + (stale ? ' (edited since)' : '')));
+    row.appendChild(el('span', 'font-weight:700;font-variant-numeric:tabular-nums;color:' + nc + ';', ovBusy ? '…' : n + '/100'));
+    row.appendChild(el('span', 'font-size:11px;color:' + nc + ';', ovOpen ? '▴' : '▾'));
     row.onclick = function () { ovOpen = !ovOpen; ls('pe-ov-open', ovOpen ? '1' : '0'); draw(); };
     list.appendChild(row);
     if (!ovOpen) return;
     var box = el('div', 'padding:6px 2px 4px;font-size:12.5px;line-height:1.45;color:#444;');
     var s = ovRes.searches || [];
+    if (nw) box.appendChild(el('div', 'margin-bottom:5px;color:#5f6368;', 'News is judged as news. A summary can always repeat the facts of an announcement, so a low score is normal here.'));
     box.appendChild(el('div', '', ovNeeds(ovRes) + ' of ' + s.length + ' likely searches need us. ' + ovPct(ovRes) + '% of the post is only ours.'));
     var p = (ovRes.prompts || [])[0];
     if (p) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
@@ -3891,17 +3923,19 @@ try {
       return;
     }
     var r = ovRes, n = +r.score || 0, stale = r.sig !== ovSig(ovParas());
+    var nw = !!r.news, nc = nw ? '#5f6368' : ovColour(n);
     var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;');
-    top.appendChild(el('span', 'font:700 26px/1 ' + F + ';color:' + ovColour(n) + ';font-variant-numeric:tabular-nums;', String(n)));
+    top.appendChild(el('span', 'font:700 26px/1 ' + F + ';color:' + nc + ';font-variant-numeric:tabular-nums;', String(n)));
     top.appendChild(el('span', 'font-size:13px;color:#80868d;', '/ 100'));
     top.appendChild(el('span', 'flex:1;'));
     top.appendChild(el('span', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at)));
     body.appendChild(top);
     var bar = el('div', 'height:6px;margin:8px 0 6px;border-radius:3px;background:#eceef1;overflow:hidden;');
-    bar.appendChild(el('div', 'height:100%;width:' + Math.max(2, Math.min(100, n)) + '%;background:' + ovColour(n) + ';'));
+    bar.appendChild(el('div', 'height:100%;width:' + Math.max(2, Math.min(100, n)) + '%;background:' + nc + ';'));
     body.appendChild(bar);
-    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:' + ovTint(n)[2] + ';',
-      n >= 70 ? 'Most of this needs a click. A summary can\'t give it away.'
+    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:' + (nw ? '#3a4048' : ovTint(n)[2]) + ';',
+      nw ? 'This is a news story, so it\'s judged as news. A summary can always repeat the facts of an announcement and a low score is normal. The prompts only ask for what news can add: context, history, what it means for you, and what\'s still unclear.'
+        : n >= 70 ? 'Most of this needs a click. A summary can\'t give it away.'
         : n >= 40 ? 'A summary could cover a fair part of this. The prompts below would strengthen it.'
         : 'Most of this a Google summary can give away. Add what only you know.'));
     if (stale) {
@@ -3920,7 +3954,8 @@ try {
 
     body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
     body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
-      (r.ours || []).length + ' of ' + r.total + ' items carry testing, numbers, named people, opinion, or our own screenshots, audio and video. The rest restate what\'s already public.'));
+      (r.ours || []).length + ' of ' + r.total + (nw ? ' items carry context, history from our own coverage, what the change means for a working engineer, open questions or our own quotes. The rest restate the announcement.'
+        : ' items carry testing, numbers, named people, opinion, or our own screenshots, audio and video. The rest restate what\'s already public.')));
     if (r.media) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
       r.media + (r.media === 1 ? ' player' : ' players') + ' in the post' + (r.mediaOurs != null ? ', ' + r.mediaOurs + ' counted as ours' : '') + '. A summary can\'t play them' +
       (r.mediaBonus ? ', so they add ' + r.mediaBonus + ' to the score.' : '.')));
@@ -3937,7 +3972,7 @@ try {
       body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
     });
     // Joe can now return fewer than three prompts, or none, when the draft already does the job (v3.7)
-    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', 'Nothing to add. The draft already gives a summary little to take.'));
+    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', nw ? 'Nothing to add. For a news story the draft does the job.' : 'Nothing to add. The draft already gives a summary little to take.'));
     if (r.headline) {
       body.appendChild(sectionLabel('Headline'));
       var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
