@@ -1343,8 +1343,12 @@ try {
    *                              search asking for a verdict, review, testing, hands-on or buy/skip advice is dropped, the
    *                              score shows in neutral grey with a note that low is normal for news, and news results saved
    *                              before 8.2 are cleared. Commit 2fb1c01. Roll back to v8.1 (16cc0fc)
+   *   8.3  19 Nov 2026         Homepage hero placeholder slides: with every hand-made slide deleted from Front Page
+   *                              Heroes, Squarespace drew no slideshow, so the Hero-tagged articles had nowhere to play.
+   *                              A gallery slide titled "Placeholder" is now never shown as itself, only as a blank for
+   *                              the tagged articles. Keep two or three in the gallery. Roll back to v8.2 (6245c45)
    */
-  var PE_VERSION = '8.2';
+  var PE_VERSION = '8.3';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -7700,6 +7704,13 @@ try {
  * - If the tag feed fails, the hand-made slides play on their own.
  * - The tag stays hidden from readers and out of Related Content (both
  *   handled by their own sections).
+ * - Placeholder slides (v8.3): a gallery slide titled "Placeholder" (any
+ *   capitals) is never shown as itself. It is only a blank slide for the
+ *   tagged articles to play on. Squarespace draws no slideshow from an empty
+ *   gallery, so with no hand-made slides the tagged ones had nowhere to go.
+ *   Keep at least two (three is smoother) placeholder slides in the gallery,
+ *   each with a click-through link (any, / will do). With fewer tagged
+ *   articles than placeholders, the tagged ones repeat to fill them.
  * - Testing: add ?pe-hero-tag=News to the homepage address to fill the tagged
  *   part from another tag. Only that browser tab sees it.
  * - Homepage only. Leaves the editor alone.
@@ -7732,7 +7743,16 @@ try {
     '.pe-hero-filled > a img.thumb-image{visibility:hidden !important}' +
     '.pe-hero-pic{position:absolute;top:0;left:0;right:0;bottom:0;background-size:cover;' +
       'background-repeat:no-repeat;opacity:0;transition:opacity .4s ease}' +
-    '.pe-hero-pic.pe-in{opacity:1}';
+    '.pe-hero-pic.pe-in{opacity:1}' +
+    // A placeholder slide's own picture and "Placeholder" headline never show
+    '.pe-hero-ph:not(.pe-hero-filled) img{visibility:hidden !important}' +
+    '.pe-hero-ph:not(.pe-hero-filled) .meta-title,.pe-hero-ph:not(.pe-hero-filled) .meta-description{visibility:hidden !important}';
+
+  function isPlaceholder(s) {
+    var t = s.querySelector('.meta-title'), img = s.querySelector('img');
+    var name = (t && t.textContent.trim()) || (img && (img.alt || img.getAttribute('data-title'))) || '';
+    return /^placeholder\b/i.test(String(name).trim());
+  }
 
   function addStyle() {
     if (document.getElementById('pe-hero-tag-css')) return;
@@ -7760,6 +7780,7 @@ try {
     if (gallery.peHeroManual) return gallery.peHeroManual;
     var out = [];
     Array.prototype.forEach.call(gallery.querySelectorAll('.slide'), function (s) {
+      if (isPlaceholder(s)) { s.classList.add('pe-hero-ph'); return; }   // a blank for tagged articles only
       var img = s.querySelector('img');
       var src = img && (img.getAttribute('data-src') || img.getAttribute('data-image') || img.getAttribute('src'));
       var url = s.getAttribute('data-click-through-url') || (s.querySelector('a') || {}).href || '';
@@ -7909,8 +7930,10 @@ try {
     }
 
     // As many entries as slides, or fewer: no rotation needed, each slide gets one
+    // Placeholder slides left over repeat the list, so none shows as a blank
     if (T <= n) {
       list.forEach(function (h, i) { paint(slides[i], h, w); });
+      for (var j = T; j < n; j++) if (slides[j].classList.contains('pe-hero-ph')) paint(slides[j], list[j % T], w);
       gallery.peHeroState = { list: list };
       return;
     }
