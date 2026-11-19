@@ -1336,8 +1336,11 @@ try {
    *                              so menu names in Squarespace can drop their typed " |" (any left are stripped). On phones
    *                              (639px and under) a three-line button top right opens a slide-in panel built from the
    *                              desktop menu, with dropdowns; Search moves to the centre of the top bar. Roll back to v7.9 (11e0f64)
+   *   8.1  News and deals are ad hoc: no Ahead of plan or Went live early warning in the checks panel, no amber
+   *                              title or scheduled bar for it, and the planned date box says the date isn't checked.
+   *                              Matches the Content Manager's Site 54 rule. Roll back to v8.0 (3a3c60a)
    */
-  var PE_VERSION = '8.0';
+  var PE_VERSION = '8.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1686,11 +1689,28 @@ try {
     });
   }
 
+  // 8.1: News and deals are ad hoc (Site 54). They go out when the story breaks or the offer starts, so
+  // their date is never judged against Mel's calendar. Same rule as the Content Manager's adHoc():
+  // News is the News category or tag; a deal is a post in the Partner Deals blog, or before then a
+  // title that reads like an offer.
+  var OFFER_WORDS = /\b(sale|deals?|discounts?|offers?|black friday|cyber monday|save up to|half price)\b|\b\d{1,3}\s?% off\b/i;
+  function adHoc() {
+    var names = (postData.tags || []).concat(postData.categories || []).map(function (t) { return String(t).trim().toLowerCase(); });
+    if (names.indexOf('news') > -1) return 'News';
+    if (document.querySelector('body.view-item article.hentry.category-news, body.view-item article.hentry.tag-news')) return 'News';
+    var url = String(postData.fullUrl || location.pathname || '');
+    if (/\/partner-deals(\/|$)/i.test(url)) return 'Deal';
+    if (OFFER_WORDS.test(postTitle() || '')) return 'Deal';
+    return '';
+  }
+
   // The automatic check, added to the others by runAuto. Compares days in the UK, since the
   // calendar plans days, not times.
   function planCheck() {
     var day = planDay();
     if (!day) return null;
+    var kind = adHoc();
+    if (kind) return { ok: true, text: kind + ' is ad hoc, so its date isn\'t checked against the plan' };
     var wf = +postData.workflowState || 0, t = +postData.publishOn || 0;
     if (scheduledFor && londonDay(scheduledFor) < day)
       return { ok: false, kind: 'plan', text: 'Scheduled for ' + inZone(scheduledFor, 'Europe/London') + ', but planned for ' + dayText(day),
@@ -1803,7 +1823,9 @@ try {
       : scheduledFor ? 'Scheduled ' + inZone(scheduledFor, 'Europe/London') : 'Planned ' + dayText(day);
     var icon = bad ? '⚠ ' : isLive ? '✓ ' : '📅 ';
     line.appendChild(el('div', 'font-weight:700;', icon + headline));
-    if (actualDay) {
+    if (actualDay && adHoc()) {
+      line.appendChild(el('div', 'font-weight:600;color:#3a4048;', adHoc() + ' is ad hoc, so its date isn\'t checked against the plan'));
+    } else if (actualDay) {
       var late = actualDay > day;
       line.appendChild(el('div', 'font-weight:600;color:' + (bad ? 'inherit' : late ? '#5a3a00' : '#2e6b10') + ';',
         actualDay === day ? 'On plan' : (late ? 'Later than planned, ' : 'Ahead of plan, ') + 'planned ' + dayText(day)));
