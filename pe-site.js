@@ -1369,7 +1369,7 @@ try {
    *                              (pe-related-answers /api/joe), where the rules are applied in code. Headline suggestions
    *                              carry the promise rule. The Google Sheet's "overview" task is no longer called.
    *                              Roll back to v8.6 (3e472d8)
-   *   8.8  19 Nov 2026         Joe's advice after an edit (Russ: "it still gave the same advice"). Joe's server must now say
+   *   8.8  19 Nov 2026  2721278 Joe's advice after an edit (Russ: "it still gave the same advice"). Joe's server must now say
    *                              done or open for every earlier suggestion and judge by substance; a suggestion still open
    *                              says what the change did and what is missing; the tab says how many paragraphs Joe saw
    *                              change and how many suggestions were ticked, or that he can see no change at all. In the
