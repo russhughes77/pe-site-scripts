@@ -1343,7 +1343,7 @@ try {
    *                              search asking for a verdict, review, testing, hands-on or buy/skip advice is dropped, the
    *                              score shows in neutral grey with a note that low is normal for news, and news results saved
    *                              before 8.2 are cleared. Commit 2fb1c01. Roll back to v8.1 (16cc0fc)
-   *   8.3  19 Nov 2026         Homepage hero placeholder slides: with every hand-made slide deleted from Front Page
+   *   8.3  19 Nov 2026  4a4d09f Homepage hero placeholder slides: with every hand-made slide deleted from Front Page
    *                              Heroes, Squarespace drew no slideshow, so the Hero-tagged articles had nowhere to play.
    *                              A gallery slide titled "Placeholder" is now never shown as itself, only as a blank for
    *                              the tagged articles. Keep two or three in the gallery. Roll back to v8.2 (6245c45)
