@@ -1136,6 +1136,8 @@ try {
     fcTeam: 'https://pe-related-answers.pages.dev/api/partners/factcheck/',
     fcOrigin: 'https://pe-related-answers.pages.dev',
     fcToken: 'pe-factcheck-1',
+    // 8.7: Joe's advice. The writer's one line and the advice are kept here for the whole team.
+    joe: 'https://pe-related-answers.pages.dev/api/joe/',
     items: ['Title, SEO and URL', 'Content and grammar', 'Image check', 'Schedule'],
     blue: '#006eb3',
     green: '#3b6d11',
@@ -1359,8 +1361,16 @@ try {
    *                              feature as news from its "What's New" headline. Every other post now carries a note telling
    *                              Claude it isn't news and to judge it as the piece its headline promises; any news-style
    *                              headline note or prompt is dropped; 8.5 results are cleared. Roll back to v8.5 (27ea5aa)
+   *   8.7  19 Nov 2026         Joe's advice rebuilt around the promise in the headline (Russ, 19 Nov 2026). The writer says
+   *                              in one line what the piece is for; Joe answers under four fixed headings (What I understood,
+   *                              Is the promise kept?, Why would someone click past Google?, What to do). He reads the
+   *                              author's bio and the team's, points to our earlier coverage, and can suggest a colleague for
+   *                              a second opinion. The line and the advice are saved for the whole team on Joe's own server
+   *                              (pe-related-answers /api/joe), where the rules are applied in code. Headline suggestions
+   *                              carry the promise rule. The Google Sheet's "overview" task is no longer called.
+   *                              Roll back to v8.6 (3e472d8)
    */
-  var PE_VERSION = '8.6';
+  var PE_VERSION = '8.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3605,20 +3615,26 @@ try {
     });
   }
 
-  /* ---------- Overview check (v3.5) ----------
-   * How much of this post could a Google AI summary hand a searcher without a click?
-   * Joe's server (Code.gs, task "overview") asks Claude for the searches the post is likely to
-   * rank for, whether a summary could answer each from public material, which paragraphs carry
-   * material only Production Expert has (testing, numbers, named people, opinion), three prompts
-   * for the writer and a note on the headline. The score is worked out in Code.gs so it's
-   * consistent: half from searches that need us, half from the share of paragraphs that are ours,
-   * plus 5 if one of the first three paragraphs is ours.
+  /* ---------- Joe's advice (8.7, 19 Nov 2026; was the Overview check, v3.5) ----------
+   * Why it exists: Google now answers many searches with its own AI summary, and fewer people click through.
+   * Joe's advice is there to win those clicks back, by checking that a piece keeps the promise its headline
+   * makes and that a searcher can see it comes from people who do the work.
+   *
+   * How it works:
+   *  - The writer says in one line what the piece is for. Joe gives no advice without it. The line is saved
+   *    with the post on Joe's server (pe-related-answers, /api/joe), so the whole team sees it.
+   *  - Joe answers under four fixed headings: What I understood, Is the promise kept?, Why would someone
+   *    click past Google?, What to do. Up to three suggestions, each saying where, what and why.
+   *  - The server reads the author's bio and the team's bios, and looks up our earlier coverage.
+   *  - There is no score and nothing is counted. An unchanged post always gets the same answer, earlier
+   *    suggestions come back word for word until they're covered, and covered ones are ticked off.
+   *  - The rules live on the server (functions-lib/joe.js in pe-related-answers): no verdicts unless the
+   *    headline promised one, no padding, news judged as news (News tag or category only).
    * Advisory only: never a warning, never counted, never blocks Ready to schedule.
-   * Runs once by itself when a post reaches review, otherwise on Check. Results are kept per post
-   * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours.
-   * Partner posts are treated the same, prompts included (v3.6).
-   * Since 8.5 the score isn't shown: the section is Joe's advice (see the 8.5 note further down). */
+   * Runs once by itself when a post reaches review, if the writer's line is there; otherwise on Check.
+   * The old Google Sheet task "overview" (Code.gs) is no longer called. */
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
+  var ovPointNow = '', ovPointBy = '', ovReady = false;   // the writer's one line, who wrote it, and whether the server has answered
   var ovOpen = ls('pe-ov-open') === '1';
 
   // Embedded video and audio a reader can watch or hear and an AI summary can't (v3.8).
@@ -3780,157 +3796,90 @@ try {
     });
     return out;
   }
-  // A fingerprint of the headline and text, so the panel knows when the post changed after a check
-  function ovSig(paras) {
-    var s = postTitle() + '|' + paras.map(ovText).join('\n'), h = 0;
-    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
-    return String(h);
-  }
+  // What's saved for this post: first this browser's copy (so it shows at once), then the server's, which is
+  // the one the whole team shares
   function ovLoad() {
-    if (ovFor === post) return;
-    ovFor = post;
-    try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
-    // 8.2: a news result saved before news was judged as news is dropped, so the next check starts clean
-    if (ovRes && ovNews() && !ovRes.news) ovRes = null;
-    // 8.5: a result from before the advice rules is dropped too, so its looser advice isn't carried into the next check.
-    // 8.6: and 8.5 results, which could judge a post as news without the News tag; otherwise the next check would be
-    // told to repeat that advice word for word
-    if (ovRes && !(ovRes.v >= 86)) ovRes = null;
+    if (ovFor === post || !post) return;
+    ovFor = post; ovRes = null; ovPointNow = ''; ovPointBy = ''; ovReady = false; ovErr = ''; ovAuto = false;
+    try {
+      var mine = JSON.parse(ls('pe-joe-' + post) || 'null');
+      if (mine) { ovPointNow = mine.point || ''; ovPointBy = mine.by || ''; ovRes = mine.advice && mine.advice.v === 2 ? mine.advice : null; }
+    } catch (e) {}
+    var asked = post;
+    fetch(C.joe + 'state?post=' + encodeURIComponent(post))
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        if (asked !== post) return;
+        ovReady = true;
+        if (d && d.ok) {
+          // The server's line wins, unless someone is typing a new one in this browser right now
+          var typing = drawer && drawer.ownerDocument.activeElement && drawer.ownerDocument.activeElement.getAttribute &&
+            drawer.ownerDocument.activeElement.getAttribute('data-keep') === 'joe-point';
+          if (!typing && d.point) { ovPointNow = d.point; ovPointBy = d.pointBy || ''; }
+          if (d.advice) ovRes = d.advice;
+          ovKeep();
+        }
+        draw();
+      })
+      .catch(function () { ovReady = true; });
   }
 
-  /* 8.2: news is judged as news. On announcement day there is nothing to review: no testing, no hands-on time,
-   * no verdict. Code.gs has news rules (17 Nov), but Joe still slipped review asks through, so the panel now
-   * (1) tells the checker in plain words that this is a news story, (2) drops any prompt or search that asks
-   * for review material, and (3) shows the score in neutral grey, because a summary can always repeat the facts
-   * of an announcement and a low score is normal for news. */
-  function ovNews() { try { return adHoc() === 'News'; } catch (e) { return false; } }
-  var OV_NEWS_NOTE = '[Note to the checker, not part of the article: this is a NEWS story written on the day of the announcement. ' +
-    'Nobody has tested, used or heard the product yet, so never ask for a verdict, a review, testing, hands-on impressions, ' +
-    'sound examples, screen recordings of it in use, or advice on who should buy or skip it, and never judge the post down ' +
-    'for lacking them. Likely searches are announcement searches (what is new, what changed, release date, price, compatibility, ' +
-    'upgrade path). Only ask for what a news story can add: context, history from our own coverage, what the change means for ' +
-    'a working engineer, what is still unclear, or a question for the brand.]';
-  var OV_REVIEW_ASK = /\b(verdicts?|reviews?|reviewed|hands[- ]on|tests?|tested|testing|tried|try it|worth (buying|it|the money|the upgrade)|(who|whether) (should|to) (buy|skip)|buy or skip|skip it|first impressions|impressions|in use|in action|screen recordings?|sounds? like|sound examples?|audio examples?|listening|a\/b|blind test|shoot[- ]?out|which (one )?to buy|should (i|you) buy|best .* (to buy|for))\b/i;
-  function ovNewsClean(r) {
-    if (!r) return r;
-    r.news = true;
-    r.prompts = (r.prompts || []).filter(function (p) { return !OV_REVIEW_ASK.test(String(p)); });
-    r.searches = (r.searches || []).filter(function (x) { return !OV_REVIEW_ASK.test(String(x.q || '')); });
-    return r;
-  }
-  /* 8.6: a post is news only when it has the News tag or category (adHoc, Site 54). Joe's server (Code.gs) also tells
-   * Claude to spot news "from the piece itself", so on 19 Nov it judged "Quiet Art WaveRider v5 - What's New And Do
-   * You Need It?" as news, with no News tag or category, and told Russ to retitle it to "report the news, not a
-   * verdict". Russ: tags and categories decide, nothing else. So every post that isn't News now carries this note,
-   * which overrides the server's guess, and any headline note or prompt that still treats it as news is dropped. */
-  var OV_NOT_NEWS_NOTE = '[Note to the checker, not part of the article: this post is NOT a news story. At Production Expert a post is ' +
-    'news only when it carries the News tag or category, and this one carries neither, so ignore the NEWS POSTS rules completely, ' +
-    'whatever the headline or text looks like. Never call it news, never suggest changing the headline to report news or to avoid ' +
-    'a verdict, and never ask for questions to put to the brand as if it were announcement day. Judge it as the kind of piece its ' +
-    'headline says it is. A headline that asks whether readers need something promises an answer, so a verdict, who should buy or ' +
-    'skip it, first-hand impressions and comparisons are all in scope, and if the draft doesn\'t yet answer its own headline, ' +
-    'that is the first thing to say.]';
-  var OV_NEWS_TALK = /\b(report(s|ing)? the news|news (story|post|piece|item|angle)|as news|not a verdict|announcement[- ]day|put (the|this|that) claim to)\b/i;
-  function ovNotNewsClean(r) {
-    if (!r) return r;
-    r.news = false;
-    if (r.headline && OV_NEWS_TALK.test(String(r.headline))) r.headline = '';
-    r.prompts = (r.prompts || []).filter(function (p) { return !OV_NEWS_TALK.test(String(p)); });
-    return r;
-  }
-
+  /* ---------- Joe's advice: the lines Joe says and the parts he draws (8.7) ---------- */
+  function ovNews() { try { return adHoc() === 'News'; } catch (e) { return false; } }   // News tag or category only (Site 54)
   function ovPartner() { return !!document.querySelector('body.view-item article.hentry.tag-partner'); }
+  // The article as the numbered items Joe reads
+  function ovItems(paras) { return (paras || ovParas()).map(ovText); }
+  // True when the post's headline, line or text has changed since the advice was given. The server keeps the
+  // first 160 characters of each item with the advice, so this works for a colleague's check too.
+  function ovStale() {
+    if (!ovRes) return false;
+    if ((ovRes.point || '') !== ovPointNow) return true;
+    var now = ovItems().map(function (t) { return squash(t).slice(0, 160); });
+    return JSON.stringify(now) !== JSON.stringify(ovRes.items || []);
+  }
+  // Keeps the line and the advice in this browser too, so the panel shows them at once next time
+  function ovKeep() { ls('pe-joe-' + post, JSON.stringify({ point: ovPointNow, by: ovPointBy, advice: ovRes })); }
 
-  /* 8.5: advice, no score (Russ, 19 Nov 2026). Following Joe's prompts on the Quiet Art WaveRider v5 piece took
-   * its score from 39 to 12. The score was unstable by design: Claude invented a fresh set of likely searches on
-   * every check, and the "only ours" half was a percentage, so adding the facts Joe asked for lowered it. Russ:
-   * remove the score, keep advice on how to improve the article, and make the advice better.
-   * Code.gs still answers in the same shape (it still works out a score), but the panel no longer shows the score,
-   * the likely searches or the percentages. What changed in how the advice is chosen:
-   *  - every check carries OV_ADVICE_NOTE, which tells Claude what good advice looks like: say where it goes,
-   *    exactly what to add and why a reader would care; only what the writer can really supply within what the
-   *    piece sets out to do; never padding with facts a summary could repeat anyway; most important first;
-   *  - every check after the first carries the advice from the last check. Claude repeats any point the draft
-   *    still doesn't cover word for word and drops any it now covers, so advice stays put from check to check
-   *    instead of wandering. A point that disappears is shown as done (ovSame matches a lightly reworded repeat). */
-  var OV_ADVICE_NOTE = '[Note to the checker, not part of the article: the team no longer sees a score. Your prompts are the whole ' +
-    'point of this check, so make each one advice a writer can act on in five minutes to make the article more useful to a working ' +
-    'audio professional than a Google summary of it would be. For every prompt: (1) say where it goes, quoting the first few words ' +
-    'of the nearest paragraph in double quotes; (2) say exactly what to add, naming the specific detail (a setting, a figure, a ' +
-    'comparison with the previous version or a rival, a step in a workflow, a judgement), not a category such as "more detail"; ' +
-    '(3) in a few words, say why a reader would care. Only ask for what this writer can supply within what the piece sets out to do. ' +
-    'Never ask for anything the draft already says, and never ask for more facts that a summary could repeat anyway, such as spec ' +
-    'lists or release notes: ask for what only Production Expert can add, such as our experience, a view, context from our ' +
-    'coverage, what it means in a real session, or a worked example. Most important first, up to three, fewer or none if the draft ' +
-    'already does the job. Write in British English with no dashes as punctuation.]';
-  // The advice from the last check, sent with the next one so Claude keeps to it
-  function ovEarlierNote(prev) {
-    if (!prev || !prev.length) return '';
-    return '[Note to the checker, not part of the article: these prompts were given at the last check of this post: ' +
-      prev.map(function (p, i) { return '(' + (i + 1) + ') ' + p; }).join(' ') +
-      ' The writer may have acted on them. For each one, if the draft now covers it, leave it out. If it doesn\'t, repeat it word ' +
-      'for word so the writer sees the same advice. Only add a new prompt if there is room within three, and never give advice ' +
-      'that contradicts an earlier prompt unless the draft has changed in a way that makes it wrong.]';
-  }
-  // Words of a prompt, for telling a lightly reworded repeat from a new point
-  function ovWords(s) {
-    return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length > 3; });
-  }
-  // True when two prompts are the same advice: two thirds of the shorter one's words appear in the other
-  function ovSame(a, b) {
-    var x = ovWords(a), y = ovWords(b);
-    if (!x.length || !y.length) return a === b;
-    var short = x.length <= y.length ? x : y, long = x.length <= y.length ? y : x, hit = 0;
-    short.forEach(function (w) { if (long.indexOf(w) >= 0) hit++; });
-    return hit / short.length >= 0.66;
+  // Saves the writer's one line for the whole team
+  // (No redraw here: the box saves as the writer clicks away from it, and redrawing at that moment would swallow
+  // the click they were making, such as Check my piece. The panel's own redraw a few seconds later shows the note.)
+  function ovSavePoint(text) {
+    text = squash(text).slice(0, 240);
+    if (text === ovPointNow) return;
+    ovPointNow = text; ovPointBy = account().first || account().name || '';
+    ovKeep();
+    fetch(C.joe + 'point', { method: 'POST', body: JSON.stringify({ post: post, point: text, who: ovPointBy }) }).catch(function () {});
   }
 
+  // One check. Joe gives no advice until the writer has said what the piece is for.
   function ovRun() {
     if (ovBusy) return;
+    if (!ovPointNow) { ovErr = 'Add your one line first: what is the point of this piece?'; draw(); return; }
     var paras = ovParas();
     if (paras.length < 4) { ovErr = 'There isn\'t enough article text yet to check'; draw(); return; }
     ovBusy = true; ovErr = '';
     draw();
-    var partner = ovPartner();
-    var prev = (ovRes && ovRes.prompts) || [];          // 8.5: last check's advice, to keep it steady
+    var au = authorOf();
     var payload = {
-      action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
-      meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
-      paras: paras.length,
-      media: paras.filter(function (e) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || ''); }).length,
-      mediaItems: paras.map(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') ? i + 1 : 0; }).filter(Boolean).join(','),
-      images: paras.filter(function (e) { return e.getAttribute('data-pe-ov') === 'Image'; }).length,
-      imageItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' ? i + 1 : 0; }).filter(Boolean).join(','),
-      tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
+      post: post, title: postTitle(), seoTitle: seo().seoTitle || '', meta: seo().seoDescription || '',
+      url: postData.urlId || '', author: au.name || '', point: ovPointNow,
+      news: ovNews() ? 1 : 0, partner: ovPartner() ? 1 : 0,
+      items: ovItems(paras), who: account().first || account().name || ''
     };
-    var news = ovNews();
-    if (news) payload.news = 1;
-    // 8.5: the notes go first (news rules, then the advice rules, then last check's advice), then the article,
-    // cut to fit the 15,000 characters Code.gs reads
-    var notes = (news ? OV_NEWS_NOTE : OV_NOT_NEWS_NOTE) + '\n' + OV_ADVICE_NOTE + '\n' + (prev.length ? ovEarlierNote(prev) + '\n' : '');
-    payload.text = notes + paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000 - notes.length);
-    fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
+    // Sent as plain text so the browser makes a simple request
+    fetch(C.joe + 'advice', { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         ovBusy = false;
-        if (d && d.overview) {
-          var res = d.overview;
-          if (news) ovNewsClean(res); else ovNotNewsClean(res);   // 8.6
-          // 8.5: earlier points no longer given are the ones the draft now covers
-          res.done = prev.filter(function (p) { return !(res.prompts || []).some(function (q) { return ovSame(p, q); }); });
-          // carry earlier done points forward until the advice is all done, so the writer sees progress
-          if (ovRes && ovRes.done && (res.prompts || []).length) res.done = ovRes.done.concat(res.done).filter(function (p, i, a) { return a.indexOf(p) === i; }).slice(-6);
-          res.sig = ovSig(paras); res.at = Date.now(); res.partner = partner; res.v = 86;
-          ovRes = res;
-          ls('pe-ov-' + post, JSON.stringify(ovRes));
-        } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
+        if (d && d.ok && d.advice) { ovRes = d.advice; ovKeep(); }
+        else ovErr = (d && d.message) || 'No answer came back';
         if (ovMarked) ovMark(true);
         draw();
       })
-      .catch(function () { ovBusy = false; ovErr = 'Could not reach the Google Sheet'; draw(); });
+      .catch(function () { ovBusy = false; ovErr = 'Could not reach Joe. Check your connection and try again.'; draw(); });
   }
 
-  // Show in the post: paragraphs only we have get a green edge, ones that restate what's public a grey wash
+  // Show in the post: paragraphs only we could write get a green edge, ones a summary could repeat a grey wash
   function ovMark(on) {
     ovMarked = on;
     var ours = (ovRes && ovRes.ours) || [];
@@ -3954,105 +3903,147 @@ try {
     b.onclick = fn;
     return b;
   }
-  // One piece of advice, with a green edge (or ticked and struck through when it's done)
-  function ovPoint(text, done) {
-    var d = el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + (done ? '#c9ced4' : C.green) + ';font-size:12.5px;line-height:1.45;color:' + (done ? '#80868d' : '#333') + ';');
-    if (done) { d.appendChild(el('span', 'color:' + C.green + ';font-weight:700;', '✓ ')); d.appendChild(el('span', 'text-decoration:line-through;', text)); }
-    else d.textContent = text;
+  // One of the four fixed headings. Sentence case, exactly as Russ approved them, never reworded.
+  function ovHead(text) { return el('div', 'margin:16px 0 5px;font:700 13.5px/1.35 ' + F + ';color:#1f2933;', text); }
+  function ovLine(text, colour) { return el('div', 'margin:3px 0;font-size:12.5px;line-height:1.5;color:' + (colour || '#3a4048') + ';', text); }
+  // One suggestion: where it goes (bold), what to do, and why the reader expects it. Ticked and struck through when done.
+  function ovPoint(s, done) {
+    var d = el('div', 'margin:8px 0;padding:3px 0 3px 10px;border-left:2px solid ' + (done ? '#c9ced4' : C.green) + ';font-size:12.5px;line-height:1.5;color:' + (done ? '#80868d' : '#333') + ';');
+    if (done) {
+      d.appendChild(el('span', 'color:' + C.green + ';font-weight:700;', '✓ '));
+      d.appendChild(el('span', 'text-decoration:line-through;', s.text || ''));
+      return d;
+    }
+    if (s.where) d.appendChild(el('div', 'font-weight:700;color:#1f2933;', s.where));
+    d.appendChild(el('div', '', s.what || ''));
+    if (s.link && s.link.url) {
+      var a = el('a', 'display:inline-block;margin-top:2px;color:' + C.blue + ';text-decoration:underline;', s.link.title + (s.link.year ? ' (' + s.link.year + ')' : ''));
+      a.href = s.link.url; a.target = '_blank'; a.rel = 'noopener';
+      d.appendChild(a);
+    }
+    if (s.why) d.appendChild(el('div', 'margin-top:2px;color:#5f6368;', 'Why: ' + s.why));
     return d;
   }
-  // How many points are waiting, as words for the panel line
-  function ovCount(r) {
-    var n = (r.prompts || []).length;
-    return n ? n + (n === 1 ? ' suggestion' : ' suggestions') : 'Nothing to add';
+  // The one-line summary shown on the Checks tab
+  function ovSummary(r) {
+    var n = (r.suggestions || []).length;
+    return (r.kept === 'no' ? 'promise not kept' : 'promise kept') + ', ' + (n ? n + (n === 1 ? ' suggestion' : ' suggestions') : 'nothing to add');
   }
 
-  // The Advice section of the checks panel: one line with how many suggestions are waiting, opening to the first
+  // The Joe's advice section of the Checks tab: one line, opening to the first thing to do
   function drawOverview() {
     ovLoad();
     var wf = +postData.workflowState || 0;
-    // Runs once by itself when the post reaches review, if this browser has no result yet
-    if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3) { ovAuto = true; setTimeout(ovRun, 0); }
+    // Runs once by itself when the post reaches review, if the writer's line is there and nobody has checked yet
+    if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3 && ovPointNow && ovReady) { ovAuto = true; setTimeout(ovRun, 0); }
     if (!ovRes && !ovBusy && wf === 1) return; // nothing to show on a live post never checked
-    list.appendChild(sectionLabel('Advice'));
+    list.appendChild(sectionLabel('Joe\'s advice'));
     if (!ovRes) {
-      var r = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr ? C.red : '#555') + ';');
-      r.appendChild(el('span', 'flex:1;', ovBusy ? 'Joe is reading the post…'
-        : ovErr || 'What would make this worth the click over a Google summary?'));
-      if (!ovBusy) r.appendChild(ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
-      list.appendChild(r);
+      var r0 = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr && ovPointNow ? C.red : '#555') + ';');
+      r0.appendChild(el('span', 'flex:1;', ovBusy ? 'Joe is reading the post…'
+        : !ovPointNow ? 'Joe: add your one line to get advice'
+        : ovErr || 'Joe: does the piece keep its headline\'s promise?'));
+      if (!ovBusy) r0.appendChild(!ovPointNow ? ovSmall('Open Joe', function () { openDrawer('overview'); }, true) : ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
+      list.appendChild(r0);
       return;
     }
-    var stale = ovRes.sig !== ovSig(ovParas()), waiting = (ovRes.prompts || []).length;
+    var stale = ovStale(), bad = ovRes.kept === 'no';
     var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid #e1e4e8;border-radius:6px;background:#f6f7f9' +
       ';text-align:left;font:13px/1.4 ' + F + ';color:#3a4048;cursor:pointer;');
     row.type = 'button';
-    row.title = 'Joe\'s advice on what to add that a Google summary couldn\'t give a reader';
-    row.appendChild(el('span', 'flex:1;', 'Joe\'s advice' + (stale ? ' (edited since)' : '')));
-    row.appendChild(el('span', 'font-weight:700;color:' + (waiting ? C.green : '#5f6368') + ';', ovBusy ? '…' : ovCount(ovRes)));
+    row.title = 'Joe checks that the piece keeps its headline\'s promise and gives a searcher a reason to click past Google\'s summary';
+    row.appendChild(el('span', 'flex:1;', 'Joe: ' + (ovBusy ? 'reading…' : ovSummary(ovRes)) + (stale ? ' (edited since)' : '')));
     row.appendChild(el('span', 'font-size:11px;color:#5f6368;', ovOpen ? '▴' : '▾'));
+    row.style.borderLeft = '3px solid ' + (bad ? C.amber : C.green);
     row.onclick = function () { ovOpen = !ovOpen; ls('pe-ov-open', ovOpen ? '1' : '0'); draw(); };
     list.appendChild(row);
     if (!ovOpen) return;
     var box = el('div', 'padding:6px 2px 4px;font-size:12.5px;line-height:1.45;color:#444;');
-    var p = (ovRes.prompts || [])[0];
+    var p = (ovRes.suggestions || [])[0];
     if (p) box.appendChild(ovPoint(p, false));
-    else box.appendChild(el('div', '', 'Nothing to add. The draft already gives readers more than a summary could.'));
+    else box.appendChild(el('div', '', 'Nothing to add.'));
     var dn = (ovRes.done || []).length;
     if (dn) box.appendChild(el('div', 'color:#5f6368;', dn + (dn === 1 ? ' point' : ' points') + ' from earlier checks done.'));
     if (stale) box.appendChild(el('div', 'margin-top:4px;color:#5a3a00;', 'The post has changed since. Check again to update the advice.'));
     if (ovErr) box.appendChild(el('div', 'margin:4px 0;color:' + C.red + ';', ovErr));
     var btns = el('div', 'display:flex;gap:6px;margin-top:6px;');
-    btns.appendChild(ovSmall('All advice in Joe', function () { openDrawer('overview'); }, true));
+    btns.appendChild(ovSmall('All four answers in Joe', function () { openDrawer('overview'); }, true));
     btns.appendChild(ovSmall(ovBusy ? 'Checking…' : 'Check again', ovRun));
     box.appendChild(btns);
     box.appendChild(el('div', 'margin-top:6px;font-size:11.5px;color:#80868d;', 'Advisory only. Doesn\'t count as a warning.'));
     list.appendChild(box);
   }
 
-  // Joe's Advice tab: every suggestion, what's been done, the headline note
+  // Joe's Advice tab. Always in the same order: why it exists, the writer's one line, the button, then the four
+  // fixed headings. An author who has used it once knows where to look the next time.
   function drawOverviewTab(body) {
     ovLoad();
-    if (!ovRes) {
-      body.appendChild(el('div', 'margin:14px 0 0;font-size:13px;line-height:1.5;color:#444;',
-        'Joe reads the post and suggests what to add that a Google summary couldn\'t give a reader: where it goes, exactly what to add and why it matters. Check again after you\'ve made changes and the advice you\'ve covered is ticked off.'));
-      if (ovBusy) body.appendChild(el('div', 'padding:12px 0;color:#777;', 'Checking…'));
-      else body.appendChild(actionButton('Check this post', ovRun, true));
-      if (ovErr) body.appendChild(el('div', 'color:' + C.red + ';font-size:13px;', ovErr));
-      return;
-    }
-    var r = ovRes, stale = r.sig !== ovSig(ovParas()), nw = !!r.news;
-    var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;font-size:11.5px;color:#80868d;');
-    top.appendChild(el('span', 'flex:1;', nw ? 'Judged as news: no reviews, testing or buying advice asked for.' : ''));
-    top.appendChild(el('span', '', 'Checked ' + when(r.at)));
-    body.appendChild(top);
-    if (stale) body.appendChild(el('div', 'margin:10px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
+    // 1. Why this exists. Always on show, so nobody has to wonder what the tab is for.
+    body.appendChild(el('div', 'margin:14px 0 0;padding:10px 12px;border-radius:6px;background:#f3f6f9;font-size:12.5px;line-height:1.5;color:#3a4048;',
+      'Google\'s summaries can repeat facts. They can\'t repeat our experience or our opinion. Joe checks that your piece keeps the promise in its headline, and that a searcher can see why ours is the one to read.'));
+
+    // 2. The writer's one line. Saved with the post for the whole team.
+    body.appendChild(el('label', 'display:block;margin:14px 0 4px;font:700 13px/1.4 ' + F + ';color:#1f2933;', 'In one line, what is the point of this piece?'));
+    var box = el('input', 'box-sizing:border-box;width:100%;padding:7px 9px;border:1px solid #c9ced4;border-radius:6px;font:13px/1.4 ' + F + ';color:#222;background:#fff;');
+    box.type = 'text'; box.maxLength = 240; box.value = ovPointNow;
+    box.placeholder = 'For example: show mixers a faster way to ride vocals without automation';
+    box.setAttribute('data-keep', 'joe-point');   // keeps its words and cursor while the panel redraws
+    box.onchange = function () { ovSavePoint(box.value); };
+    box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); ovSavePoint(box.value); if (ovPointNow) ovRun(); } };
+    body.appendChild(box);
+    body.appendChild(el('div', 'margin-top:3px;font-size:11.5px;color:#80868d;', ovPointNow
+      ? 'Saved with the post for the whole team' + (ovPointBy ? ' (' + ovPointBy + ')' : '') + '. Changing it starts Joe\'s advice afresh.'
+      : 'Joe gives no advice until this is filled in. Everyone who checks the post will see it.'));
+
+    // 3. The button
+    var go = actionButton(ovBusy ? 'Joe is reading…' : ovRes ? 'Check again' : 'Check my piece', function () { ovSavePoint(box.value); ovRun(); }, !ovRes);
+    body.appendChild(go);
+    if (ovErr) body.appendChild(el('div', 'margin:-4px 0 8px;color:' + C.red + ';font-size:13px;', ovErr));
+    if (!ovRes) return;
+
+    var r = ovRes, stale = ovStale();
+    body.appendChild(el('div', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at) + (r.by ? ' by ' + r.by : '') + '.'));
+    if (stale) body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
       'The post has changed since this check. Check again to tick off what you\'ve covered.'));
 
-    // Partner posts get advice too: our own view is what makes partner content credible (v3.6)
-    body.appendChild(sectionLabel('Add what Google can\'t'));
-    if ((r.prompts || []).length) r.prompts.forEach(function (p) { body.appendChild(ovPoint(p, false)); });
-    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', nw ? 'Nothing to add. For a news story the draft does the job.' : 'Nothing to add. The draft already gives readers more than a summary could.'));
+    // 4. The four headings, word for word, in this order, on every check
+    body.appendChild(ovHead('What I understood'));
+    body.appendChild(ovLine('Your point: ' + (r.understood || r.point)));
+    body.appendChild(ovLine('Your headline promises: ' + r.promise + (r.quote ? ' (“' + r.quote + '”)' : '')));
+    body.appendChild(ovLine(r.author && r.author.house ? 'Written under the Production Expert byline, so I\'ve gone by the site\'s standing.'
+      : 'Written by ' + ((r.author && r.author.name) || 'an author I couldn\'t read') + (r.author && r.author.bio ? ', whose bio I\'ve read.' : '. I couldn\'t find a bio for that name, so I know nothing of their background.'), '#5f6368'));
+    if (r.news) body.appendChild(ovLine('Tagged News, so I haven\'t asked for testing, impressions or buying advice.', '#5f6368'));
+
+    body.appendChild(ovHead('Is the promise kept?'));
+    var k = el('div', 'margin:3px 0;font-size:12.5px;line-height:1.5;color:#3a4048;');
+    k.appendChild(el('span', 'font-weight:700;color:' + (r.kept === 'no' ? C.amber : C.green) + ';', r.kept === 'no' ? 'Not yet. ' : 'Yes. '));
+    k.appendChild(el('span', '', r.keptWhy || ''));
+    body.appendChild(k);
+
+    body.appendChild(ovHead('Why would someone click past Google?'));
+    body.appendChild(ovLine(r.click || ''));
+    body.appendChild(ovLine(r.clickVisible === 'no' ? 'A searcher can\'t see that from the headline and description yet.' : 'A searcher can see that from the headline and description.', r.clickVisible === 'no' ? '#5a3a00' : '#5f6368'));
+
+    body.appendChild(ovHead('What to do'));
+    if ((r.suggestions || []).length) r.suggestions.forEach(function (s) { body.appendChild(ovPoint(s, false)); });
+    else body.appendChild(ovLine('Nothing to add.'));
     if ((r.done || []).length) {
       body.appendChild(sectionLabel('Done since earlier checks'));
       r.done.forEach(function (p) { body.appendChild(ovPoint(p, true)); });
     }
-    if (r.headline) {
-      body.appendChild(sectionLabel('Headline'));
-      var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
-      h.appendChild(el('span', 'flex:1;', r.headline));
-      var sg = ovSmall('Suggest', function () { openDrawer('headlines'); });
-      sg.style.borderColor = '#e3c79a'; sg.style.color = '#5a3a00';
-      h.appendChild(sg);
-      body.appendChild(h);
+
+    // Only when a colleague's working background is a clearly closer match to the subject
+    if (r.second && r.second.name) {
+      body.appendChild(ovHead('Worth a second opinion'));
+      body.appendChild(ovLine(r.second.name + ': “' + r.second.bio + '”. ' + (r.second.why || '')));
+      body.appendChild(ovLine('Their view would add weight before this goes out. It\'s your call whether to ask.', '#5f6368'));
     }
-    // Which paragraphs a summary could repeat: useful for spotting padding, so it stays
-    var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show what a summary could repeat', function () { ovMark(!ovMarked); drawDrawer(); });
-    sh.style.marginTop = '12px';
-    body.appendChild(sh);
-    if (ovErr) body.appendChild(el('div', 'margin-top:10px;color:' + C.red + ';font-size:13px;', ovErr));
-    body.appendChild(actionButton(ovBusy ? 'Checking…' : 'Check again', ovRun));
-    body.appendChild(el('div', 'font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
+
+    var tools = el('div', 'display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;');
+    tools.appendChild(ovSmall(ovMarked ? 'Hide in the post' : 'Show what a summary could repeat', function () { ovMark(!ovMarked); drawDrawer(); }));
+    tools.appendChild(ovSmall('Suggest headlines', function () { openDrawer('headlines'); }));
+    body.appendChild(tools);
+    body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
   }
 
   function articleText() {
@@ -4089,13 +4080,26 @@ try {
     return el('span', 'flex:0 0 auto;padding-top:2px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:' + (bad ? C.amber : '#8a9097') + ';', n + (max ? '/' + max : ''));
   }
 
+  /* 8.7: a headline makes a promise and the article must keep it (Russ, 19 Nov 2026). Where the article holds real
+   * first-hand experience, at least one suggested headline should let a searcher see that a practitioner is behind
+   * it, because that is what a Google summary sitting above our result visibly lacks. Shown, never claimed. */
+  var HEADLINE_NOTE = '[Note to whoever writes these headlines, not part of the article: every headline makes a promise and the ' +
+    'article must keep it. Never promise anything the article below does not deliver: no "tested", "review", "compared", number of ' +
+    'tips or length of time in use unless the article really has it, and no question the article does not answer. Never give the ' +
+    'conclusion away, and never promise a verdict or a buy or skip ruling unless the article gives one. If the article contains real ' +
+    'first-hand experience of its subject (use on real work, testing, time spent with it, or a named professional\'s account), at ' +
+    'least one option must show a searcher that a practitioner is behind it, by saying what was done or naming the writer\'s trade, ' +
+    'near the start of the headline and without boasting words such as "expert". If the article has no first-hand experience, do ' +
+    'not suggest that it has. If the post is news, report the news.]';
   function suggestWrite(task, more) {
     var prev = writeSuggest[task] || {};
     writeSuggest[task] = { status: 'loading', options: prev.options || [] };
     drawDrawer();
     var payload = {
       action: 'write', task: task, title: postTitle(), seoTitle: seo().seoTitle || '',
-      meta: seo().seoDescription || '', url: postData.urlId || '', text: articleText(),
+      meta: seo().seoDescription || '', url: postData.urlId || '',
+      // 8.7: headline suggestions carry the promise rule (see HEADLINE_NOTE)
+      text: task === 'headlines' ? (HEADLINE_NOTE + '\n' + articleText()).slice(0, 15000) : articleText(),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', '),
       avoid: more ? (prev.options || []).join('\n') : ''
     };
