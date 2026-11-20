@@ -1377,7 +1377,7 @@ try {
    *                              preview behind it. Roll back to v8.7 (71a5605)
    *   8.9  20 Nov 2026  4bfed32 Updated articles: the note above the comments is Production Expert orange with black
    *                              words, so readers don't miss it (it was pale grey). Roll back to v8.8 (9378670)
-   *   9.0  20 Nov 2026         Joe's Advice after Mike's test: the panel no longer jumps to the top while you read (Joe's
+   *   9.0  20 Nov 2026  a6991ca Joe's Advice after Mike's test: the panel no longer jumps to the top while you read (Joe's
    *                              redraw now keeps the panel's scroll); a reviewer can send Joe's advice to the author, or ask
    *                              the author for their one line, through Flag for author (email plus a note on the post).
    *                              Roll back to v8.9 (113254b)
