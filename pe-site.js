@@ -1375,7 +1375,7 @@ try {
    *                              change and how many suggestions were ticked, or that he can see no change at all. In the
    *                              Edit Post window Joe reads the text being edited, where he used to read the unsaved
    *                              preview behind it. Roll back to v8.7 (71a5605)
-   *   8.9  20 Nov 2026          Updated articles: the note above the comments is Production Expert orange with black
+   *   8.9  20 Nov 2026  4bfed32 Updated articles: the note above the comments is Production Expert orange with black
    *                              words, so readers don't miss it (it was pale grey). Roll back to v8.8 (9378670)
    */
   var PE_VERSION = '8.9';
