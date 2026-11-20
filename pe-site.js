@@ -1381,8 +1381,11 @@ try {
    *                              redraw now keeps the panel's scroll); a reviewer can send Joe's advice to the author, or ask
    *                              the author for their one line, through Flag for author (email plus a note on the post).
    *                              Roll back to v8.9 (113254b)
+   *   9.1  20 Nov 2026         The panel still jumped to the top in Joe's Advice tab: each redraw put the cursor back in the
+   *                              one-line box at the top, and the browser scrolled up to it. The cursor now goes back without
+   *                              scrolling, the scroll is restored last, and Enter in the box ends typing. Roll back to v9.0 (ee5e9e4)
    */
-  var PE_VERSION = '9.0';
+  var PE_VERSION = '9.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -4070,7 +4073,7 @@ try {
     box.placeholder = 'For example: show mixers a faster way to ride vocals without automation';
     box.setAttribute('data-keep', 'joe-point');   // keeps its words and cursor while the panel redraws
     box.onchange = function () { ovSavePoint(box.value); };
-    box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); ovSavePoint(box.value); if (ovPointNow) ovRun(); } };
+    box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); box.blur(); ovSavePoint(box.value); if (ovPointNow) ovRun(); } };   // 9.1: blur, done typing
     body.appendChild(box);
     body.appendChild(el('div', 'margin-top:3px;font-size:11.5px;color:#80868d;', ovPointNow
       ? 'Saved with the post for the whole team' + (ovPointBy ? ' (' + ovPointBy + ')' : '') + '. Changing it starts Joe\'s advice afresh.'
@@ -4575,16 +4578,24 @@ try {
     if (drawerTab === 'image' && !imageOn()) drawerTab = 'headlines';
     if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
     else if (drawerTab === 'image') drawImageTab(body); else if (drawerTab === 'overview') drawOverviewTab(body); else drawWriteTab(body);
-    body.scrollTop = scroll;
-    outer.forEach(function (o) { o[0].scrollTop = o[1]; });   // 9.0: the panel stays where the reader left it
     if (kept) {
       var again = body.querySelector('[data-keep="' + kept.key + '"]');
       if (again) {
         again.value = kept.value;
-        again.focus();
+        // 9.1: putting the cursor back made the browser scroll the box into view. The one-line box sits at the top
+        // of the Advice tab and keeps the cursor after it's typed in, so every redraw pulled the panel back to the
+        // top (Mike and Russ, 20 Nov 2026; v9.0 put the scroll back before this, so the jump stayed)
+        try { again.focus({ preventScroll: true }); } catch (e) { again.focus(); }
         try { again.setSelectionRange(kept.a, kept.b); } catch (e) {}
       }
     }
+    // the scroll goes back last, after anything that could move it
+    function putBack() {
+      body.scrollTop = scroll;
+      outer.forEach(function (o) { if (o[0].scrollTop !== o[1]) o[0].scrollTop = o[1]; });   // 9.0: the panel stays where the reader left it
+    }
+    putBack();
+    if (window.requestAnimationFrame) requestAnimationFrame(putBack);   // 9.1: and once more after the browser lays it out
   }
 
   function drawWriteTab(body) {
