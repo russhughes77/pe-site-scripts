@@ -1375,8 +1375,10 @@ try {
    *                              change and how many suggestions were ticked, or that he can see no change at all. In the
    *                              Edit Post window Joe reads the text being edited, where he used to read the unsaved
    *                              preview behind it. Roll back to v8.7 (71a5605)
+   *   8.9  20 Nov 2026          Updated articles: the note above the comments is Production Expert orange with black
+   *                              words, so readers don't miss it (it was pale grey). Roll back to v8.8 (9378670)
    */
-  var PE_VERSION = '8.8';
+  var PE_VERSION = '8.9';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -8463,8 +8465,12 @@ try {
       "font-family:'Open Sans',sans-serif;font-weight:800;font-size:12px;line-height:1.2;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}" +
     '.pe-updated-block{display:block;margin:6px 0 0}' +
     '@media (max-width:640px){.pe-updated{font-size:11px;margin-left:8px}}' +
-    ".pe-updated-note{margin:0 0 18px;padding:12px 16px;background:#f2f2f0;border-radius:6px;font-family:'Open Sans',sans-serif;font-size:14px;line-height:1.5;color:#3a3a3e}" +
-    'html.pe-dark .pe-updated-note,body.pe-dark .pe-updated-note{background:#26282c;color:#d6d7da}';
+    // v8.9: the note above the comments is Production Expert orange (#E28602, the orange in the "e" logo) so
+    // readers don't miss it (Russ, 20 Nov 2026; it was pale grey). The words are near-black and semi-bold:
+    // white on this orange is too faint to read at this size, black on it is clear. Same in dark mode, where
+    // the colours are restated so no dark-mode rule elsewhere can turn the words pale on orange.
+    ".pe-updated-note{margin:0 0 18px;padding:12px 16px;background:#E28602;border-radius:6px;font-family:'Open Sans',sans-serif;font-size:14px;font-weight:600;line-height:1.5;color:#111}" +
+    'html.pe-dark .pe-updated-note,body.pe-dark .pe-updated-note{background:#E28602;color:#111}';
 
   function fmt(ms) {
     var d = new Date(+ms);
