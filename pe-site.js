@@ -1377,8 +1377,12 @@ try {
    *                              preview behind it. Roll back to v8.7 (71a5605)
    *   8.9  20 Nov 2026  4bfed32 Updated articles: the note above the comments is Production Expert orange with black
    *                              words, so readers don't miss it (it was pale grey). Roll back to v8.8 (9378670)
+   *   9.0  20 Nov 2026         Joe's Advice after Mike's test: the panel no longer jumps to the top while you read (Joe's
+   *                              redraw now keeps the panel's scroll); a reviewer can send Joe's advice to the author, or ask
+   *                              the author for their one line, through Flag for author (email plus a note on the post).
+   *                              Roll back to v8.9 (113254b)
    */
-  var PE_VERSION = '8.9';
+  var PE_VERSION = '9.0';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -2452,6 +2456,7 @@ try {
     pill.title = reportErr ? 'Dashboard not updated: ' + reportErr : 'Pre-publish checks';
     pill.lastChild.textContent = status;
 
+    var panelScroll = panel.scrollTop;   // 9.0: put back at the end, so a redraw never moves the reader
     list.innerHTML = '';
     // 7.0: one tab at a time. Opens on Checks when something needs fixing, otherwise on the last tab used.
     if (!tabPicked && loaded) { tabPicked = true; if (c.warn || c.stale || c.autoWarn > 0) panelTab = 'checks'; }
@@ -2489,6 +2494,7 @@ try {
     warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue,
       auto.filter(function (r) { return (r.kind === 'plan' || r.kind === 'soon') && !r.ok && !r.live; }));
     if (joeIsOpen()) drawDrawer();
+    if (panel.scrollTop !== panelScroll) panel.scrollTop = panelScroll;
 
     clearTimeout(hideTimer);
     if (!loaded) return; // stay hidden until the sheet has answered
@@ -3999,6 +4005,58 @@ try {
 
   // Joe's Advice tab. Always in the same order: why it exists, the writer's one line, the button, then the four
   // fixed headings. An author who has used it once knows where to look the next time.
+  /* 9.0: a reviewer can pass Joe's advice to the author (Mike, 20 Nov 2026). Joe speaks to the writer, and when
+   * someone else checks a post the writer is the one who should act on it, and the one best placed to write the one
+   * line. Both go through the existing Flag for author route: the note is saved on the post, shows at the top of the
+   * Notes tab and is emailed to the author, who marks it read; anyone marks it Resolved once it's dealt with. */
+  var ovSendMsg = '', ovSendBusy = false;
+  function ovIsAuthor() { var au = authorOf(), me = account(); return !!(au.id && me.id && au.id === me.id); }
+  function ovFirst() { var n = authorOf().name || ''; return n ? n.split(' ')[0] : 'the author'; }
+  // Joe's advice as one note, kept inside the note limit: the promise, then each suggestion with where, what and why
+  function ovAdviceText(r) {
+    var head = 'Joe\'s advice on this piece (sent from the Advice tab). Is the promise kept? ' + (r.kept === 'no' ? 'Not yet. ' : 'Yes. ') + (r.keptWhy || '');
+    var pts = (r.suggestions || []).map(function (x, i) {
+      return (i + 1) + '. ' + (x.where ? x.where.replace(/[:.]?\s*$/, ': ') : '') + (x.what || '') + (x.link && x.link.title ? ' (' + x.link.title + ')' : '') + (x.why ? ' Why: ' + x.why : '');
+    });
+    var text = head + '\n\n' + (pts.length ? 'What to do:\n' + pts.join('\n') : 'Nothing to add.') + '\n\nOpen Joe > Advice and press Check again once you\'ve made changes.';
+    if (text.length > NOTE_MAX) { // too long: drop the reasons first, then trim
+      pts = (r.suggestions || []).map(function (x, i) { return (i + 1) + '. ' + (x.where ? x.where.replace(/[:.]?\s*$/, ': ') : '') + (x.what || ''); });
+      text = head + '\n\nWhat to do:\n' + pts.join('\n') + '\n\nThe reasons are in Joe > Advice.';
+    }
+    return text.slice(0, NOTE_MAX);
+  }
+  function ovSend(text, what) {
+    if (ovSendBusy) return;
+    if (!confirm('Send ' + what + ' to ' + (authorOf().name || 'the author') + '? They\'ll get an email, and it shows at the top of the Notes tab until someone marks it Resolved.')) return;
+    ovSendBusy = true; ovSendMsg = 'Sending…'; drawDrawer();
+    flagCall('add', { text: text }).then(function (d) {
+      ovSendMsg = d.needEmail ? 'Saved on the post, but there\'s no email address on file for ' + (d.author || ovFirst()) + '. Add one on the note in the Notes tab.'
+        : d.capped ? 'Saved on the post, but today\'s email limit is reached.'
+        : d.sent && d.sent.length ? 'Sent to ' + d.sent.join(', ') + '. It\'s also in the Notes tab.' : 'Saved in the Notes tab.';
+    }).catch(function (e) { ovSendMsg = 'Not sent: ' + (e.message || e) + '. Try again.'; })
+      .then(function () { ovSendBusy = false; drawDrawer(); });
+  }
+  // The send buttons, shown to anyone who isn't the author, once the sheet can take flags
+  function ovSendRow(body, kind) {
+    if (ovIsAuthor() || !flagsOn || !authorOf().id) return;
+    var row = el('div', 'margin:10px 0 2px;padding:9px 11px;border-radius:6px;background:#f3f6f9;font-size:12.5px;line-height:1.45;color:#3a4048;');
+    if (kind === 'line') {
+      row.appendChild(el('div', '', 'This is ' + ovFirst() + '\'s piece, and the one line is best written by them.'));
+      var ask = ovSmall(ovSendBusy ? 'Sending…' : 'Ask ' + ovFirst() + ' for their line', function () {
+        ovSend('Could you add your one line in Joe > Advice (Joe tab in the checks panel): in one line, what is the point of this piece? Joe can\'t give advice on it until you do.', 'a request for the one line');
+      }, true);
+      ask.style.marginTop = '6px';
+      row.appendChild(ask);
+    } else {
+      row.appendChild(el('div', '', 'Joe speaks to the writer. If you\'re reviewing ' + ovFirst() + '\'s piece, send this advice to them to act on.'));
+      var send = ovSmall(ovSendBusy ? 'Sending…' : 'Send this advice to ' + ovFirst(), function () { ovSend(ovAdviceText(ovRes), 'Joe\'s advice'); }, true);
+      send.style.marginTop = '6px';
+      row.appendChild(send);
+    }
+    if (ovSendMsg) row.appendChild(el('div', 'margin-top:5px;color:' + (/^Not sent/.test(ovSendMsg) ? C.red : /^Sent|Saved in/.test(ovSendMsg) ? C.green : '#5a3a00') + ';', ovSendMsg));
+    body.appendChild(row);
+  }
+
   function drawOverviewTab(body) {
     ovLoad();
     // 1. Why this exists. Always on show, so nobody has to wonder what the tab is for.
@@ -4017,6 +4075,7 @@ try {
     body.appendChild(el('div', 'margin-top:3px;font-size:11.5px;color:#80868d;', ovPointNow
       ? 'Saved with the post for the whole team' + (ovPointBy ? ' (' + ovPointBy + ')' : '') + '. Changing it starts Joe\'s advice afresh.'
       : 'Joe gives no advice until this is filled in. Everyone who checks the post will see it.'));
+    if (!ovPointNow) ovSendRow(body, 'line');   // 9.0: a reviewer can ask the author for it
 
     // 3. The button
     var go = actionButton(ovBusy ? 'Joe is reading…' : ovRes ? 'Check again' : 'Check my piece', function () { ovSavePoint(box.value); ovRun(); }, !ovRes);
@@ -4071,6 +4130,8 @@ try {
       body.appendChild(ovLine(r.second.name + ': “' + r.second.bio + '”. ' + (r.second.why || '')));
       body.appendChild(ovLine('Their view would add weight before this goes out. It\'s your call whether to ask.', '#5f6368'));
     }
+
+    if ((r.suggestions || []).length) ovSendRow(body, 'advice');   // 9.0: pass it to the author
 
     var tools = el('div', 'display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;');
     tools.appendChild(ovSmall(ovMarked ? 'Hide in the post' : 'Show what a summary could repeat', function () { ovMark(!ovMarked); drawDrawer(); }));
@@ -4484,6 +4545,11 @@ try {
     if (joeHighlighting()) { joeDrawWaiting = true; return; }
     // only the part under the title bar is redrawn; keep the reader's scroll position
     var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
+    // 9.0: when Joe sits in the panel's tab it's the panel that scrolls, not Joe's own body, and emptying Joe for a
+    // moment pulled the panel back to the top every few seconds (Mike, 20 Nov 2026: reading What to do kept jumping
+    // to the top). So the scroll of every box around Joe is noted here and put back after the redraw.
+    var outer = [];
+    for (var up = drawerInner.parentNode; up && up.nodeType === 1; up = up.parentNode) if (up.scrollTop) outer.push([up, up.scrollTop]);
     // The checklist redraws Joe every few seconds. A text box someone is typing in (marked with
     // data-keep) keeps its words, cursor and focus across the redraw (v1.5)
     var act = drawer.ownerDocument.activeElement, kept = null;
@@ -4510,6 +4576,7 @@ try {
     if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
     else if (drawerTab === 'image') drawImageTab(body); else if (drawerTab === 'overview') drawOverviewTab(body); else drawWriteTab(body);
     body.scrollTop = scroll;
+    outer.forEach(function (o) { o[0].scrollTop = o[1]; });   // 9.0: the panel stays where the reader left it
     if (kept) {
       var again = body.querySelector('[data-keep="' + kept.key + '"]');
       if (again) {
