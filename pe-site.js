@@ -1381,7 +1381,7 @@ try {
    *                              redraw now keeps the panel's scroll); a reviewer can send Joe's advice to the author, or ask
    *                              the author for their one line, through Flag for author (email plus a note on the post).
    *                              Roll back to v8.9 (113254b)
-   *   9.1  20 Nov 2026         The panel still jumped to the top in Joe's Advice tab: each redraw put the cursor back in the
+   *   9.1  20 Nov 2026  16ce989 The panel still jumped to the top in Joe's Advice tab: each redraw put the cursor back in the
    *                              one-line box at the top, and the browser scrolled up to it. The cursor now goes back without
    *                              scrolling, the scroll is restored last, and Enter in the box ends typing. Roll back to v9.0 (ee5e9e4)
    */
