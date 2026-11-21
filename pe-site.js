@@ -709,21 +709,7 @@ try {
       .catch(function (e) { log('feed failed', url, e); return []; });
   }
 
-  // v7.8: dark mode gives every .pe-ui section a dark box with a border (html.pe-dark .pe-ui in the Header),
-  // but this section had no padding, so the heading and cards sat hard against the border. This adds the
-  // padding only when that box is drawn; light mode has no box, so it stays flush with the article.
-  function css() {
-    if (document.getElementById('pe-related-css')) return;
-    var st = document.createElement('style');
-    st.id = 'pe-related-css';
-    st.textContent =
-      'html.pe-dark .pe-ui.pe-related,body.pe-dark .pe-ui.pe-related{padding:24px 28px 28px!important;border-radius:6px!important}' +
-      '@media (max-width:640px){html.pe-dark .pe-ui.pe-related,body.pe-dark .pe-ui.pe-related{padding:18px 16px 20px!important}}';
-    document.head.appendChild(st);
-  }
-
   function build(items, a) {
-    css();
     var ref = a.querySelector('.body.entry-content h3');
     var cs = ref ? getComputedStyle(ref) : null;
 
@@ -735,12 +721,7 @@ try {
     var h = document.createElement('h3');
     h.textContent = C.heading;
     h.style.cssText = 'margin:0 0 16px;';
-    // Copy the article's H3 font, weight and size so the heading matches the page.
-    // v7.8: the colour is no longer copied. Copied while the page was in dark mode it stayed light grey after
-    // switching to light mode. It now uses the same dark ink as the card titles, and the dark mode rule
-    // (html.pe-dark .pe-ui *) turns it light when dark mode is on.
-    h.style.color = C.ink;
-    if (cs) { h.style.fontFamily = cs.fontFamily; h.style.fontWeight = cs.fontWeight; h.style.fontSize = cs.fontSize; }
+    if (cs) { h.style.fontFamily = cs.fontFamily; h.style.fontWeight = cs.fontWeight; h.style.color = cs.color; h.style.fontSize = cs.fontSize; }
     sec.appendChild(h);
 
     var grid = document.createElement('div');
@@ -1136,8 +1117,6 @@ try {
     fcTeam: 'https://pe-related-answers.pages.dev/api/partners/factcheck/',
     fcOrigin: 'https://pe-related-answers.pages.dev',
     fcToken: 'pe-factcheck-1',
-    // 8.7: Joe's advice. The writer's one line and the advice are kept here for the whole team.
-    joe: 'https://pe-related-answers.pages.dev/api/joe/',
     items: ['Title, SEO and URL', 'Content and grammar', 'Image check', 'Schedule'],
     blue: '#006eb3',
     green: '#3b6d11',
@@ -1292,100 +1271,8 @@ try {
    *                              the post as saved and opens the team preview, which sends it to the brand. The
    *                              preview frame on pe-related-answers.pages.dev sets window.PE_FC_PREVIEW, which every
    *                              "leave the editor alone" check now respects, so the preview looks like the live page
-   *   7.0   12 Nov 2026         Tabbed checks panel (Russ chose option A of the mockups): Checks, Joe, Publish, Partner
-   *                              (partner posts only, marked Partner Team only) and Notes, one at a time, each with a
-   *                              number when it needs you. Joe is a tab inside the panel instead of a second window
-   *                              (Pop out wider still opens its own window). The panel shrinks to its pill when
-   *                              someone types in the post. Roll back to v6.6 (dcc334a) if anything misbehaves
-   *   7.1   12 Nov 2026         The open panel keeps its top edge where it is and only changes height between tabs
-   *                              (was anchored to the bottom, so it jumped up and down). Drag it anywhere; double-click
-   *                              the title puts it back at the top right. The Partner tab shows on any post with a
-   *                              fact-check under way, and is checked again once Squarespace's record of the post loads
-   *   7.2   12 Nov 2026         Joe sees tables, audio and video. The Overview check (and the text Joe's other tabs
-   *                              read) now counts tables, in a Code Block from the Tables tool or pasted into text, our
-   *                              own stem, A/B, blind test, clip and mixer players, and embeds whose player Squarespace
-   *                              only draws on play (read from the block's stored code). Commit d77db1c. Roll back to v7.1 (704eaab)
-   *   7.3   12 Nov 2026  ce3ce3c Homepage hero keeps the hand-made slides from the Front Page Heroes gallery
-   *                              (/front-page-heroes). They play first, then the five newest Hero-tagged articles;
-   *                              the hidden slide is swapped as the slideshow moves on, so all of them show on the
-   *                              gallery's own slides. Before this the tagged articles covered the hand-made ones.
-   *                              Roll back to v7.2 (2d0d3cf)
-   *   7.4   13 Nov 2026         Refreshed articles reach the homepage only on the day Mel schedules them in the Content
-   *                              Manager (09:00 UK, for 24 hours), read from the dashboard's public list
-   *                              (pe-related-answers.pages.dev/api/refresh/live). Tagging or editing an article
-   *                              Updated no longer puts it on the homepage by itself. Roll back to v7.3 (ce3ce3c)
-   *   7.5   14 Nov 2026  1c19e0c Dark mode tables: article tables (Tables tool and skill) get dark rows, light text,
-   *                              softer green and amber, and keep their orange header, instead of white rows on a dark
-   *                              page. The subscription calculator, drawn in a Shadow DOM, gets dark colour roles
-   *                              switched on with the page. Roll back to v7.4 (f68219e)
-   *   7.6   17 Nov 2026         Client review tick (the team's request): on partner posts the Publish tab has a "Client
-   *                              review" tick, so Mel and PJ know the piece needs sending to the brand for a fact-check.
-   *                              Ticking emails them once and shows "Client review needed" on the Content Manager; the
-   *                              Partner tab shows who asked and gets a "!" until a version is sent, then the tick reads
-   *                              as done. Stored by pe-related-answers (/api/factcheck/ask). Roll back to v7.5 (1c19e0c)
-   *   7.7   17 Nov 2026         Socials by default (Mel asked why news didn't post itself): the Socials tick sends the
-   *                              post's publish time and status, so the Partners script (v1.34) can show the tick as on
-   *                              for every new article and off for older ones. Unticked, the note under it is the
-   *                              script's ("Left off socials. Tick to make the posts."). Commit 4f228d8. Roll back to v7.6
-   *   7.8   18 Nov 2026  f98f9d5 Related Content fixes: in dark mode the section's box gets proper padding (the heading
-   *                              and cards sat against its border), and the heading no longer turns light grey in light
-   *                              mode (it used to copy its colour from the page, which was wrong if dark mode had been
-   *                              on). Roll back to v7.7 (46bdaa9)
-   *   7.9   18 Nov 2026  11e0f64 Breathing room at the top of site pages: Contact Us, About and the other ordinary pages
-   *                              get 48px above their content (28px on phones) so the first heading no longer sits
-   *                              hard under the menu. Articles and the homepage are unchanged. Roll back to v7.8 (f98f9d5)
-   *   8.0   19 Nov 2026         Menu separators and phone hamburger menu: the | between menu items is drawn by the script,
-   *                              so menu names in Squarespace can drop their typed " |" (any left are stripped). On phones
-   *                              (639px and under) a three-line button top right opens a slide-in panel built from the
-   *                              desktop menu, with dropdowns; Search moves to the centre of the top bar. Roll back to v7.9 (11e0f64)
-   *   8.1  News and deals are ad hoc: no Ahead of plan or Went live early warning in the checks panel, no amber
-   *                              title or scheduled bar for it, and the planned date box says the date isn't checked.
-   *                              Matches the Content Manager's Site 54 rule. Commit 60bb3c2. Roll back to v8.0 (3a3c60a)
-   *   8.2  News is judged as news in Joe's Overview: the check tells the checker it's announcement-day news, any prompt or
-   *                              search asking for a verdict, review, testing, hands-on or buy/skip advice is dropped, the
-   *                              score shows in neutral grey with a note that low is normal for news, and news results saved
-   *                              before 8.2 are cleared. Commit 2fb1c01. Roll back to v8.1 (16cc0fc)
-   *   8.3  19 Nov 2026  4a4d09f Homepage hero placeholder slides: with every hand-made slide deleted from Front Page
-   *                              Heroes, Squarespace drew no slideshow, so the Hero-tagged articles had nowhere to play.
-   *                              A gallery slide titled "Placeholder" is now never shown as itself, only as a blank for
-   *                              the tagged articles. Keep two or three in the gallery. Roll back to v8.2 (6245c45)
-   *   8.4  19 Nov 2026  eb8d4c6 Homepage hero fixes after the first placeholder went up: a slide counts as a placeholder
-   *                              when its picture's file name has "placeholder" in it (titles are optional); a slide with
-   *                              no title gets a headline box, so headlines show; with one slide in the gallery the script
-   *                              plays the tagged articles on it every 6 seconds and the arrows work. Roll back to v8.3 (4a4d09f)
-   *   8.5  19 Nov 2026  02f5613 Overview score removed: following its advice took the WaveRider v5 piece from 39 to 12. The
-   *                              panel section and Joe's tab are now "Advice": suggestions only, each saying where, what and
-   *                              why; advice from the last check is sent with the next so it stays put, and covered points are
-   *                              ticked off as done. Results saved before 8.5 are cleared. Roll back to v8.4 (352e053)
-   *   8.6  19 Nov 2026  1575571 News means the News tag or category, nothing else: Joe's server judged the WaveRider v5
-   *                              feature as news from its "What's New" headline. Every other post now carries a note telling
-   *                              Claude it isn't news and to judge it as the piece its headline promises; any news-style
-   *                              headline note or prompt is dropped; 8.5 results are cleared. Roll back to v8.5 (27ea5aa)
-   *   8.7  19 Nov 2026  2e6cf41 Joe's advice rebuilt around the promise in the headline (Russ, 19 Nov 2026). The writer says
-   *                              in one line what the piece is for; Joe answers under four fixed headings (What I understood,
-   *                              Is the promise kept?, Why would someone click past Google?, What to do). He reads the
-   *                              author's bio and the team's, points to our earlier coverage, and can suggest a colleague for
-   *                              a second opinion. The line and the advice are saved for the whole team on Joe's own server
-   *                              (pe-related-answers /api/joe), where the rules are applied in code. Headline suggestions
-   *                              carry the promise rule. The Google Sheet's "overview" task is no longer called.
-   *                              Roll back to v8.6 (3e472d8)
-   *   8.8  19 Nov 2026  2721278 Joe's advice after an edit (Russ: "it still gave the same advice"). Joe's server must now say
-   *                              done or open for every earlier suggestion and judge by substance; a suggestion still open
-   *                              says what the change did and what is missing; the tab says how many paragraphs Joe saw
-   *                              change and how many suggestions were ticked, or that he can see no change at all. In the
-   *                              Edit Post window Joe reads the text being edited, where he used to read the unsaved
-   *                              preview behind it. Roll back to v8.7 (71a5605)
-   *   8.9  20 Nov 2026  4bfed32 Updated articles: the note above the comments is Production Expert orange with black
-   *                              words, so readers don't miss it (it was pale grey). Roll back to v8.8 (9378670)
-   *   9.0  20 Nov 2026  a6991ca Joe's Advice after Mike's test: the panel no longer jumps to the top while you read (Joe's
-   *                              redraw now keeps the panel's scroll); a reviewer can send Joe's advice to the author, or ask
-   *                              the author for their one line, through Flag for author (email plus a note on the post).
-   *                              Roll back to v8.9 (113254b)
-   *   9.1  20 Nov 2026  16ce989 The panel still jumped to the top in Joe's Advice tab: each redraw put the cursor back in the
-   *                              one-line box at the top, and the browser scrolled up to it. The cursor now goes back without
-   *                              scrolling, the scroll is restored last, and Enter in the box ends typing. Roll back to v9.0 (ee5e9e4)
    */
-  var PE_VERSION = '9.1';
+  var PE_VERSION = '6.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -1394,13 +1281,7 @@ try {
   var potw = null;               // 5.7: Plug-in of the Week picks waiting for a post (or filled into this one), once read
   var potwBusy = false, potwNotes = [];
   var fc = null;                 // 6.6: this post's partner fact-check, once read ({ review: {…} | null })
-  // 7.0: the tabbed panel. panelTab is the tab on show (remembered in this browser); tabPicked is set once the
-  // panel has chosen for itself on load (Checks when something needs fixing); joePopped is true while Joe is in its
-  // own wider window instead of the panel's Joe tab.
-  var panelTab = ls('pe-ck-tab') || 'checks', tabPicked = false, joePopped = false;
-  var tabBar = null, joeHost = null, notesWrap = null, pubWrap = null;
   var fcBusy = false, fcErr = '', fcSent = false;
-  var askBusy = false, askErr = '';   // 7.6: the Client review tick (its state arrives with the fact-check read, as fc.ask)
   try { console.info('Production Expert site scripts v' + PE_VERSION); } catch (e) {}
 
   function ls(k, v) {
@@ -1734,28 +1615,11 @@ try {
     });
   }
 
-  // 8.1: News and deals are ad hoc (Site 54). They go out when the story breaks or the offer starts, so
-  // their date is never judged against Mel's calendar. Same rule as the Content Manager's adHoc():
-  // News is the News category or tag; a deal is a post in the Partner Deals blog, or before then a
-  // title that reads like an offer.
-  var OFFER_WORDS = /\b(sale|deals?|discounts?|offers?|black friday|cyber monday|save up to|half price)\b|\b\d{1,3}\s?% off\b/i;
-  function adHoc() {
-    var names = (postData.tags || []).concat(postData.categories || []).map(function (t) { return String(t).trim().toLowerCase(); });
-    if (names.indexOf('news') > -1) return 'News';
-    if (document.querySelector('body.view-item article.hentry.category-news, body.view-item article.hentry.tag-news')) return 'News';
-    var url = String(postData.fullUrl || location.pathname || '');
-    if (/\/partner-deals(\/|$)/i.test(url)) return 'Deal';
-    if (OFFER_WORDS.test(postTitle() || '')) return 'Deal';
-    return '';
-  }
-
   // The automatic check, added to the others by runAuto. Compares days in the UK, since the
   // calendar plans days, not times.
   function planCheck() {
     var day = planDay();
     if (!day) return null;
-    var kind = adHoc();
-    if (kind) return { ok: true, text: kind + ' is ad hoc, so its date isn\'t checked against the plan' };
     var wf = +postData.workflowState || 0, t = +postData.publishOn || 0;
     if (scheduledFor && londonDay(scheduledFor) < day)
       return { ok: false, kind: 'plan', text: 'Scheduled for ' + inZone(scheduledFor, 'Europe/London') + ', but planned for ' + dayText(day),
@@ -1868,9 +1732,7 @@ try {
       : scheduledFor ? 'Scheduled ' + inZone(scheduledFor, 'Europe/London') : 'Planned ' + dayText(day);
     var icon = bad ? '⚠ ' : isLive ? '✓ ' : '📅 ';
     line.appendChild(el('div', 'font-weight:700;', icon + headline));
-    if (actualDay && adHoc()) {
-      line.appendChild(el('div', 'font-weight:600;color:#3a4048;', adHoc() + ' is ad hoc, so its date isn\'t checked against the plan'));
-    } else if (actualDay) {
+    if (actualDay) {
       var late = actualDay > day;
       line.appendChild(el('div', 'font-weight:600;color:' + (bad ? 'inherit' : late ? '#5a3a00' : '#2e6b10') + ';',
         actualDay === day ? 'On plan' : (late ? 'Later than planned, ' : 'Ahead of plan, ') + 'planned ' + dayText(day)));
@@ -2459,35 +2321,16 @@ try {
     pill.title = reportErr ? 'Dashboard not updated: ' + reportErr : 'Pre-publish checks';
     pill.lastChild.textContent = status;
 
-    var panelScroll = panel.scrollTop;   // 9.0: put back at the end, so a redraw never moves the reader
     list.innerHTML = '';
-    // 7.0: one tab at a time. Opens on Checks when something needs fixing, otherwise on the last tab used.
-    if (!tabPicked && loaded) { tabPicked = true; if (c.warn || c.stale || c.autoWarn > 0) panelTab = 'checks'; }
-    if (panelTab === 'partner' && !fcPartner()) panelTab = 'checks';
-    drawTabs(c);
-    var tab = panelTab;
-    pubWrap.style.display = tab === 'publish' ? '' : 'none';
-    notesWrap.style.display = tab === 'notes' ? '' : 'none';
-    list.style.display = tab === 'joe' ? 'none' : '';
-    joeHost.style.display = tab === 'joe' ? 'flex' : 'none';
-    if (tab === 'checks') {
-      drawStale(c);
-      drawProblems();
-      drawOverview(); // Joe's advice (8.5, was the Overview score), between the warnings and the checks
-      drawChecks();
-    } else if (tab === 'publish') {
-      drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
-      drawSocial(); // 5.1: the Socials tick
-      drawAsk();    // 7.6: the Client review tick, partner posts only
-    } else if (tab === 'partner') {
-      drawPartnerOnly();
-      drawFc();   // 6.6: partner fact-check, partner posts only
-    } else if (tab === 'notes') {
-      drawHistory();
-    } else if (tab === 'joe') {
-      showJoe();
-    }
-    drawJoeBar(); // not on screen since 7.0, kept up to date so nothing that reads it breaks
+    drawHistory();
+    drawStale(c);
+    drawProblems();
+    drawOverview(); // advisory Overview score, between the warnings and the checks
+    drawChecks();
+    drawPotw(); // 5.7: Free Plug-in of the Week, only on a blank post while a draft waits (or the post it filled)
+    drawFc();   // 6.6: partner fact-check, partner posts only
+    drawSocial(); // 5.1: the Socials tick, under the checks
+    drawJoeBar(); // the Joe bar pinned to the foot of the panel (built once in build(), refreshed here)
     // Only shown if Squarespace couldn't be asked about the post (the full readout was for setting up)
     if (statusErr) list.appendChild(el('div', 'margin-top:10px;padding-top:8px;border-top:1px solid #eceef1;color:#888;font:11px/1.5 ' + F + ';',
       'Couldn\'t check the post with Squarespace: ' + statusErr + '. Trying again in 30 seconds.'));
@@ -2496,8 +2339,7 @@ try {
     var embBad = auto.filter(function (r) { return r.kind === 'embargo' && !r.ok; })[0];
     warning(c.warn || (scheduledFor > Date.now() && c.autoWarn) || (embBad && embBad.live), C.items.filter(function (i) { return !(state[i] || {}).done; }), c.autoWarn, embBad, flagIssue,
       auto.filter(function (r) { return (r.kind === 'plan' || r.kind === 'soon') && !r.ok && !r.live; }));
-    if (joeIsOpen()) drawDrawer();
-    if (panel.scrollTop !== panelScroll) panel.scrollTop = panelScroll;
+    if (drawer && drawer.style.display !== 'none') drawDrawer();
 
     clearTimeout(hideTimer);
     if (!loaded) return; // stay hidden until the sheet has answered
@@ -2612,67 +2454,6 @@ try {
     }
   }
 
-  /* ---------- 7.0: the tabs ----------
-   * Checks: what needs fixing, the Overview score and the four checks. Joe: Joe itself. Publish: planned date,
-   * embargo, Plug-in of the Week and Socials. Partner (partner posts only): the fact-check, for the Partner Team only.
-   * Notes: notes, flags for the author and the edit history. A number on a tab means something there needs you. */
-  function panelTabs() {
-    var t = [['checks', 'Checks'], ['joe', 'Joe'], ['publish', 'Publish']];
-    if (fcPartner()) t.push(['partner', 'Partner']);
-    t.push(['notes', 'Notes']);
-    return t;
-  }
-  function setTab(t) {
-    panelTab = t; tabPicked = true; ls('pe-ck-tab', t);
-    draw();
-  }
-  function drawTabs(c) {
-    if (!tabBar) return;
-    var r = fc && fc.review;
-    var openFlags = (notes || []).filter(function (n) { return n.flag === 'open'; }).length;
-    var potwWaiting = potw && potw.length && !potwHere() && potw.some(function (p) { return p.status === 'drafted'; }) && potwBlank();
-    var badge = {
-      checks: (c.warn ? 1 : 0) + (c.stale ? 1 : 0) + Math.max(0, c.autoWarn || 0),
-      publish: socialErr ? '!' : potwWaiting ? 1 : 0,
-      partner: r ? (r.open || ((r.standing === 'lapsed' || r.standing === 'edited') ? '!' : 0)) : 0,
-      notes: openFlags || 0
-    };
-    if (!badge.partner && fc && fc.ask && !fc.ask.done) badge.partner = '!';   // 7.6: Client review ticked, nothing sent yet
-    var colour = { checks: c.warn || auto.some(function (x) { return !x.ok && (x.kind === 'embargo' || x.kind === 'flag'); }) ? C.red : C.amber, publish: C.amber, partner: '#c2410c', notes: C.red };
-    tabBar.innerHTML = '';
-    panelTabs().forEach(function (t) {
-      var on = t[0] === panelTab;
-      var b = el('button', 'display:flex;align-items:center;gap:5px;border:0;background:none;padding:10px 8px 8px;margin-bottom:-1px;cursor:pointer;' +
-        'font:' + (on ? 700 : 600) + ' 12.5px ' + F + ';color:' + (on ? C.blue : '#5f6368') + ';border-bottom:3px solid ' + (on ? C.blue : 'transparent') + ';', t[1]);
-      b.type = 'button';
-      b.setAttribute('role', 'tab');
-      b.setAttribute('aria-selected', on ? 'true' : 'false');
-      var n = badge[t[0]];
-      if (n) b.appendChild(el('span', 'font-size:10.5px;font-weight:700;background:' + colour[t[0]] + ';color:#fff;border-radius:999px;padding:0 6px;line-height:16px;', String(n)));
-      b.onclick = function () { setTab(t[0]); };
-      tabBar.appendChild(b);
-    });
-  }
-  // The Partner tab is for the Partner Team only (Russ, 12 Nov 2026)
-  function drawPartnerOnly() {
-    var w = el('div', 'margin:12px 0 4px;padding:9px 11px;border-radius:6px;background:#fdecea;border:1px solid #f2c4c0;color:#791f1f;font:12.5px/1.45 ' + F + ';');
-    w.appendChild(el('b', '', 'Partner Team only. '));
-    w.appendChild(document.createTextNode('This tab is for Russ, Mike, Mel and PJ. If you’re not on the Partner Team, please leave everything here alone.'));
-    list.appendChild(w);
-  }
-  // Typing in the post (or Squarespace's own boxes) shrinks the panel to its pill, so it's out of the way while
-  // writing. A click on the pill opens it again. Only real key presses count, never the panel's own filling-in.
-  function typingShrink(e) {
-    if (!e.isTrusted || !panel || mode === 'pill' || panel.style.display === 'none') return;
-    var t = e.target;
-    if (!t || !t.closest || t.closest('.pe-checklist, .pe-checklist-pill, .pe-drawer')) return;
-    if (!(t.isContentEditable || /^(INPUT|TEXTAREA)$/.test(t.tagName))) return;
-    if (!(e.key && (e.key.length === 1 || e.key === 'Enter' || e.key === 'Backspace' || e.key === 'Delete'))) return;
-    if (e.metaKey || e.ctrlKey || e.altKey) return;
-    mode = 'pill';
-    draw();
-  }
-
   /* ---------- 6.6: partner fact-check ----------
    * Partners never see a piece before it's published, but sometimes the brand checks a draft for factual accuracy
    * only. On a partner post this section shows where that stands and offers "Prepare for fact-check". Prepare:
@@ -2684,10 +2465,8 @@ try {
    * is sent from here. The read below passes the post's last save and status, so the Content Manager can say
    * "Edited since approved", and the review closes once the article is live. */
   function fcPartner() {
-    // 7.1: a post with a fact-check under way always counts, whatever its tags say right now
-    if (fc && fc.review) return true;
-    if (document.querySelector('body.view-item article.hentry.tag-partner')) return true;
-    return (postData.tags || []).concat(postData.categories || []).some(function (t) { return String(t).trim().toLowerCase() === 'partner'; });
+    return !!document.querySelector('body.view-item article.hentry.tag-partner') ||
+      (postData.tags || []).some(function (t) { return String(t).toLowerCase() === 'partner'; });
   }
   function loadFc() {
     if (!post || !fcPartner()) return;
@@ -2748,9 +2527,6 @@ try {
       b.type = 'button'; b.title = title; b.disabled = fcBusy; b.onclick = onclick;
       return b;
     };
-    // 7.6: who ticked Client review, while nothing has gone to the brand since
-    if (fc && fc.ask && !fc.ask.done) box.appendChild(el('div', 'margin-bottom:6px;padding:5px 8px;border-radius:5px;background:#c2410c;color:#fff;font-weight:700;',
-      'Client review asked for by ' + (fc.ask.by || 'someone') + (fc.ask.at ? ', ' + askWhen(fc.ask.at) : '') + '. Prepare it and send it to the brand.'));
     if (!fc && !fcErr) box.appendChild(el('div', '', 'Reading…'));
     else if (!r) {
       box.appendChild(el('div', '', 'Send this draft to the brand to check facts only: no tone, no wording. Save the post first; the copy is of the last saved version.'));
@@ -2770,72 +2546,12 @@ try {
     list.appendChild(box);
   }
 
-  /* ---------- 7.6: Client review tick ----------
-   * The team asked (17 Nov 2026) for a way for whoever writes a partner piece to say "this needs a client review", so
-   * Mel and PJ know to send it to the brand for a fact-check. On partner posts the Publish tab has a Client review tick.
-   * Ticking it tells pe-related-answers (/api/factcheck/ask), which records who asked, emails Mel and PJ once and puts
-   * an orange "Client review needed" tag on the post's row in the Content Manager. Its state comes back with the
-   * fact-check read (loadFc) as fc.ask: { by, at, done }. done means a version has been sent to the brand since it
-   * was ticked, so the tick shows as finished and can't be changed. Unticking clears it (a mistake, or no longer
-   * needed). The tick clears itself once the post is live. */
-  function askWhen(iso) {
-    try { return new Date(iso).toLocaleString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
-    catch (e) { return ''; }
-  }
-  function setAsk(on) {
-    if (askBusy) return;
-    askBusy = true; askErr = '';
-    var by = who();
-    var was = fc ? fc.ask : null;
-    if (!fc) fc = { review: null };
-    // Shown straight away; the reply replaces it
-    fc.ask = on ? (was || { by: by, at: new Date().toISOString(), done: false }) : null;
-    draw();
-    fetch(C.fc + 'ask', { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ t: C.fcToken, post: post, on: on, by: by, title: postTitle(), url: postData.fullUrl || location.pathname }) })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        askBusy = false;
-        if (d && d.ok) { fc.ask = d.ask; askErr = d.warning || ''; }
-        else { fc.ask = was; askErr = (d && d.error) || 'That didn\'t save'; }
-        draw();
-      })
-      .catch(function () { askBusy = false; fc.ask = was; askErr = 'Couldn\'t reach the fact-check system. Try again.'; draw(); });
-    logEvent({ kind: on ? 'tick' : 'untick', item: 'Client review', who: by });
-  }
-  function drawAsk() {
-    if (!fcPartner()) return;
-    var a = fc && fc.ask, r = fc && fc.review;
-    var already = !a && r && r.standing && r.standing !== 'draft';   // with the brand already, ticked or not
-    list.appendChild(sectionLabel('Client review', '#c2410c'));
-    var row = el('label', 'display:flex;align-items:center;gap:9px;padding:5px 0;font-size:13.5px;cursor:pointer;');
-    var box = el('input', 'flex:0 0 auto;width:16px;height:16px;margin:0;accent-color:#c2410c;');
-    box.type = 'checkbox';
-    box.checked = !!a || !!already;
-    box.disabled = askBusy || !fc || !!already || !!(a && a.done);
-    box.onchange = function () { setAsk(box.checked); };
-    row.appendChild(box);
-    row.appendChild(el('span', 'flex:1;', 'Send to the brand for a fact-check'));
-    row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', a && a.by ? a.by : ''));
-    list.appendChild(row);
-    var note = askErr ? askErr
-      : !fc ? 'Reading…'
-      : already ? 'Already with the brand: ' + r.label
-      : a && a.done ? '✓ Done: a version has gone to the brand' + (r && r.label ? ' (' + r.label + ')' : '')
-      : a ? 'Mel and PJ have been told. Shows as "Client review needed" on the Content Manager until a version is sent.'
-      : 'Tick if this piece needs a client review. Mel and PJ are emailed and send it to the brand to check facts only.';
-    list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (askErr ? C.red : a && a.done ? C.green : '#80868d') + ';', note));
-  }
-
   /* ---------- 5.1: Socials tick ---------- */
   // Ticked: the Partners script makes Instagram, Facebook and LinkedIn posts for this article. Not live yet: they're
   // written when it goes live. They wait on the Content Manager's Socials tab to be checked and sent.
   function loadSocial() {
     if (!post) return;
-    // 7.7: the post's publish time and status, so the script knows whether it's covered by Socials by default
-    // (left off until Squarespace's record is read, so the script looks the post up itself rather than guessing)
-    fetch(C.socials + '?socialtick=' + encodeURIComponent(post) + '&t=' + encodeURIComponent(C.socialsToken) +
-          (postData && postData.id ? '&pub=' + (+postData.publishOn || 0) + '&wf=' + (+postData.workflowState || 0) : ''))
+    fetch(C.socials + '?socialtick=' + encodeURIComponent(post) + '&t=' + encodeURIComponent(C.socialsToken))
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d && d.ok) { social = d; socialErr = ''; }
@@ -2872,7 +2588,7 @@ try {
     row.appendChild(el('span', 'flex:1;', 'Make Instagram, Facebook and LinkedIn posts'));
     row.appendChild(el('span', 'font-size:11px;font-weight:600;color:#8a9097;', social && social.on && social.by ? String(social.by).replace(/ \(panel\)$/, '') : ''));
     list.appendChild(row);
-    var note = socialErr ? socialErr : !social ? 'Reading…' : social.on || social.label ? social.label : 'Made from the article\'s own title and excerpt when it goes live, ready to check on the Content Manager\'s Socials tab';
+    var note = socialErr ? socialErr : !social ? 'Reading…' : social.on ? social.label : 'Made from the article\'s own title and excerpt when it goes live, ready to check on the Content Manager\'s Socials tab';
     list.appendChild(el('div', 'margin:-2px 0 4px 25px;font:12px/1.45 ' + F + ';color:' + (socialErr || (social && social.status === 'failed') ? C.red : '#80868d') + ';', note));
   }
 
@@ -3093,10 +2809,7 @@ try {
       .then(function (r) { return r.json(); })
       .then(function (d) {
         var it = (d && d.item) || {};
-        var firstRead = !postData.id;
         postData = it;
-        if (firstRead && !fc) loadFc();   // 7.1: the Partner tag may only be known now, from Squarespace's record
-        if (firstRead && !socialBusy) loadSocial();   // 7.7: ask again now its publish time and status are known
         linksSeen(it); // after a save: did the links added from Help me write make it in?
         usesSeen(it);  // and the headlines, SEO titles, meta descriptions and URLs filled in by Use?
         var t = +it.publishOn || 0;
@@ -3418,7 +3131,7 @@ try {
     drawer.style.width = Math.min(DRAWER_W, w.innerWidth - 16) + 'px';
     // shrunk: just the title bar. Open: full size, or whatever room is left below it.
     drawer.style.height = drawerShut ? 'auto' : Math.max(220, Math.min(DRAWER_H, w.innerHeight - dpos.t - 16)) + 'px';
-    if (drawerInner && drawerInner.parentNode === drawer) drawerInner.style.display = drawerShut ? 'none' : 'flex';
+    if (drawerInner) drawerInner.style.display = drawerShut ? 'none' : 'flex';
     if (drawerChev) drawerChev.textContent = drawerShut ? '▸' : '▾';
   }
 
@@ -3462,8 +3175,7 @@ try {
     x.className = 'pe-x';
     x.setAttribute('aria-label', 'Close');
     x.title = 'Close';
-    // 7.0: closing the popped-out window puts Joe back in the panel's Joe tab
-    x.onclick = function () { drawer.style.display = 'none'; joePopped = false; DRAWER_W = 380; draw(); };
+    x.onclick = function () { drawer.style.display = 'none'; drawJoeBar(); };
     drawerHead.appendChild(x);
     movable(drawerHead,
       function () { setDrawerShut(!drawerShut); },                     // click: shrink or open
@@ -3475,21 +3187,9 @@ try {
     return drawerHead;
   }
 
-  // 7.0: everything that opened Joe (warning Suggest buttons, chips, Fill) now opens the panel's Joe tab on that
-  // tab. Only Pop out wider gives Joe its own window, as before 7.0.
   function openDrawer(tab) {
     if (tab) drawerTab = tab;
-    if (!joePopped && panel) {
-      panelTab = 'joe'; ls('pe-ck-tab', 'joe'); tabPicked = true;
-      if (mode === 'pill' || panel.style.display === 'none') mode = 'open';
-      draw();
-      return;
-    }
-    popJoe();
-  }
-  // Builds Joe's window and its inner part once, hidden
-  function makeDrawer() {
-    if (drawer && !drawer.isConnected) { drawer = null; drawerInner = null; }
+    if (drawer && !drawer.isConnected) drawer = null;
     if (!drawer) {
       drawer = el('div', 'position:fixed;z-index:10002;max-width:calc(100vw - 16px);display:flex;flex-direction:column;overflow:hidden;' +
         'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 16px 40px rgba(17,24,39,.16),0 2px 6px rgba(17,24,39,.06);' +
@@ -3511,60 +3211,13 @@ try {
       }
       doc.body.appendChild(drawer);
       doc.defaultView.addEventListener('resize', placeDrawer);
-      drawer.style.display = 'none';
     }
-  }
-  // Pop out wider: Joe in its own window, 560px wide, for the Image and Links tabs
-  function popJoe() {
-    makeDrawer();
-    joePopped = true;
-    DRAWER_W = 560;
-    if (drawerInner.parentNode !== drawer) drawer.appendChild(drawerInner);
     drawer.style.display = 'flex';
-    if (drawerShut) setDrawerShut(false);
+    // Opened from a warning's fix button: the person wants that tab, so don't leave it shrunk
+    if (tab && drawerShut) setDrawerShut(false);
     placeDrawer();
     drawDrawer();
-    if (panel) draw();
-  }
-  // The Joe tab: Joe's inner part moved into the panel, under a slim bar with help and Pop out wider
-  function showJoe() {
-    if (joePopped) {
-      joeHost.innerHTML = '';
-      var box = el('div', 'padding:16px;display:flex;flex-direction:column;gap:10px;font-size:13px;line-height:1.5;color:#444;');
-      box.appendChild(el('div', '', 'Joe is open in its own wider window.'));
-      var back = el('button', 'align-self:flex-start;padding:6px 14px;border:0;border-radius:6px;background:' + C.blue + ';color:#fff;font:700 12.5px ' + F + ';cursor:pointer;', 'Bring Joe back into the panel');
-      back.type = 'button';
-      back.onclick = function () { if (drawer) drawer.style.display = 'none'; joePopped = false; DRAWER_W = 380; draw(); };
-      box.appendChild(back);
-      joeHost.appendChild(box);
-      return;
-    }
-    makeDrawer();
-    if (drawerInner.parentNode !== joeHost) {
-      joeHost.innerHTML = '';
-      var bar = el('div', 'display:flex;align-items:center;gap:8px;padding:8px 14px 6px;');
-      var mark = el('span', 'flex:1;display:flex;align-items:center;gap:6px;color:' + C.blue + ';');
-      mark.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="display:block">' +
-        '<rect x="9" y="2.5" width="6" height="11" rx="3"/><path d="M5.5 10.5a6.5 6.5 0 0 0 13 0"/><path d="M12 17v4.5"/><path d="M8.5 21.5h7"/></svg>' +
-        '<span style="font-size:12px;font-weight:800;letter-spacing:.14em;">JOE</span>';
-      bar.appendChild(mark);
-      bar.appendChild(helpButton('Help for this tab', function () {
-        var t = drawerTabs().filter(function (d) { return d[0] === drawerTab; })[0];
-        openHelp('joe-' + drawerTab, 'Joe \u203a ' + (t ? t[1] : 'Joe'));
-      }));
-      var pop = el('button', 'padding:3px 10px;border:1px solid #d4d8dd;border-radius:5px;background:#fff;font:600 11.5px ' + F + ';color:#3c4043;cursor:pointer;', 'Pop out wider \u2197');
-      pop.type = 'button';
-      pop.title = 'Open Joe in its own wider window, handy for Image and Links';
-      pop.onclick = popJoe;
-      bar.appendChild(pop);
-      joeHost.appendChild(bar);
-      joeHost.appendChild(drawerInner);
-    }
-    drawerInner.style.display = 'flex';
-    // A fixed height inside the panel, so Joe's own list scrolls rather than the whole panel
-    var w = joeHost.ownerDocument.defaultView || window;
-    var h = Math.max(260, Math.min(560, w.innerHeight - 220));
-    drawerInner.style.height = (h - 36) + 'px';
+    drawJoeBar();
   }
 
   /* ---------- Joe bar (v3.0) ----------
@@ -3578,13 +3231,11 @@ try {
   var joeBar = null, joeBarRow = null, joeChips = null;
 
   // Short chip labels, so all six fit on two rows at most in a 300px panel
-  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image', overview: 'Advice' };
+  var JOE_CHIP = { headlines: 'Headlines', meta: 'Meta', url: 'URL', alt: 'Alt text', links: 'Links', image: 'Image', overview: 'Overview' };
 
   // Joe counts as open when its window is on the page and not closed with x
   function joeIsOpen() {
-    if (joePopped) return !!(drawer && drawer.isConnected && drawer.style.display !== 'none');
-    // 7.0: docked in the panel's Joe tab, with the panel open
-    return !!(panel && panelTab === 'joe' && panel.style.display !== 'none' && drawerInner && joeHost && drawerInner.parentNode === joeHost);
+    return !!(drawer && drawer.isConnected && drawer.style.display !== 'none');
   }
 
   // Built once by build(); position:sticky keeps it at the foot of the panel's scrolling area
@@ -3632,97 +3283,38 @@ try {
     });
   }
 
-  /* ---------- Joe's advice (8.7, 19 Nov 2026; was the Overview check, v3.5) ----------
-   * Why it exists: Google now answers many searches with its own AI summary, and fewer people click through.
-   * Joe's advice is there to win those clicks back, by checking that a piece keeps the promise its headline
-   * makes and that a searcher can see it comes from people who do the work.
-   *
-   * How it works:
-   *  - The writer says in one line what the piece is for. Joe gives no advice without it. The line is saved
-   *    with the post on Joe's server (pe-related-answers, /api/joe), so the whole team sees it.
-   *  - Joe answers under four fixed headings: What I understood, Is the promise kept?, Why would someone
-   *    click past Google?, What to do. Up to three suggestions, each saying where, what and why.
-   *  - The server reads the author's bio and the team's bios, and looks up our earlier coverage.
-   *  - There is no score and nothing is counted. An unchanged post always gets the same answer, earlier
-   *    suggestions come back word for word until they're covered, and covered ones are ticked off.
-   *  - The rules live on the server (functions-lib/joe.js in pe-related-answers): no verdicts unless the
-   *    headline promised one, no padding, news judged as news (News tag or category only).
+  /* ---------- Overview check (v3.5) ----------
+   * How much of this post could a Google AI summary hand a searcher without a click?
+   * Joe's server (Code.gs, task "overview") asks Claude for the searches the post is likely to
+   * rank for, whether a summary could answer each from public material, which paragraphs carry
+   * material only Production Expert has (testing, numbers, named people, opinion), three prompts
+   * for the writer and a note on the headline. The score is worked out in Code.gs so it's
+   * consistent: half from searches that need us, half from the share of paragraphs that are ours,
+   * plus 5 if one of the first three paragraphs is ours.
    * Advisory only: never a warning, never counted, never blocks Ready to schedule.
-   * Runs once by itself when a post reaches review, if the writer's line is there; otherwise on Check.
-   * The old Google Sheet task "overview" (Code.gs) is no longer called. */
+   * Runs once by itself when a post reaches review, otherwise on Check. Results are kept per post
+   * in this browser (pe-ov-<post>) and Code.gs caches the answer for six hours.
+   * Partner posts are treated the same, prompts included (v3.6). */
   var ovRes = null, ovFor = '', ovBusy = false, ovErr = '', ovAuto = false, ovMarked = false;
-  var ovSameNote = false;   // 8.8: true when the last check found nothing changed, so the saved answer came back
-  var ovPointNow = '', ovPointBy = '', ovReady = false;   // the writer's one line, who wrote it, and whether the server has answered
   var ovOpen = ls('pe-ov-open') === '1';
 
   // Embedded video and audio a reader can watch or hear and an AI summary can't (v3.8).
   // Squarespace video and audio blocks, embed blocks holding a known player, and bare players.
-  var OV_MEDIA = /youtube\.com|youtu\.be|youtube-nocookie\.com|vimeo\.com|wistia|soundcloud\.com|spotify\.com|bandcamp\.com|mixcloud\.com|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack|loom\.com|pe-related-answers\.pages\.dev\/stem-player/i;
-  var OV_AUDIO_HOST = /soundcloud|spotify|bandcamp|mixcloud|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack/i;
-  // 7.2: our own players (stem, A/B, blind test, clip player, mixer), made on the dashboard's Stems pages.
-  // In a Code Block they're a plain div until stem-player.js runs, and the editor never runs it, so they
-  // have to be found by their class. All five are audio.
-  var OV_PE_PLAYERS = '.pe-stems, .pe-ab, .pe-blind, .pe-clips, .pe-mix';
-
-  // 7.2: what a block really holds. In the editor Squarespace often keeps an embed's or Code Block's code in
-  // the block's settings (data-block-json) or in a data-html attribute and only draws the player when it's
-  // played, so the page itself has no iframe to find. This returns the block itself plus that stored code,
-  // read with DOMParser, which never runs scripts or loads anything.
-  function ovSources(e) {
-    var out = [e], code = [];
-    try {
-      var info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {};
-      if (info.html) code.push(String(info.html));
-      if (info.url) code.push('<iframe src="' + String(info.url).replace(/"/g, '&quot;') + '"></iframe>');
-    } catch (x) {}
-    Array.prototype.forEach.call(e.querySelectorAll('[data-html]'), function (d) { code.push(d.getAttribute('data-html') || ''); });
-    code.forEach(function (h) {
-      if (!h) return;
-      try { out.push(new DOMParser().parseFromString(h, 'text/html').body); } catch (x) {}
-    });
-    return out;
-  }
-  // The first match for a selector across the block and its stored code
-  function ovFind(e, sel) {
-    var srcs = ovSources(e);
-    for (var i = 0; i < srcs.length; i++) {
-      if (srcs[i].matches && srcs[i].matches(sel)) return srcs[i];
-      var f = srcs[i].querySelector(sel);
-      if (f) return f;
-    }
-    return null;
-  }
-  // What kind of player a block or bare player is: 'Video', 'Audio', or '' if it isn't one
+  var OV_MEDIA = /youtube\.com|youtu\.be|vimeo\.com|wistia|soundcloud\.com|spotify\.com|bandcamp\.com|mixcloud\.com|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack|loom\.com/i;
   function ovMedia(e) {
     if (e.matches('.sqs-block-video')) return 'Video';
     if (e.matches('.sqs-block-audio')) return 'Audio';
-    if (e.matches(OV_PE_PLAYERS) || ovFind(e, OV_PE_PLAYERS)) return 'Audio';   // 7.2: our own players
-    var srcs = ovSources(e);
-    for (var s = 0; s < srcs.length; s++) {
-      var root = srcs[s];
-      var players = root === e && !/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) ? root.querySelectorAll('iframe, video, audio')
-        : root === e ? [e] : root.querySelectorAll('iframe, video, audio');
-      for (var i = 0; i < players.length; i++) {
-        var f = players[i];
-        if (f.tagName === 'AUDIO') return 'Audio';
-        if (f.tagName === 'VIDEO') return 'Video';
-        var src = f.getAttribute('src') || f.getAttribute('data-src') || '';
-        if (f.tagName === 'IFRAME' && OV_MEDIA.test(src)) return OV_AUDIO_HOST.test(src) ? 'Audio' : 'Video';
-      }
+    var players = e.matches('.sqs-block-embed, .sqs-block-code') ? e.querySelectorAll('iframe, video, audio') : [e];
+    for (var i = 0; i < players.length; i++) {
+      var f = players[i];
+      if (f.tagName === 'AUDIO') return 'Audio';
+      if (f.tagName === 'VIDEO') return 'Video';
+      var src = f.getAttribute('src') || f.getAttribute('data-src') || '';
+      if (f.tagName === 'IFRAME' && OV_MEDIA.test(src)) return /soundcloud|spotify|bandcamp|mixcloud|podbean|buzzsprout|libsyn|anchor\.fm|simplecast|captivate|audiomack/i.test(src) ? 'Audio' : 'Video';
     }
-    // Squarespace marks some embeds with the provider's name instead
-    var prov = e.querySelector('[data-provider-name]');
-    if (prov) return OV_AUDIO_HOST.test(prov.getAttribute('data-provider-name') || '') ? 'Audio' : 'Video';
     return '';
   }
-  // 7.2: a table in the post, either in a Code Block (the dashboard's Tables tool) or pasted into a text block
-  function ovTable(e) {
-    if (e.tagName === 'TABLE') return e;
-    var t = ovFind(e, 'table');
-    return t && t.rows && t.rows.length >= 2 ? t : null;
-  }
-
-  // How each item is described to Claude: the text of a paragraph, or a label for a player, picture or table
+  // How each item is described to Claude: the text of a paragraph, or a label for a player
   function ovText(e) {
     var kind = e.getAttribute('data-pe-ov');
     if (!kind) return squash(e.textContent);
@@ -3733,36 +3325,9 @@ try {
       var cap = squash((e.querySelector('figcaption, .image-caption') || {}).textContent || '').slice(0, 160);
       return '[Image' + (alt ? ': ' + alt : '') + (cap && cap !== alt ? '. Caption: ' + cap : '') + (file ? '. File: ' + file.slice(0, 80) : '') + ']';
     }
-    if (kind === 'Table') { // 7.2: the table's size, its header row and as many rows as fit, so Claude can judge whose data it is
-      var tb = ovTable(e);
-      if (!tb) return '[Table]';
-      var rows = Array.prototype.map.call(tb.rows, function (r) {
-        return Array.prototype.map.call(r.cells, function (c) { return squash(c.textContent); }).join(' | ');
-      }).filter(Boolean);
-      var cols = tb.rows[0] ? tb.rows[0].cells.length : 0;
-      var tcap = squash((tb.querySelector('caption') || {}).textContent || '');
-      var body = rows.slice(1).join('; ');
-      if (body.length > 900) body = body.slice(0, 900) + '…';
-      return '[Table: ' + rows.length + ' rows, ' + cols + ' columns' + (tcap ? '. Caption: ' + tcap : '') +
-        '. Header: ' + (rows[0] || '') + '. Rows: ' + body + ']';
-    }
-    // 7.2: our own players say so plainly, with their title and the clips they hold
-    var pe = e.matches(OV_PE_PLAYERS) ? e : ovFind(e, OV_PE_PLAYERS);
-    if (pe) {
-      var cl = pe.classList;
-      var what = cl.contains('pe-blind') ? 'blind test' : cl.contains('pe-ab') ? 'A/B player' :
-        cl.contains('pe-clips') ? 'clip player' : cl.contains('pe-mix') ? 'mixer' : 'stem player';
-      var names = [];
-      try {
-        names = (JSON.parse(pe.getAttribute('data-tracks') || '[]') || []).map(function (t) { return squash(t && (t.name || t.label)); }).filter(Boolean);
-      } catch (x) {}
-      var ptitle = squash(pe.getAttribute('data-title') || pe.getAttribute('data-label') || '');
-      return '[Audio' + (ptitle ? ': ' + ptitle : '') + ', our own ' + what + ' with audio Production Expert recorded or prepared for this post' +
-        (names.length ? '. Clips: ' + names.join(', ').slice(0, 200) : '') + ']';
-    }
     var info = {};
     try { info = JSON.parse(e.getAttribute('data-block-json') || '{}') || {}; } catch (x) {}
-    var f = ovFind(e, 'iframe, video, audio') || e;
+    var f = e.querySelector('iframe, video, audio') || e;
     var src = info.url || info.audioAssetUrl || f.getAttribute('src') || f.getAttribute('data-src') || '';
     var host = '';
     try { host = new URL(src, location.href).hostname.replace(/^www\./, ''); } catch (x) {}
@@ -3772,30 +3337,14 @@ try {
     return '[' + kind + (title ? ': ' + title : '') + (host && !/squarespace/i.test(host) ? ', from ' + host : kind === 'Audio' ? ', uploaded to the post' : '') +
       (words && words !== title ? '. Caption: ' + words : '') + ']';
   }
-  // The article's paragraphs, list items, players, pictures and tables in reading order, stopping at the
-  // related links block
-  /* 8.8: where the article's text is read from. Editing on the page itself, the page holds the live text. In the
-   * Edit Post window (Edit from the post list) the page behind is only a preview that doesn't change until the
-   * post is saved, so Joe read the old text and gave the same advice after an edit. When that window is open,
-   * its own text is read instead. Any trouble finding it falls back to the page. */
-  function ovBody() {
-    var page = articleBody(), live = null;
-    try {
-      editDocs().some(function (doc) { live = doc.querySelector('.sqs-layout.sqs-editing'); return !!live; });
-      if (live && !(page && page.contains(live)) && live.querySelector('p')) return live;
-    } catch (e) {}
-    return page;
-  }
+  // The article's paragraphs, list items and players in reading order, stopping at the related links block
   function ovParas() {
-    var body = ovBody();
+    var body = articleBody();
     if (!body) return [];
-    // 7.2: start clean each time, so a block that changed since the last look is judged afresh
-    Array.prototype.forEach.call(body.querySelectorAll('[data-pe-ov]'), function (x) { x.removeAttribute('data-pe-ov'); });
     var out = [], stop = false;
-    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, table, .sqs-block-image, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, .sqs-block-html, ' + OV_PE_PLAYERS + ', iframe, video, audio'), function (e) {
+    Array.prototype.forEach.call(body.querySelectorAll('p, li, blockquote, .sqs-block-image, .sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, iframe, video, audio'), function (e) {
       if (stop) return;
       if (e.closest('.pe-ui, .pe-signup, .pe-author-bio, .pe-checklist, .pe-drawer')) return;
-      if (e.parentElement && e.parentElement.closest('[data-pe-ov]')) return; // counted with its block
       // Pictures in the body (v3.9). The hero (any picture before the first paragraph) and ad banners don't count
       if (e.matches('.sqs-block-image')) {
         var pic = e.querySelector('img');
@@ -3804,20 +3353,13 @@ try {
         out.push(e);
         return;
       }
-      // Text blocks are only looked at for a table inside them; their paragraphs are counted one by one below
-      if (e.matches('.sqs-block-html')) return;
-      // A table pasted into a text block (7.2)
-      if (e.tagName === 'TABLE') {
-        if (e.rows && e.rows.length >= 2) { e.setAttribute('data-pe-ov', 'Table'); out.push(e); }
-        return;
-      }
-      if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, ' + OV_PE_PLAYERS)) {
+      if (/^(IFRAME|VIDEO|AUDIO)$/.test(e.tagName) || e.matches('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code')) {
+        if (e.parentElement && e.parentElement.closest('.sqs-block-video, .sqs-block-audio, .sqs-block-embed, .sqs-block-code, [data-pe-ov]')) return; // counted with its block
         var kind = ovMedia(e);
-        // 7.2: a Code Block holding a table (the dashboard's Tables tool) counts as one item
-        if (!kind && e.matches('.sqs-block-code, .sqs-block-embed') && ovTable(e)) kind = 'Table';
         if (kind) { e.setAttribute('data-pe-ov', kind); out.push(e); }
         return;
       }
+      if (e.closest('[data-pe-ov]')) return;
       var t = squash(e.textContent);
       if (/You Might Also Find These Articles Useful/i.test(t)) { stop = true; return; }
       if (e.tagName === 'LI' && e.querySelector('p')) return;          // its paragraphs count instead
@@ -3826,90 +3368,59 @@ try {
     });
     return out;
   }
-  // What's saved for this post: first this browser's copy (so it shows at once), then the server's, which is
-  // the one the whole team shares
+  // A fingerprint of the headline and text, so the panel knows when the post changed after a check
+  function ovSig(paras) {
+    var s = postTitle() + '|' + paras.map(ovText).join('\n'), h = 0;
+    for (var i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) | 0;
+    return String(h);
+  }
   function ovLoad() {
-    if (ovFor === post || !post) return;
-    ovFor = post; ovRes = null; ovPointNow = ''; ovPointBy = ''; ovReady = false; ovErr = ''; ovAuto = false;
-    try {
-      var mine = JSON.parse(ls('pe-joe-' + post) || 'null');
-      if (mine) { ovPointNow = mine.point || ''; ovPointBy = mine.by || ''; ovRes = mine.advice && mine.advice.v === 2 ? mine.advice : null; }
-    } catch (e) {}
-    var asked = post;
-    fetch(C.joe + 'state?post=' + encodeURIComponent(post))
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        if (asked !== post) return;
-        ovReady = true;
-        if (d && d.ok) {
-          // The server's line wins, unless someone is typing a new one in this browser right now
-          var typing = drawer && drawer.ownerDocument.activeElement && drawer.ownerDocument.activeElement.getAttribute &&
-            drawer.ownerDocument.activeElement.getAttribute('data-keep') === 'joe-point';
-          if (!typing && d.point) { ovPointNow = d.point; ovPointBy = d.pointBy || ''; }
-          if (d.advice) ovRes = d.advice;
-          ovKeep();
-        }
-        draw();
-      })
-      .catch(function () { ovReady = true; });
+    if (ovFor === post) return;
+    ovFor = post;
+    try { ovRes = JSON.parse(ls('pe-ov-' + post) || 'null'); } catch (e) { ovRes = null; }
   }
-
-  /* ---------- Joe's advice: the lines Joe says and the parts he draws (8.7) ---------- */
-  function ovNews() { try { return adHoc() === 'News'; } catch (e) { return false; } }   // News tag or category only (Site 54)
+  function ovColour(n) { return n >= 70 ? C.green : n >= 40 ? C.amber : C.red; }
+  function ovTint(n) { return n >= 70 ? ['#eef6e6', '#cfe3b9', '#27500a'] : n >= 40 ? ['#fff8ec', '#f0dcb8', '#5a3a00'] : ['#fdecea', '#f2c4c0', '#791f1f']; }
   function ovPartner() { return !!document.querySelector('body.view-item article.hentry.tag-partner'); }
-  // The article as the numbered items Joe reads
-  function ovItems(paras) { return (paras || ovParas()).map(ovText); }
-  // True when the post's headline, line or text has changed since the advice was given. The server keeps the
-  // first 160 characters of each item with the advice, so this works for a colleague's check too.
-  function ovStale() {
-    if (!ovRes) return false;
-    if ((ovRes.point || '') !== ovPointNow) return true;
-    var now = ovItems().map(function (t) { return squash(t).slice(0, 160); });
-    return JSON.stringify(now) !== JSON.stringify(ovRes.items || []);
-  }
-  // Keeps the line and the advice in this browser too, so the panel shows them at once next time
-  function ovKeep() { ls('pe-joe-' + post, JSON.stringify({ point: ovPointNow, by: ovPointBy, advice: ovRes })); }
 
-  // Saves the writer's one line for the whole team
-  // (No redraw here: the box saves as the writer clicks away from it, and redrawing at that moment would swallow
-  // the click they were making, such as Check my piece. The panel's own redraw a few seconds later shows the note.)
-  function ovSavePoint(text) {
-    text = squash(text).slice(0, 240);
-    if (text === ovPointNow) return;
-    ovPointNow = text; ovPointBy = account().first || account().name || '';
-    ovKeep();
-    fetch(C.joe + 'point', { method: 'POST', body: JSON.stringify({ post: post, point: text, who: ovPointBy }) }).catch(function () {});
-  }
-
-  // One check. Joe gives no advice until the writer has said what the piece is for.
   function ovRun() {
     if (ovBusy) return;
-    if (!ovPointNow) { ovErr = 'Add your one line first: what is the point of this piece?'; draw(); return; }
     var paras = ovParas();
     if (paras.length < 4) { ovErr = 'There isn\'t enough article text yet to check'; draw(); return; }
-    ovBusy = true; ovErr = ''; ovSameNote = false;
+    ovBusy = true; ovErr = '';
     draw();
-    var au = authorOf();
+    var partner = ovPartner();
     var payload = {
-      post: post, title: postTitle(), seoTitle: seo().seoTitle || '', meta: seo().seoDescription || '',
-      url: postData.urlId || '', author: au.name || '', point: ovPointNow,
-      news: ovNews() ? 1 : 0, partner: ovPartner() ? 1 : 0,
-      items: ovItems(paras), who: account().first || account().name || ''
+      action: 'write', task: 'overview', title: postTitle(), seoTitle: seo().seoTitle || '',
+      meta: seo().seoDescription || '', url: postData.urlId || '', partner: partner ? 1 : 0,
+      paras: paras.length,
+      media: paras.filter(function (e) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || ''); }).length,
+      mediaItems: paras.map(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') ? i + 1 : 0; }).filter(Boolean).join(','),
+      images: paras.filter(function (e) { return e.getAttribute('data-pe-ov') === 'Image'; }).length,
+      imageItems: paras.map(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' ? i + 1 : 0; }).filter(Boolean).join(','),
+      text: paras.map(function (e, i) { return '[' + (i + 1) + '] ' + ovText(e); }).join('\n').slice(0, 15000),
+      tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', ')
     };
-    // Sent as plain text so the browser makes a simple request
-    fetch(C.joe + 'advice', { method: 'POST', body: JSON.stringify(payload) })
+    fetch(C.store, { method: 'POST', body: JSON.stringify(payload) })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         ovBusy = false;
-        if (d && d.ok && d.advice) { ovRes = d.advice; ovSameNote = !!d.same; ovKeep(); }
-        else ovErr = (d && d.message) || 'No answer came back';
+        if (d && d.overview) {
+          ovRes = d.overview;
+          ovRes.sig = ovSig(paras); ovRes.at = Date.now(); ovRes.partner = partner;
+          ovRes.media = payload.media;
+          ovRes.images = payload.images;
+          ovRes.mediaOurs = paras.filter(function (e, i) { return /^(Video|Audio)$/.test(e.getAttribute('data-pe-ov') || '') && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
+          ovRes.imagesOurs = paras.filter(function (e, i) { return e.getAttribute('data-pe-ov') === 'Image' && (ovRes.ours || []).indexOf(i + 1) >= 0; }).length;
+          ls('pe-ov-' + post, JSON.stringify(ovRes));
+        } else ovErr = d && d.error === 'Unknown task' ? 'Joe\'s server needs the Overview update (Code.gs) first' : ((d && d.error) || 'No answer came back');
         if (ovMarked) ovMark(true);
         draw();
       })
-      .catch(function () { ovBusy = false; ovErr = 'Could not reach Joe. Check your connection and try again.'; draw(); });
+      .catch(function () { ovBusy = false; ovErr = 'Could not reach the Google Sheet'; draw(); });
   }
 
-  // Show in the post: paragraphs only we could write get a green edge, ones a summary could repeat a grey wash
+  // Show in the post: paragraphs only we have get a green edge, restated ones a grey wash
   function ovMark(on) {
     ovMarked = on;
     var ours = (ovRes && ovRes.ours) || [];
@@ -3918,7 +3429,7 @@ try {
       e.style.background = on ? (mine ? '#eef6e6' : '#eceef1') : '';
       e.style.boxShadow = on && mine ? 'inset 3px 0 0 ' + C.green : '';
       e.style.borderRadius = on ? '3px' : '';
-      e.title = on ? (mine ? 'Only we can say this' : 'A Google summary could repeat this') : '';
+      e.title = on ? (mine ? 'Only ours' : 'Restates what\'s already public') : '';
     });
     if (on) {
       var first = ovParas().filter(function (e, i) { return ours.indexOf(i + 1) < 0; })[0];
@@ -3933,230 +3444,127 @@ try {
     b.onclick = fn;
     return b;
   }
-  // One of the four fixed headings. Sentence case, exactly as Russ approved them, never reworded.
-  function ovHead(text) { return el('div', 'margin:16px 0 5px;font:700 13.5px/1.35 ' + F + ';color:#1f2933;', text); }
-  function ovLine(text, colour) { return el('div', 'margin:3px 0;font-size:12.5px;line-height:1.5;color:' + (colour || '#3a4048') + ';', text); }
-  // One suggestion: where it goes (bold), what to do, and why the reader expects it. Ticked and struck through when done.
-  function ovPoint(s, done) {
-    var d = el('div', 'margin:8px 0;padding:3px 0 3px 10px;border-left:2px solid ' + (done ? '#c9ced4' : C.green) + ';font-size:12.5px;line-height:1.5;color:' + (done ? '#80868d' : '#333') + ';');
-    if (done) {
-      d.appendChild(el('span', 'color:' + C.green + ';font-weight:700;', '✓ '));
-      d.appendChild(el('span', 'text-decoration:line-through;', s.text || ''));
-      return d;
-    }
-    if (s.where) d.appendChild(el('div', 'font-weight:700;color:#1f2933;', s.where));
-    d.appendChild(el('div', '', s.what || ''));
-    if (s.link && s.link.url) {
-      var a = el('a', 'display:inline-block;margin-top:2px;color:' + C.blue + ';text-decoration:underline;', s.link.title + (s.link.year ? ' (' + s.link.year + ')' : ''));
-      a.href = s.link.url; a.target = '_blank'; a.rel = 'noopener';
-      d.appendChild(a);
-    }
-    if (s.why) d.appendChild(el('div', 'margin-top:2px;color:#5f6368;', 'Why: ' + s.why));
-    // 8.8: on a later check, what the writer's change did and what is still missing
-    if (s.note) d.appendChild(el('div', 'margin-top:4px;padding:4px 7px;border-radius:4px;background:#fff4e0;color:#5a3a00;', 'Still open: ' + s.note));
-    return d;
-  }
-  // The one-line summary shown on the Checks tab
-  function ovSummary(r) {
-    var n = (r.suggestions || []).length;
-    return (r.kept === 'no' ? 'promise not kept' : 'promise kept') + ', ' + (n ? n + (n === 1 ? ' suggestion' : ' suggestions') : 'nothing to add');
-  }
+  function ovNeeds(r) { return (r.searches || []).filter(function (s) { return s.needs; }).length; }
+  function ovPct(r) { return r.total ? Math.round(100 * (r.ours || []).length / r.total) : 0; }
 
-  // The Joe's advice section of the Checks tab: one line, opening to the first thing to do
+  // The Overview section of the checks panel: one line with the score, opening to a summary
   function drawOverview() {
     ovLoad();
     var wf = +postData.workflowState || 0;
-    // Runs once by itself when the post reaches review, if the writer's line is there and nobody has checked yet
-    if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3 && ovPointNow && ovReady) { ovAuto = true; setTimeout(ovRun, 0); }
+    // Runs once by itself when the post reaches review, if this browser has no result yet
+    if (!ovRes && !ovBusy && !ovErr && !ovAuto && wf === 3) { ovAuto = true; setTimeout(ovRun, 0); }
     if (!ovRes && !ovBusy && wf === 1) return; // nothing to show on a live post never checked
-    list.appendChild(sectionLabel('Joe\'s advice'));
+    list.appendChild(sectionLabel('Overview'));
     if (!ovRes) {
-      var r0 = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr && ovPointNow ? C.red : '#555') + ';');
-      r0.appendChild(el('span', 'flex:1;', ovBusy ? 'Joe is reading the post…'
-        : !ovPointNow ? 'Joe: add your one line to get advice'
-        : ovErr || 'Joe: does the piece keep its headline\'s promise?'));
-      if (!ovBusy) r0.appendChild(!ovPointNow ? ovSmall('Open Joe', function () { openDrawer('overview'); }, true) : ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
-      list.appendChild(r0);
+      var r = el('div', 'display:flex;align-items:center;gap:8px;padding:3px 0;font-size:13px;line-height:1.4;color:' + (ovErr ? C.red : '#555') + ';');
+      r.appendChild(el('span', 'flex:1;', ovBusy ? 'Checking how much a Google summary could give away…'
+        : ovErr || 'How much of this could a Google summary give away?'));
+      if (!ovBusy) r.appendChild(ovSmall(ovErr ? 'Try again' : 'Check', ovRun, true));
+      list.appendChild(r);
       return;
     }
-    var stale = ovStale(), bad = ovRes.kept === 'no';
-    var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid #e1e4e8;border-radius:6px;background:#f6f7f9' +
-      ';text-align:left;font:13px/1.4 ' + F + ';color:#3a4048;cursor:pointer;');
+    var n = +ovRes.score || 0, t = ovTint(n), stale = ovRes.sig !== ovSig(ovParas());
+    var row = el('button', 'display:flex;align-items:center;gap:8px;width:100%;margin:2px 0;padding:6px 9px;border:1px solid ' + t[1] + ';border-radius:6px;background:' + t[0] +
+      ';text-align:left;font:13px/1.4 ' + F + ';color:' + t[2] + ';cursor:pointer;');
     row.type = 'button';
-    row.title = 'Joe checks that the piece keeps its headline\'s promise and gives a searcher a reason to click past Google\'s summary';
-    row.appendChild(el('span', 'flex:1;', 'Joe: ' + (ovBusy ? 'reading…' : ovSummary(ovRes)) + (stale ? ' (edited since)' : '')));
-    row.appendChild(el('span', 'font-size:11px;color:#5f6368;', ovOpen ? '▴' : '▾'));
-    row.style.borderLeft = '3px solid ' + (bad ? C.amber : C.green);
+    row.title = 'How much of this post a Google AI summary could give away. Higher is better.';
+    row.appendChild(el('span', 'flex:1;', 'Overview score' + (stale ? ' (edited since)' : '')));
+    row.appendChild(el('span', 'font-weight:700;font-variant-numeric:tabular-nums;color:' + ovColour(n) + ';', ovBusy ? '…' : n + '/100'));
+    row.appendChild(el('span', 'font-size:11px;color:' + ovColour(n) + ';', ovOpen ? '▴' : '▾'));
     row.onclick = function () { ovOpen = !ovOpen; ls('pe-ov-open', ovOpen ? '1' : '0'); draw(); };
     list.appendChild(row);
     if (!ovOpen) return;
     var box = el('div', 'padding:6px 2px 4px;font-size:12.5px;line-height:1.45;color:#444;');
-    var p = (ovRes.suggestions || [])[0];
-    if (p) box.appendChild(ovPoint(p, false));
-    else box.appendChild(el('div', '', 'Nothing to add.'));
-    var dn = (ovRes.done || []).length;
-    if (dn) box.appendChild(el('div', 'color:#5f6368;', dn + (dn === 1 ? ' point' : ' points') + ' from earlier checks done.'));
-    if (stale) box.appendChild(el('div', 'margin-top:4px;color:#5a3a00;', 'The post has changed since. Check again to update the advice.'));
+    var s = ovRes.searches || [];
+    box.appendChild(el('div', '', ovNeeds(ovRes) + ' of ' + s.length + ' likely searches need us. ' + ovPct(ovRes) + '% of the post is only ours.'));
+    var p = (ovRes.prompts || [])[0];
+    if (p) box.appendChild(el('div', 'margin:7px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;', p));
     if (ovErr) box.appendChild(el('div', 'margin:4px 0;color:' + C.red + ';', ovErr));
     var btns = el('div', 'display:flex;gap:6px;margin-top:6px;');
-    btns.appendChild(ovSmall('All four answers in Joe', function () { openDrawer('overview'); }, true));
+    btns.appendChild(ovSmall('Full report in Joe', function () { openDrawer('overview'); }, true));
     btns.appendChild(ovSmall(ovBusy ? 'Checking…' : 'Check again', ovRun));
     box.appendChild(btns);
     box.appendChild(el('div', 'margin-top:6px;font-size:11.5px;color:#80868d;', 'Advisory only. Doesn\'t count as a warning.'));
     list.appendChild(box);
   }
 
-  // Joe's Advice tab. Always in the same order: why it exists, the writer's one line, the button, then the four
-  // fixed headings. An author who has used it once knows where to look the next time.
-  /* 9.0: a reviewer can pass Joe's advice to the author (Mike, 20 Nov 2026). Joe speaks to the writer, and when
-   * someone else checks a post the writer is the one who should act on it, and the one best placed to write the one
-   * line. Both go through the existing Flag for author route: the note is saved on the post, shows at the top of the
-   * Notes tab and is emailed to the author, who marks it read; anyone marks it Resolved once it's dealt with. */
-  var ovSendMsg = '', ovSendBusy = false;
-  function ovIsAuthor() { var au = authorOf(), me = account(); return !!(au.id && me.id && au.id === me.id); }
-  function ovFirst() { var n = authorOf().name || ''; return n ? n.split(' ')[0] : 'the author'; }
-  // Joe's advice as one note, kept inside the note limit: the promise, then each suggestion with where, what and why
-  function ovAdviceText(r) {
-    var head = 'Joe\'s advice on this piece (sent from the Advice tab). Is the promise kept? ' + (r.kept === 'no' ? 'Not yet. ' : 'Yes. ') + (r.keptWhy || '');
-    var pts = (r.suggestions || []).map(function (x, i) {
-      return (i + 1) + '. ' + (x.where ? x.where.replace(/[:.]?\s*$/, ': ') : '') + (x.what || '') + (x.link && x.link.title ? ' (' + x.link.title + ')' : '') + (x.why ? ' Why: ' + x.why : '');
-    });
-    var text = head + '\n\n' + (pts.length ? 'What to do:\n' + pts.join('\n') : 'Nothing to add.') + '\n\nOpen Joe > Advice and press Check again once you\'ve made changes.';
-    if (text.length > NOTE_MAX) { // too long: drop the reasons first, then trim
-      pts = (r.suggestions || []).map(function (x, i) { return (i + 1) + '. ' + (x.where ? x.where.replace(/[:.]?\s*$/, ': ') : '') + (x.what || ''); });
-      text = head + '\n\nWhat to do:\n' + pts.join('\n') + '\n\nThe reasons are in Joe > Advice.';
-    }
-    return text.slice(0, NOTE_MAX);
-  }
-  function ovSend(text, what) {
-    if (ovSendBusy) return;
-    if (!confirm('Send ' + what + ' to ' + (authorOf().name || 'the author') + '? They\'ll get an email, and it shows at the top of the Notes tab until someone marks it Resolved.')) return;
-    ovSendBusy = true; ovSendMsg = 'Sending…'; drawDrawer();
-    flagCall('add', { text: text }).then(function (d) {
-      ovSendMsg = d.needEmail ? 'Saved on the post, but there\'s no email address on file for ' + (d.author || ovFirst()) + '. Add one on the note in the Notes tab.'
-        : d.capped ? 'Saved on the post, but today\'s email limit is reached.'
-        : d.sent && d.sent.length ? 'Sent to ' + d.sent.join(', ') + '. It\'s also in the Notes tab.' : 'Saved in the Notes tab.';
-    }).catch(function (e) { ovSendMsg = 'Not sent: ' + (e.message || e) + '. Try again.'; })
-      .then(function () { ovSendBusy = false; drawDrawer(); });
-  }
-  // The send buttons, shown to anyone who isn't the author, once the sheet can take flags
-  function ovSendRow(body, kind) {
-    if (ovIsAuthor() || !flagsOn || !authorOf().id) return;
-    var row = el('div', 'margin:10px 0 2px;padding:9px 11px;border-radius:6px;background:#f3f6f9;font-size:12.5px;line-height:1.45;color:#3a4048;');
-    if (kind === 'line') {
-      row.appendChild(el('div', '', 'This is ' + ovFirst() + '\'s piece, and the one line is best written by them.'));
-      var ask = ovSmall(ovSendBusy ? 'Sending…' : 'Ask ' + ovFirst() + ' for their line', function () {
-        ovSend('Could you add your one line in Joe > Advice (Joe tab in the checks panel): in one line, what is the point of this piece? Joe can\'t give advice on it until you do.', 'a request for the one line');
-      }, true);
-      ask.style.marginTop = '6px';
-      row.appendChild(ask);
-    } else {
-      row.appendChild(el('div', '', 'Joe speaks to the writer. If you\'re reviewing ' + ovFirst() + '\'s piece, send this advice to them to act on.'));
-      var send = ovSmall(ovSendBusy ? 'Sending…' : 'Send this advice to ' + ovFirst(), function () { ovSend(ovAdviceText(ovRes), 'Joe\'s advice'); }, true);
-      send.style.marginTop = '6px';
-      row.appendChild(send);
-    }
-    if (ovSendMsg) row.appendChild(el('div', 'margin-top:5px;color:' + (/^Not sent/.test(ovSendMsg) ? C.red : /^Sent|Saved in/.test(ovSendMsg) ? C.green : '#5a3a00') + ';', ovSendMsg));
-    body.appendChild(row);
-  }
-
+  // Joe's Overview tab: the full report
   function drawOverviewTab(body) {
     ovLoad();
-    // 1. Why this exists. Always on show, so nobody has to wonder what the tab is for.
-    body.appendChild(el('div', 'margin:14px 0 0;padding:10px 12px;border-radius:6px;background:#f3f6f9;font-size:12.5px;line-height:1.5;color:#3a4048;',
-      'Google\'s summaries can repeat facts. They can\'t repeat our experience or our opinion. Joe checks that your piece keeps the promise in its headline, and that a searcher can see why ours is the one to read.'));
-
-    // 2. The writer's one line. Saved with the post for the whole team.
-    body.appendChild(el('label', 'display:block;margin:14px 0 4px;font:700 13px/1.4 ' + F + ';color:#1f2933;', 'In one line, what is the point of this piece?'));
-    var box = el('input', 'box-sizing:border-box;width:100%;padding:7px 9px;border:1px solid #c9ced4;border-radius:6px;font:13px/1.4 ' + F + ';color:#222;background:#fff;');
-    box.type = 'text'; box.maxLength = 240; box.value = ovPointNow;
-    box.placeholder = 'For example: show mixers a faster way to ride vocals without automation';
-    box.setAttribute('data-keep', 'joe-point');   // keeps its words and cursor while the panel redraws
-    box.onchange = function () { ovSavePoint(box.value); };
-    box.onkeydown = function (e) { if (e.key === 'Enter') { e.preventDefault(); box.blur(); ovSavePoint(box.value); if (ovPointNow) ovRun(); } };   // 9.1: blur, done typing
-    body.appendChild(box);
-    body.appendChild(el('div', 'margin-top:3px;font-size:11.5px;color:#80868d;', ovPointNow
-      ? 'Saved with the post for the whole team' + (ovPointBy ? ' (' + ovPointBy + ')' : '') + '. Changing it starts Joe\'s advice afresh.'
-      : 'Joe gives no advice until this is filled in. Everyone who checks the post will see it.'));
-    if (!ovPointNow) ovSendRow(body, 'line');   // 9.0: a reviewer can ask the author for it
-
-    // 3. The button
-    var go = actionButton(ovBusy ? 'Joe is reading…' : ovRes ? 'Check again' : 'Check my piece', function () { ovSavePoint(box.value); ovRun(); }, !ovRes);
-    body.appendChild(go);
-    if (ovErr) body.appendChild(el('div', 'margin:-4px 0 8px;color:' + C.red + ';font-size:13px;', ovErr));
-    if (!ovRes) return;
-
-    var r = ovRes, stale = ovStale();
-    body.appendChild(el('div', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at) + (r.by ? ' by ' + r.by : '') + '.'));
-    // 8.8: Joe says what he saw change, so an author is never left wondering whether their edit was read
-    if (ovSameNote) {
-      body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
-        'I can\'t see any change to the headline, description, your line or the article since the last check, so my answer is the same. If you\'ve made changes that aren\'t showing here, save the post and check again.'));
-    } else if (r.last && r.last.later && !stale) {
-      var ch = r.last.changed || 0, tk = r.last.ticked || 0;
-      body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#eef6e6;color:#2c4a1c;font-size:12.5px;line-height:1.45;',
-        'Since the last check I read ' + (ch ? ch + (ch === 1 ? ' new or changed paragraph' : ' new or changed paragraphs') : 'no changed paragraphs (the headline or description changed)') + '. ' +
-        (tk ? tk + (tk === 1 ? ' suggestion is' : ' suggestions are') + ' now ticked off.' : 'No earlier suggestion is fully covered yet. Each one below says what is still missing.')));
+    if (!ovRes) {
+      body.appendChild(el('div', 'margin:14px 0 0;font-size:13px;line-height:1.5;color:#444;',
+        'Claude reads the post, works out the searches it\'s likely to rank for, and checks how much a Google AI summary could answer without anyone clicking through. Then it suggests what to add that only Production Expert can say.'));
+      if (ovBusy) body.appendChild(el('div', 'padding:12px 0;color:#777;', 'Checking…'));
+      else body.appendChild(actionButton('Check this post', ovRun, true));
+      if (ovErr) body.appendChild(el('div', 'color:' + C.red + ';font-size:13px;', ovErr));
+      return;
     }
-    if (stale) body.appendChild(el('div', 'margin:8px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
-      'The post has changed since this check. Check again to tick off what you\'ve covered.'));
-
-    // 4. The four headings, word for word, in this order, on every check
-    body.appendChild(ovHead('What I understood'));
-    body.appendChild(ovLine('Your point: ' + (r.understood || r.point)));
-    body.appendChild(ovLine('Your headline promises: ' + r.promise + (r.quote ? ' (“' + r.quote + '”)' : '')));
-    body.appendChild(ovLine(r.author && r.author.house ? 'Written under the Production Expert byline, so I\'ve gone by the site\'s standing.'
-      : 'Written by ' + ((r.author && r.author.name) || 'an author I couldn\'t read') + (r.author && r.author.bio ? ', whose bio I\'ve read.' : '. I couldn\'t find a bio for that name, so I know nothing of their background.'), '#5f6368'));
-    if (r.news) body.appendChild(ovLine('Tagged News, so I haven\'t asked for testing, impressions or buying advice.', '#5f6368'));
-
-    body.appendChild(ovHead('Is the promise kept?'));
-    var k = el('div', 'margin:3px 0;font-size:12.5px;line-height:1.5;color:#3a4048;');
-    k.appendChild(el('span', 'font-weight:700;color:' + (r.kept === 'no' ? C.amber : C.green) + ';', r.kept === 'no' ? 'Not yet. ' : 'Yes. '));
-    k.appendChild(el('span', '', r.keptWhy || ''));
-    body.appendChild(k);
-
-    body.appendChild(ovHead('Why would someone click past Google?'));
-    body.appendChild(ovLine(r.click || ''));
-    body.appendChild(ovLine(r.clickVisible === 'no' ? 'A searcher can\'t see that from the headline and description yet.' : 'A searcher can see that from the headline and description.', r.clickVisible === 'no' ? '#5a3a00' : '#5f6368'));
-
-    body.appendChild(ovHead('What to do'));
-    if ((r.suggestions || []).length) r.suggestions.forEach(function (s) { body.appendChild(ovPoint(s, false)); });
-    else body.appendChild(ovLine('Nothing to add.'));
-    if ((r.done || []).length) {
-      body.appendChild(sectionLabel('Done since earlier checks'));
-      r.done.forEach(function (p) { body.appendChild(ovPoint(p, true)); });
+    var r = ovRes, n = +r.score || 0, stale = r.sig !== ovSig(ovParas());
+    var top = el('div', 'display:flex;align-items:baseline;gap:8px;margin-top:12px;');
+    top.appendChild(el('span', 'font:700 26px/1 ' + F + ';color:' + ovColour(n) + ';font-variant-numeric:tabular-nums;', String(n)));
+    top.appendChild(el('span', 'font-size:13px;color:#80868d;', '/ 100'));
+    top.appendChild(el('span', 'flex:1;'));
+    top.appendChild(el('span', 'font-size:11.5px;color:#80868d;', 'Checked ' + when(r.at)));
+    body.appendChild(top);
+    var bar = el('div', 'height:6px;margin:8px 0 6px;border-radius:3px;background:#eceef1;overflow:hidden;');
+    bar.appendChild(el('div', 'height:100%;width:' + Math.max(2, Math.min(100, n)) + '%;background:' + ovColour(n) + ';'));
+    body.appendChild(bar);
+    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:' + ovTint(n)[2] + ';',
+      n >= 70 ? 'Most of this needs a click. A summary can\'t give it away.'
+        : n >= 40 ? 'A summary could cover a fair part of this. The prompts below would strengthen it.'
+        : 'Most of this a Google summary can give away. Add what only you know.'));
+    if (stale) {
+      var st = el('div', 'margin:10px 0 0;padding:8px 10px;border-radius:6px;background:#fff4e0;color:#5a3a00;font-size:12.5px;line-height:1.45;',
+        'The post has changed since this check.');
+      body.appendChild(st);
     }
 
-    // Only when a colleague's working background is a clearly closer match to the subject
-    if (r.second && r.second.name) {
-      body.appendChild(ovHead('Worth a second opinion'));
-      body.appendChild(ovLine(r.second.name + ': “' + r.second.bio + '”. ' + (r.second.why || '')));
-      body.appendChild(ovLine('Their view would add weight before this goes out. It\'s your call whether to ask.', '#5f6368'));
+    body.appendChild(sectionLabel('Likely searches'));
+    (r.searches || []).forEach(function (s, i) {
+      var q = el('div', 'display:flex;justify-content:space-between;gap:10px;padding:5px 0;font-size:12.5px;line-height:1.4;' + (i ? 'border-top:1px solid #eceef1;' : ''));
+      q.appendChild(el('span', 'flex:1;', s.q));
+      q.appendChild(el('span', 'flex:0 0 auto;font-weight:600;color:' + (s.needs ? C.green : C.red) + ';', s.needs ? 'Needs us' : 'Answered'));
+      body.appendChild(q);
+    });
+
+    body.appendChild(sectionLabel('Only ours: ' + ovPct(r) + '%'));
+    body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;',
+      (r.ours || []).length + ' of ' + r.total + ' items carry testing, numbers, named people, opinion, or our own screenshots, audio and video. The rest restate what\'s already public.'));
+    if (r.media) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
+      r.media + (r.media === 1 ? ' player' : ' players') + ' in the post' + (r.mediaOurs != null ? ', ' + r.mediaOurs + ' counted as ours' : '') + '. A summary can\'t play them' +
+      (r.mediaBonus ? ', so they add ' + r.mediaBonus + ' to the score.' : '.')));
+    if (r.images) body.appendChild(el('div', 'margin-top:4px;font-size:12.5px;line-height:1.45;color:#555;',
+      r.images + (r.images === 1 ? ' picture' : ' pictures') + ' in the body, ' + (r.imagesOurs || 0) + ' counted as our own screenshots or graphics' +
+      (r.imageBonus ? ', adding ' + r.imageBonus + ' to the score.' : '.')));
+    var sh = ovSmall(ovMarked ? 'Hide in the post' : 'Show in the post', function () { ovMark(!ovMarked); drawDrawer(); });
+    sh.style.marginTop = '7px';
+    body.appendChild(sh);
+
+    // Partner posts get prompts too: our own view is what makes partner content credible (v3.6)
+    body.appendChild(sectionLabel('Add what Google can\'t'));
+    if ((r.prompts || []).length) r.prompts.forEach(function (p) {
+      body.appendChild(el('div', 'margin:6px 0;padding:2px 0 2px 9px;border-left:2px solid ' + C.green + ';border-radius:0;font-size:12.5px;line-height:1.45;', p));
+    });
+    // Joe can now return fewer than three prompts, or none, when the draft already does the job (v3.7)
+    else body.appendChild(el('div', 'font-size:12.5px;line-height:1.45;color:#555;', 'Nothing to add. The draft already gives a summary little to take.'));
+    if (r.headline) {
+      body.appendChild(sectionLabel('Headline'));
+      var h = el('div', 'display:flex;gap:8px;align-items:flex-start;font-size:12.5px;line-height:1.45;color:#555;');
+      h.appendChild(el('span', 'flex:1;', r.headline));
+      var sg = ovSmall('Suggest', function () { openDrawer('headlines'); });
+      sg.style.borderColor = '#e3c79a'; sg.style.color = '#5a3a00';
+      h.appendChild(sg);
+      body.appendChild(h);
     }
-
-    if ((r.suggestions || []).length) ovSendRow(body, 'advice');   // 9.0: pass it to the author
-
-    var tools = el('div', 'display:flex;gap:6px;flex-wrap:wrap;margin-top:14px;');
-    tools.appendChild(ovSmall(ovMarked ? 'Hide in the post' : 'Show what a summary could repeat', function () { ovMark(!ovMarked); drawDrawer(); }));
-    tools.appendChild(ovSmall('Suggest headlines', function () { openDrawer('headlines'); }));
-    body.appendChild(tools);
-    body.appendChild(el('div', 'margin-top:10px;font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
+    if (ovErr) body.appendChild(el('div', 'margin-top:10px;color:' + C.red + ';font-size:13px;', ovErr));
+    body.appendChild(actionButton(ovBusy ? 'Checking…' : 'Check again', ovRun));
+    body.appendChild(el('div', 'font-size:12px;color:#777;', 'Advisory only. It never counts as a warning or blocks scheduling.'));
   }
 
   function articleText() {
     var body = articleBody();
     if (!body) return '';
-    // 7.2: label the players and tables first, so the copy can say what they are. Without this Joe's other tabs
-    // saw nothing where a video, an audio example or a stem player sat, and a table as loose words.
-    try { ovParas(); } catch (x) {}
     var copy = body.cloneNode(true);
-    Array.prototype.forEach.call(copy.querySelectorAll('[data-pe-ov]'), function (x) {
-      var kind = x.getAttribute('data-pe-ov');
-      if (kind === 'Image') return;   // pictures stay as they were
-      var label = '';
-      try { label = ovText(x); } catch (y) {}
-      if (label) x.replaceWith(document.createTextNode('\n' + label + '\n'));
-    });
     Array.prototype.forEach.call(copy.querySelectorAll('.pe-ui, .pe-signup, .pe-author-bio, script, style, noscript'), function (x) { x.remove(); });
     var t = (copy.innerText || copy.textContent || '').replace(/\n{3,}/g, '\n\n');
     // stop at the related links block, which isn't part of the article itself
@@ -4177,26 +3585,13 @@ try {
     return el('span', 'flex:0 0 auto;padding-top:2px;font-size:11px;font-weight:600;font-variant-numeric:tabular-nums;color:' + (bad ? C.amber : '#8a9097') + ';', n + (max ? '/' + max : ''));
   }
 
-  /* 8.7: a headline makes a promise and the article must keep it (Russ, 19 Nov 2026). Where the article holds real
-   * first-hand experience, at least one suggested headline should let a searcher see that a practitioner is behind
-   * it, because that is what a Google summary sitting above our result visibly lacks. Shown, never claimed. */
-  var HEADLINE_NOTE = '[Note to whoever writes these headlines, not part of the article: every headline makes a promise and the ' +
-    'article must keep it. Never promise anything the article below does not deliver: no "tested", "review", "compared", number of ' +
-    'tips or length of time in use unless the article really has it, and no question the article does not answer. Never give the ' +
-    'conclusion away, and never promise a verdict or a buy or skip ruling unless the article gives one. If the article contains real ' +
-    'first-hand experience of its subject (use on real work, testing, time spent with it, or a named professional\'s account), at ' +
-    'least one option must show a searcher that a practitioner is behind it, by saying what was done or naming the writer\'s trade, ' +
-    'near the start of the headline and without boasting words such as "expert". If the article has no first-hand experience, do ' +
-    'not suggest that it has. If the post is news, report the news.]';
   function suggestWrite(task, more) {
     var prev = writeSuggest[task] || {};
     writeSuggest[task] = { status: 'loading', options: prev.options || [] };
     drawDrawer();
     var payload = {
       action: 'write', task: task, title: postTitle(), seoTitle: seo().seoTitle || '',
-      meta: seo().seoDescription || '', url: postData.urlId || '',
-      // 8.7: headline suggestions carry the promise rule (see HEADLINE_NOTE)
-      text: task === 'headlines' ? (HEADLINE_NOTE + '\n' + articleText()).slice(0, 15000) : articleText(),
+      meta: seo().seoDescription || '', url: postData.urlId || '', text: articleText(),
       tags: (postData.tags || []).join(', '), categories: (postData.categories || []).join(', '),
       avoid: more ? (prev.options || []).join('\n') : ''
     };
@@ -4529,7 +3924,7 @@ try {
     if (!drawer) return false;
     if (joeMouseDown) return true;
     var s = drawer.ownerDocument.getSelection && drawer.ownerDocument.getSelection();
-    return !!(s && !s.isCollapsed && s.rangeCount && drawerInner && drawerInner.contains(s.anchorNode)); // 7.0: docked or popped
+    return !!(s && !s.isCollapsed && s.rangeCount && drawer.contains(s.anchorNode));
   }
   function watchJoeHighlight(box) {
     var doc = box.ownerDocument;
@@ -4548,11 +3943,6 @@ try {
     if (joeHighlighting()) { joeDrawWaiting = true; return; }
     // only the part under the title bar is redrawn; keep the reader's scroll position
     var scroll = drawerInner.lastChild ? drawerInner.lastChild.scrollTop : 0;
-    // 9.0: when Joe sits in the panel's tab it's the panel that scrolls, not Joe's own body, and emptying Joe for a
-    // moment pulled the panel back to the top every few seconds (Mike, 20 Nov 2026: reading What to do kept jumping
-    // to the top). So the scroll of every box around Joe is noted here and put back after the redraw.
-    var outer = [];
-    for (var up = drawerInner.parentNode; up && up.nodeType === 1; up = up.parentNode) if (up.scrollTop) outer.push([up, up.scrollTop]);
     // The checklist redraws Joe every few seconds. A text box someone is typing in (marked with
     // data-keep) keeps its words, cursor and focus across the redraw (v1.5)
     var act = drawer.ownerDocument.activeElement, kept = null;
@@ -4578,24 +3968,15 @@ try {
     if (drawerTab === 'image' && !imageOn()) drawerTab = 'headlines';
     if (drawerTab === 'alt') drawAltTab(body); else if (drawerTab === 'links') drawLinksTab(body);
     else if (drawerTab === 'image') drawImageTab(body); else if (drawerTab === 'overview') drawOverviewTab(body); else drawWriteTab(body);
+    body.scrollTop = scroll;
     if (kept) {
       var again = body.querySelector('[data-keep="' + kept.key + '"]');
       if (again) {
         again.value = kept.value;
-        // 9.1: putting the cursor back made the browser scroll the box into view. The one-line box sits at the top
-        // of the Advice tab and keeps the cursor after it's typed in, so every redraw pulled the panel back to the
-        // top (Mike and Russ, 20 Nov 2026; v9.0 put the scroll back before this, so the jump stayed)
-        try { again.focus({ preventScroll: true }); } catch (e) { again.focus(); }
+        again.focus();
         try { again.setSelectionRange(kept.a, kept.b); } catch (e) {}
       }
     }
-    // the scroll goes back last, after anything that could move it
-    function putBack() {
-      body.scrollTop = scroll;
-      outer.forEach(function (o) { if (o[0].scrollTop !== o[1]) o[0].scrollTop = o[1]; });   // 9.0: the panel stays where the reader left it
-    }
-    putBack();
-    if (window.requestAnimationFrame) requestAnimationFrame(putBack);   // 9.1: and once more after the browser lays it out
   }
 
   function drawWriteTab(body) {
@@ -5464,7 +4845,7 @@ try {
   function drawerTabs() {
     var t = linksOn() ? TABS.concat([['links', 'Links']]) : TABS;
     t = imageOn() ? t.concat([['image', 'Image']]) : t;
-    return t.concat([['overview', 'Advice']]); // v3.5, for everyone; called Advice since 8.5 (no score)
+    return t.concat([['overview', 'Overview']]); // v3.5, for everyone
   }
 
   function tierOf(v) {
@@ -6027,29 +5408,16 @@ try {
 
   /* ---------- Moving the panel ---------- */
 
-  // The pill sits at a spot measured from the bottom-right corner of the window.
-  // 7.1: the open panel is measured from the TOP-right corner instead (Russ, 12 Nov 2026: it should stay where it
-  // is and just be shorter). Its top edge never moves when a tab is shorter or longer; only its height changes.
+  // The panel and pill share one spot, measured from the bottom-right corner of the window
   var pos = { r: 16, b: 16 };
-  var ppos = { r: 16, t: 80 };                 // the open panel: gap from the right and top edges
-  try { var psaved = JSON.parse(ls('pe-ck-ppos') || 'null'); if (psaved && psaved.r >= 0 && psaved.t >= 0) ppos = { r: psaved.r, t: psaved.t }; } catch (e) {}
   function place() {
     if (!panel) return;
     var w = panel.ownerDocument.defaultView;
     pos.r = Math.max(0, Math.min(w.innerWidth - 80, pos.r));
     pos.b = Math.max(0, Math.min(w.innerHeight - 44, pos.b));
-    pill.style.right = pos.r + 'px'; pill.style.bottom = pos.b + 'px';
-    ppos.r = Math.max(0, Math.min(w.innerWidth - 120, ppos.r));
-    ppos.t = Math.max(0, Math.min(w.innerHeight - 120, ppos.t));
-    panel.style.right = ppos.r + 'px'; panel.style.top = ppos.t + 'px'; panel.style.bottom = 'auto';
-    panel.style.maxHeight = Math.max(160, w.innerHeight - ppos.t - 16) + 'px';
+    [panel, pill].forEach(function (e) { e.style.right = pos.r + 'px'; e.style.bottom = pos.b + 'px'; });
+    panel.style.maxHeight = Math.max(160, w.innerHeight - pos.b - 16) + 'px';
   }
-  // How a drag of the panel's title bar moves it (top-right based)
-  var panelSpot = {
-    get: function () { return { r: ppos.r, t: ppos.t }; },
-    set: function (start, dx, dy) { ppos.r = start.r - dx; ppos.t = start.t + dy; place(); },
-    save: function () { ls('pe-ck-ppos', JSON.stringify(ppos)); }
-  };
   // A click does the usual thing; a drag of more than a few pixels moves it instead
   // onDouble (optional): a double-click does that instead, so the single click waits a moment
   // spot (optional): which box is being moved. Defaults to the checklist panel and pill.
@@ -6109,7 +5477,7 @@ try {
     setInterval(function () { if (!fcBusy && document.visibilityState === 'visible') loadFc(); }, 120000);
     setInterval(function () { if (!socialBusy && document.visibilityState === 'visible') loadSocial(); }, 120000);
 
-    panel = el('div', 'display:none;position:fixed;right:16px;top:80px;z-index:9999;width:360px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
+    panel = el('div', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;width:300px;max-width:calc(100vw - 32px);max-height:calc(100vh - 80px);overflow:auto;' +
       'background:#fff;border:1px solid #e3e6ea;border-top:4px solid ' + C.blue + ';border-radius:8px;box-shadow:0 12px 32px rgba(17,24,39,.14),0 2px 6px rgba(17,24,39,.06);' +
       'font:14px/1.45 ' + F + ';color:#222;');
     panel.className = 'pe-checklist';
@@ -6131,22 +5499,11 @@ try {
     embBox = el('div', 'padding:0 16px;');
     planBox = el('div', 'padding:0 16px;');
     panel.appendChild(head);
-    // 7.0: the tabs, under the title. The planned date and embargo lines live on the Publish tab and the notes on
-    // the Notes tab; each sits in a wrapper so its own code can show or hide it as before.
-    tabBar = el('div', 'display:flex;gap:2px;padding:0 8px;border-bottom:1px solid #e3e6ea;position:sticky;top:0;z-index:2;background:#fff;');
-    tabBar.setAttribute('role', 'tablist');
-    panel.appendChild(tabBar);
-    pubWrap = el('div');
-    pubWrap.appendChild(planBox);
-    pubWrap.appendChild(embBox);
-    panel.appendChild(pubWrap);
+    panel.appendChild(planBox);
+    panel.appendChild(embBox);
     panel.appendChild(list);
-    joeHost = el('div', 'display:none;flex-direction:column;min-height:0;');   // Joe, docked in its tab
-    panel.appendChild(joeHost);
-    notesWrap = el('div');
-    notesWrap.appendChild(buildNotes()); // outside the part draw() rebuilds
-    panel.appendChild(notesWrap);
-    buildJoeBar(); // 7.0: built but not shown; the Joe tab replaces it
+    panel.appendChild(buildNotes()); // under the checks, outside the part draw() rebuilds
+    panel.appendChild(buildJoeBar()); // pinned to the foot of the panel, on every stage
 
     pill = el('button', 'display:none;position:fixed;right:16px;bottom:16px;z-index:9999;align-items:center;gap:4px;padding:8px 15px;border:2px solid ' + C.blue +
       ';border-radius:20px;background:#fff;box-shadow:0 6px 18px rgba(17,24,39,.16);font:700 13px ' + F + ';font-variant-numeric:tabular-nums;cursor:pointer;');
@@ -6157,7 +5514,7 @@ try {
     pill.appendChild(el('span'));
     pill.style.cursor = 'move';
     pill.style.touchAction = 'none';
-    movable(head, function () { mode = 'pill'; draw(); }, function () { ppos = { r: 16, t: 80 }; ls('pe-ck-ppos', ''); place(); }, panelSpot);
+    movable(head, function () { mode = 'pill'; draw(); }, function () { pos = { r: 16, b: 16 }; ls('pe-ck-pos', ''); place(); });
     movable(pill, function () { mode = 'open'; draw(); });
 
     // Like the drawer, the panel goes in the editor window itself, so the Edit Post window
@@ -6174,7 +5531,6 @@ try {
     }
     doc.body.appendChild(panel);
     doc.body.appendChild(pill);
-    watchJoeHighlight(joeHost); // 7.0: highlighting text in the docked Joe holds off redraws, as in its own window
     try { var saved = JSON.parse(ls('pe-ck-pos') || 'null'); if (saved && saved.r >= 0 && saved.b >= 0) pos = saved; } catch (e) {}
     place();
     doc.defaultView.addEventListener('resize', place);
@@ -6185,7 +5541,6 @@ try {
       if (i && d === document) return; // outside the editor both are the same page
       d.addEventListener('pointerdown', noteActivity, true);
       d.addEventListener('keydown', noteActivity, true);
-      d.addEventListener('keydown', typingShrink, true); // 7.0: typing in the post shrinks the panel to its pill
     });
     if (doc !== document) {
       var again = [];
@@ -7854,60 +7209,35 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: homepage hero headline alignment', e); }
 
 /* ================================================================
- * Production Expert: homepage hero, hand-made slides plus the "Hero" tag
- * (v4.9, 4 Nov 2026; hand-made slides kept from v7.3, 12 Nov 2026)
- * The slideshow at the top of the homepage plays two kinds of slide:
- * - Hand-made: every slide in the Front Page Heroes gallery
- *   (/front-page-heroes), in the order they sit in the gallery. These play
- *   first, exactly as made: picture, headline and link. Nothing is checked
- *   or skipped, so they look the way they were set up.
- * - Tagged: the five newest articles tagged "Hero", newest first, after the
- *   hand-made ones. Each new one pushes the oldest off, so nobody has to
- *   remove old tags. An article already in the gallery isn't shown twice.
- * How it fits: the gallery has as many slides as it has hand-made ones, so
- *   when there are more slides to play than that, the script swaps the next
- *   slide's picture, headline and link while it is hidden, and the
- *   slideshow carries on through the whole list (arrows work both ways).
- *   Before v7.3 the tagged articles were painted over the hand-made slides,
- *   so those never showed.
- * - Tagged pictures: the article's own hero (its promoted image, or the first
- *   image in the body), falling back to the Featured Image on the Options
- *   tab, cropped to the slideshow's shape around the picture's focal point.
- *   Move the focal point dot on the hero image to change the crop.
- * - Sharpness: a tagged picture under 1500px wide would look soft at full
- *   width, so that article is skipped and the next tagged one is used. The
- *   pre-publish checks warn when a Hero-tagged article's picture is too small.
- * - Order of tagged articles goes by publish date, not by when the tag was
- *   added, so tagging an old article only gets it in if it is newer than the
- *   fifth tagged one.
- * - If the tag feed fails, the hand-made slides play on their own.
+ * Production Expert: homepage hero from the "Hero" tag (v4.9, 4 Nov 2026)
+ * Tag an article "Hero" and it goes into the slideshow at the top of the
+ * homepage. The five newest tagged articles fill the slides, newest first,
+ * so each new one pushes the oldest off. Nobody has to remove old tags.
+ * - Picture: the article's own hero (its promoted image, or the first image
+ *   in the body), falling back to the Featured Image on the Options tab.
+ *   It is cropped to the slideshow's wider shape around the picture's focal
+ *   point, so move the focal point dot on the hero image to change the crop.
+ * - Sharpness: a picture under 1500px wide would look soft at full width, so
+ *   that article is skipped and the next tagged one is used. The pre-publish
+ *   checks warn when a Hero-tagged article's picture is too small.
+ * - Order goes by publish date, not by when the tag was added, so tagging an
+ *   old article only gets it in if it is newer than the fifth tagged one.
+ * - Slides with no tagged article left to fill them keep what is set in the
+ *   gallery by hand, so the gallery is also the fallback if the feed fails.
  * - The tag stays hidden from readers and out of Related Content (both
  *   handled by their own sections).
- * - Placeholder slides (v8.3): a gallery slide titled "Placeholder" (any
- *   capitals), or whose picture's file name has "placeholder" in it, is never
- *   shown as itself. It is only a blank slide for the tagged articles to play on. Squarespace draws no slideshow from an empty
- *   gallery, so with no hand-made slides the tagged ones had nowhere to go.
- *   Each needs a click-through link (any, / will do). With fewer tagged
- *   articles than placeholders, the tagged ones repeat to fill them.
- * - One-slide gallery (v8.4): Squarespace never moves on from a single slide,
- *   so the script plays the list on it itself (every oneSlideEvery ms) and
- *   works the arrows. A slide with no title gets a headline box made for it.
- * - Testing: add ?pe-hero-tag=News to the homepage address to fill the tagged
- *   part from another tag. Only that browser tab sees it.
+ * - Testing: add ?pe-hero-tag=News to the homepage address to fill the
+ *   slides from another tag. Only that browser tab sees it.
  * - Homepage only. Leaves the editor alone.
  * ================================================================ */
 try {
 (function () {
   var C = {
     tag: 'Hero',                      // the tag that puts an article in the hero (any capitals)
-    max: 5,                           // tagged articles to add after the hand-made slides
-    manualFirst: true,                // true: hand-made slides first, then tagged. false: tagged first
+    max: 5,                           // slides to fill; never more than the gallery has
     blog: '/production-expert-1',     // the blog the tagged articles come from
-    minWidth: 1500,                   // px; narrower tagged pictures are skipped (same number in the checks)
-    swapDelay: 1500,                  // ms after a slide change before the hidden slides are swapped, so a
-                                      // slide is never changed while it is still fading out
-    oneSlideEvery: 6000,              // ms between slides when the gallery has only one slide
-    key: 'pe-hero-v2'                 // this browser's copy of the last tagged list, for an instant start
+    minWidth: 1500,                   // px; narrower pictures are skipped (same number in the checks)
+    key: 'pe-hero-v1'                 // this browser's copy of the last list, for an instant start
   };
 
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // the Squarespace editor
@@ -7925,33 +7255,7 @@ try {
     '.pe-hero-filled > a img.thumb-image{visibility:hidden !important}' +
     '.pe-hero-pic{position:absolute;top:0;left:0;right:0;bottom:0;background-size:cover;' +
       'background-repeat:no-repeat;opacity:0;transition:opacity .4s ease}' +
-    '.pe-hero-pic.pe-in{opacity:1}' +
-    // A placeholder slide's own picture and "Placeholder" headline never show
-    '.pe-hero-ph:not(.pe-hero-filled) img{visibility:hidden !important}' +
-    '.pe-hero-ph:not(.pe-hero-filled) .meta-title,.pe-hero-ph:not(.pe-hero-filled) .meta-description{visibility:hidden !important}';
-
-  // A placeholder: titled "Placeholder", or its picture's file name has "placeholder" in it
-  // (hero-placeholder-1.webp), so a slide uploaded with no title still counts (v8.4)
-  function isPlaceholder(s) {
-    var t = s.querySelector('.meta-title'), img = s.querySelector('img');
-    var name = (t && t.textContent.trim()) || '';
-    var alt = (img && (img.alt || img.getAttribute('data-title'))) || '';
-    var src = (img && (img.getAttribute('data-src') || img.getAttribute('data-image') || img.getAttribute('src'))) || '';
-    var file = src.replace(/[?#].*$/, '').split('/').pop();
-    return /^placeholder\b/i.test(name) || /placeholder/i.test(alt) || /placeholder/i.test(file);
-  }
-
-  // A slide with no title has no headline box, so make one in Squarespace's own shape,
-  // which the site's hero headline styles already cover (v8.4)
-  function titleBox(s) {
-    var t = s.querySelector('.meta-title');
-    if (t) return t;
-    var m = document.createElement('div');
-    m.className = 'meta pe-hero-meta';
-    m.innerHTML = '<div class="meta-inside"><div class="meta-title"></div></div>';
-    s.appendChild(m);
-    return m.querySelector('.meta-title');
-  }
+    '.pe-hero-pic.pe-in{opacity:1}';
 
   function addStyle() {
     if (document.getElementById('pe-hero-tag-css')) return;
@@ -7967,37 +7271,6 @@ try {
       localStorage.setItem(C.key, JSON.stringify(v));
     } catch (e) { return null; }
   }
-
-  // Full address, so the same article matches whether written /path or https://…/path
-  function full(u) { return String(u || '').charAt(0) === '/' ? location.origin + u : String(u || ''); }
-  function key(u) { return full(u).replace(/^https?:\/\/(www\.)?/i, '').replace(/[?#].*$/, '').replace(/\/$/, '').toLowerCase(); }
-
-  /* ---------- The hand-made slides ----------
-   * Read from the slides Squarespace drew from the Front Page Heroes gallery, once, before
-   * anything is swapped, and kept on the gallery element so a re-run never reads a swapped slide. */
-  function readManual(gallery) {
-    if (gallery.peHeroManual) return gallery.peHeroManual;
-    var out = [];
-    Array.prototype.forEach.call(gallery.querySelectorAll('.slide'), function (s) {
-      if (isPlaceholder(s)) { s.classList.add('pe-hero-ph'); return; }   // a blank for tagged articles only
-      var img = s.querySelector('img');
-      var src = img && (img.getAttribute('data-src') || img.getAttribute('data-image') || img.getAttribute('src'));
-      var url = s.getAttribute('data-click-through-url') || (s.querySelector('a') || {}).href || '';
-      if (!src || !url) return;
-      var fp = ((img.getAttribute('data-image-focal-point') || '').match(/([\d.]+),([\d.]+)/) || []);
-      var t = s.querySelector('.meta-title');
-      out.push({
-        url: url,
-        title: (t && t.textContent.trim()) || (img && img.alt) || '',
-        src: src, fx: fp[1] !== undefined ? +fp[1] : 0.5, fy: fp[2] !== undefined ? +fp[2] : 0.5,
-        manual: true
-      });
-    });
-    gallery.peHeroManual = out;
-    return out;
-  }
-
-  /* ---------- The tagged articles ---------- */
 
   // The article's picture, read from the blog feed: { src, w, h, fx, fy } or null
   function pictureOf(it) {
@@ -8035,16 +7308,15 @@ try {
     });
   }
 
-  // The newest tagged articles with a sharp enough picture, newest first. Articles already
-  // in the hand-made slides are left out here, so they don't use up one of the five places.
-  function fetchList(skip) {
+  // The newest tagged articles with a sharp enough picture, newest first
+  function fetchList() {
     var url = C.blog + '?format=json&tag=' + encodeURIComponent(TAG);
     return fetch(url, { credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : { items: [] }; })
       .then(function (j) {
         var now = Date.now();
         var items = (j.items || []).filter(function (it) {
-          return it.fullUrl && (+it.publishOn || 0) <= now && !skip[key(it.fullUrl)];
+          return it.fullUrl && (+it.publishOn || 0) <= now;
         }).sort(function (a, b) { return (+b.publishOn || 0) - (+a.publishOn || 0); });
         return Promise.all(items.map(function (it) {
           var p = pictureOf(it);
@@ -8068,8 +7340,6 @@ try {
       });
   }
 
-  /* ---------- Putting a slide on screen ---------- */
-
   // How wide a picture to ask for: the slideshow's width on this screen, rounded up
   // to one of the image server's sizes, so phones don't download desktop pictures
   function bestSize(box) {
@@ -8079,158 +7349,55 @@ try {
     return 2500;
   }
 
-  // Put one entry (hand-made or tagged) into one slide: link, headline, picture
-  function paint(s, h, w, late) {
-    var a = s && s.querySelector('a');
-    if (!a || !h) return;
-    var href = full(h.url);
-    if (s.getAttribute('data-pe-hero') === href) return;   // already showing this one
-    a.href = href;
-    s.setAttribute('data-click-through-url', href);
-    s.setAttribute('data-pe-hero', href);
-    var img = a.querySelector('img');
-    if (img) img.alt = h.title;
-    var t = titleBox(s);
-    // On a slide that is showing (one-slide gallery), the headline changes with the picture
-    if (!late) t.textContent = h.title;
-    var pic = a.querySelector('.pe-hero-pic');
-    if (!pic) { pic = document.createElement('div'); pic.className = 'pe-hero-pic'; a.appendChild(pic); }
-    pic.classList.remove('pe-in');
-    pic.style.backgroundPosition = (h.fx * 100) + '% ' + (h.fy * 100) + '%';
-    var src = h.src + (h.src.indexOf('?') < 0 ? '?' : '&') + 'format=' + w + 'w';
-    // Show the picture once it has loaded, so the slide never flashes empty. If it
-    // has been swapped again in the meantime, this older picture is dropped.
-    var im = new Image();
-    im.onload = function () {
-      if (s.getAttribute('data-pe-hero') !== href) return;
-      pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
-      if (late) t.textContent = h.title;
-      s.classList.add('pe-hero-filled');
-      requestAnimationFrame(function () { pic.classList.add('pe-in'); });
-    };
-    im.src = src;
-  }
-
-  /* ---------- The rotation ----------
-   * The slideshow has n slides; the list has T entries. Each slide remembers which entry it
-   * shows (slot[i]). When the slideshow moves on, the entry on the new slide becomes the
-   * current one, and the hidden slides either side are swapped to the next and previous
-   * entries in the list, a moment later, once the old slide has faded out. */
-  function setup(gallery, list) {
-    var slides = Array.prototype.slice.call(gallery.querySelectorAll('.slide'));
-    var n = slides.length, T = list.length;
-    if (!n || !T) return;
+  // Put the list into the gallery's slides, in order. Slides beyond the list are left alone.
+  function fill(list) {
+    if (!isHome() || !list || !list.length) return;
+    var gallery = document.querySelector('.sqs-block-gallery');
+    if (!gallery) return;
+    var slides = gallery.querySelectorAll('.slide');
     var w = bestSize(gallery);
-    var st = gallery.peHeroState;
-    if (st && st.observer) st.observer.disconnect();
-    clearTimeout(st && st.timer);
-    clearInterval(st && st.tick);
-
-    // One slide in the gallery: Squarespace never moves on from it and its arrows do nothing,
-    // so the script plays the list itself on that slide, every C.oneSlideEvery ms, and the
-    // arrows step back and forward (v8.4)
-    if (n === 1 && T > 1) {
-      var one = { list: list, k: 0, tick: 0 };
-      gallery.peHeroState = one;
-      paint(slides[0], list[0], w);
-      one.step = function (d) {
-        one.k = ((one.k + d) % T + T) % T;
-        paint(slides[0], list[one.k], w, true);
+    list.forEach(function (h, i) {
+      var s = slides[i];
+      if (!s) return;
+      var a = s.querySelector('a');
+      if (!a) return;
+      var href = h.url.charAt(0) === '/' ? location.origin + h.url : h.url;
+      if (s.getAttribute('data-pe-hero') === href) return;   // already showing this article
+      a.href = href;
+      s.setAttribute('data-click-through-url', href);
+      s.setAttribute('data-pe-hero', href);
+      var img = a.querySelector('img');
+      if (img) img.alt = h.title;
+      var t = s.querySelector('.meta-title');
+      if (t) t.textContent = h.title;
+      var pic = a.querySelector('.pe-hero-pic');
+      if (!pic) { pic = document.createElement('div'); pic.className = 'pe-hero-pic'; a.appendChild(pic); }
+      pic.classList.remove('pe-in');
+      pic.style.backgroundPosition = (h.fx * 100) + '% ' + (h.fy * 100) + '%';
+      var src = h.src + (h.src.indexOf('?') < 0 ? '?' : '&') + 'format=' + w + 'w';
+      // Show the picture once it has loaded, so the slide never flashes empty
+      var im = new Image();
+      im.onload = function () {
+        pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
+        s.classList.add('pe-hero-filled');
+        requestAnimationFrame(function () { pic.classList.add('pe-in'); });
       };
-      one.tick = setInterval(function () { if (!document.hidden) one.step(1); }, C.oneSlideEvery);
-      if (!gallery.peHeroArrows) {
-        gallery.peHeroArrows = true;
-        gallery.addEventListener('click', function (e) {
-          var b = e.target.closest && e.target.closest('.sqs-gallery-controls .previous, .sqs-gallery-controls .next');
-          var s2 = gallery.peHeroState;
-          if (!b || !s2 || !s2.step) return;
-          e.preventDefault(); e.stopPropagation();
-          s2.step(b.classList.contains('previous') ? -1 : 1);
-          clearInterval(s2.tick);   // a click restarts the timer, so the next change isn't straight after
-          s2.tick = setInterval(function () { if (!document.hidden) s2.step(1); }, C.oneSlideEvery);
-        }, true);
-      }
-      return;
-    }
-
-    function activeIndex() {
-      for (var i = 0; i < n; i++) if (slides[i].classList.contains('sqs-active-slide')) return i;
-      return 0;
-    }
-
-    // As many entries as slides, or fewer: no rotation needed, each slide gets one
-    // Placeholder slides left over repeat the list, so none shows as a blank
-    if (T <= n) {
-      list.forEach(function (h, i) { paint(slides[i], h, w); });
-      for (var j = T; j < n; j++) if (slides[j].classList.contains('pe-hero-ph')) paint(slides[j], list[j % T], w);
-      gallery.peHeroState = { list: list };
-      return;
-    }
-
-    var a0 = activeIndex();
-    var slot = [];
-    for (var i = 0; i < n; i++) slot[i] = ((i - a0) % n + n) % n;   // the showing slide starts on entry 0
-    // The showing slide is painted straight away. The rest are hidden, so they can change freely.
-    slides.forEach(function (s, i) { paint(s, list[slot[i]], w); });
-
-    var state = { list: list, active: a0, slot: slot, timer: 0 };
-    gallery.peHeroState = state;
-
-    // Swap the slides either side of slide b to the next and previous entries. The slide
-    // that is still fading out (outgoing) is left alone; it gets its turn after swapDelay.
-    function prepareAround(b, outgoing) {
-      var k = slot[b];
-      var next = (b + 1) % n, prev = (b - 1 + n) % n;
-      if (next !== outgoing) {
-        slot[next] = (k + 1) % T;
-        paint(slides[next], list[slot[next]], w);
-      }
-      if (prev !== next && prev !== outgoing) {   // two slides only: the forward one wins
-        slot[prev] = (k - 1 + T) % T;
-        paint(slides[prev], list[slot[prev]], w);
-      }
-    }
-
-    prepareAround(a0, -1);
-
-    // Watch for the slideshow moving on (autoplay, arrows or a swipe). The neighbour that
-    // isn't fading out is swapped at once, so quick clicks on the arrows find it ready;
-    // the one fading out is swapped once it has gone.
-    state.observer = new MutationObserver(function () {
-      var b = activeIndex();
-      if (b === state.active) return;
-      var outgoing = state.active;
-      state.active = b;
-      prepareAround(b, outgoing);
-      clearTimeout(state.timer);
-      state.timer = setTimeout(function () { prepareAround(state.active, -1); }, C.swapDelay);
+      im.src = src;
     });
-    slides.forEach(function (s) { state.observer.observe(s, { attributes: true, attributeFilter: ['class'] }); });
-  }
-
-  // Hand-made slides and tagged articles in one list, in the order chosen in the settings
-  function combine(manual, tagged) {
-    return C.manualFirst ? manual.concat(tagged) : tagged.concat(manual);
   }
 
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
   function run() {
     if (!isHome()) return;
-    var gallery = document.querySelector('.sqs-block-gallery');
-    if (!gallery || !gallery.querySelector('.slide')) return;
     addStyle();
-    var manual = readManual(gallery);
-    var skip = {};
-    manual.forEach(function (m) { skip[key(m.url)] = 1; });
-    // The last tagged list this browser saw goes in straight away, then the feed is checked
+    // The last list this browser saw goes in straight away, then the feed is checked
     var saved = !testTag && ls();
-    var savedList = saved && saved.list ? saved.list.filter(function (h) { return !skip[key(h.url)]; }) : null;
-    if (savedList && savedList.length) setup(gallery, combine(manual, savedList));
-    fetchList(skip).then(function (tagged) {
-      if (!testTag) ls({ t: Date.now(), list: tagged });
-      if (!savedList || !same(savedList, tagged) || testTag) setup(gallery, combine(manual, tagged));
-    }).catch(function (e) { try { console.warn('Hero: tag feed failed, hand-made slides only', e); } catch (x) {} });
+    if (saved && saved.list) fill(saved.list);
+    fetchList().then(function (list) {
+      if (!testTag) ls({ t: Date.now(), list: list });
+      if (!saved || !same(saved.list, list) || testTag) fill(list);
+    }).catch(function (e) { try { console.warn('Hero: feed failed, gallery left as set', e); } catch (x) {} });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
@@ -8543,12 +7710,8 @@ try {
       "font-family:'Open Sans',sans-serif;font-weight:800;font-size:12px;line-height:1.2;letter-spacing:.06em;text-transform:uppercase;vertical-align:middle;white-space:nowrap}" +
     '.pe-updated-block{display:block;margin:6px 0 0}' +
     '@media (max-width:640px){.pe-updated{font-size:11px;margin-left:8px}}' +
-    // v8.9: the note above the comments is Production Expert orange (#E28602, the orange in the "e" logo) so
-    // readers don't miss it (Russ, 20 Nov 2026; it was pale grey). The words are near-black and semi-bold:
-    // white on this orange is too faint to read at this size, black on it is clear. Same in dark mode, where
-    // the colours are restated so no dark-mode rule elsewhere can turn the words pale on orange.
-    ".pe-updated-note{margin:0 0 18px;padding:12px 16px;background:#E28602;border-radius:6px;font-family:'Open Sans',sans-serif;font-size:14px;font-weight:600;line-height:1.5;color:#111}" +
-    'html.pe-dark .pe-updated-note,body.pe-dark .pe-updated-note{background:#E28602;color:#111}';
+    ".pe-updated-note{margin:0 0 18px;padding:12px 16px;background:#f2f2f0;border-radius:6px;font-family:'Open Sans',sans-serif;font-size:14px;line-height:1.5;color:#3a3a3e}" +
+    'html.pe-dark .pe-updated-note,body.pe-dark .pe-updated-note{background:#26282c;color:#d6d7da}';
 
   function fmt(ms) {
     var d = new Date(+ms);
@@ -8616,64 +7779,63 @@ try {
 } catch (e) { if (window.console) console.warn('Production Expert script failed: Updated label', e); }
 
 /* ================================================================
- * Production Expert: refreshed articles on the homepage on their scheduled day (v7.4, 13 Nov 2026; was v6.1)
+ * Production Expert: refreshed articles on the homepage for a day (v6.1, 11 Nov 2026)
  * A refreshed article keeps its original date (tagged Updated, see "Updated label on refreshed
  * articles"), so Squarespace's homepage grid, which runs in publish order, would never show it.
- * Russ, 13 Nov 2026: a refresh is treated like a new piece. Tagging it Updated puts it in Mel's review
- * queue in the Content Manager; she schedules it for a day there, and at 09:00 UK time that day it
- * "goes back out": this adds a card for it to the top row of the homepage grid for 24 hours (second
- * place, so the newest story still leads), with the orange UPDATED label, while the socials and the
- * mailshot follow from the Partners script.
- * - Which articles, and from when, comes from the dashboard's public list (REFRESH_API): only
- *   articles whose scheduled moment has come and is less than 24 hours old. Tagging or editing an
- *   article no longer puts it on the homepage by itself (it did under v6.1, 24 hours after any edit).
+ * Redating it would throw away its history, so instead: for 24 hours after an article tagged
+ * Updated was last edited, this adds a card for it to the top row of the homepage grid (second
+ * place, so the newest story still leads), with the orange UPDATED label. Then it simply stops.
  * - The card is a copy of the grid's own first card with the refreshed article's link, title,
- *   excerpt, original date and picture (read from the article's own ?format=json), so it looks and
- *   behaves like the rest.
- * - Newest first if there are several; at most MAX cards. Never a second card for an article that
- *   is already in the grid. If the list can't be read, nothing is added.
+ *   excerpt, original date and picture, so it looks and behaves like the rest.
+ * - Newest refresh first if there are several; at most MAX cards. Never a second card for an
+ *   article that is already in the grid.
+ * - "Last edited" is Squarespace's updatedOn, so editing a tagged article again gives it another day.
+ * - The tag's feed runs in publish order, so up to PAGES pages (20 posts each) are read.
  * ================================================================ */
 try {
 (function () {
-  var REFRESH_API = 'https://pe-related-answers.pages.dev/api/refresh/live';   // [{path, at}] live on the homepage now
+  var HOURS = 24;          // how long a refreshed article stays on the homepage (Russ, 11 Nov 2026)
   var MAX = 2;             // most refreshed cards at once
+  var PAGES = 5;           // pages of the Updated tag's feed to read
   var POSITION = 1;        // 0 = first card; 1 = second
-  var KEY = 'pe-updated-cards-v2';
-  var KEEP_MS = 5 * 60 * 1000;   // a reader moving between pages doesn't ask again for 5 minutes
+  var KEY = 'pe-updated-cards-v1';
+  var KEEP_MS = 15 * 60 * 1000;
   var MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // not in the editor
 
   function path(u) { try { return new URL(u, location.origin).pathname.replace(/\/$/, ''); } catch (e) { return ''; } }
-  function getJson(u, cred) {
-    return fetch(u, { credentials: cred || 'same-origin' }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
+  function getJson(u) {
+    return fetch(u, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : {}; }).catch(function () { return {}; });
   }
 
-  // Refreshes whose day has come (from the dashboard), each filled in from the article's own data, newest first
+  // Refreshed articles edited in the last HOURS hours, newest edit first
   function recent() {
     try {
       var o = JSON.parse(sessionStorage.getItem(KEY) || 'null');
       if (o && Date.now() - o.t < KEEP_MS) return Promise.resolve(o.items);
     } catch (e) {}
-    return getJson(REFRESH_API, 'omit').then(function (d) {
-      var live = (d && d.ok && Array.isArray(d.items)) ? d.items.slice() : [];
-      live.sort(function (a, b) { return (+b.at || 0) - (+a.at || 0); });
-      live = live.filter(function (x) { return x && typeof x.path === 'string' && x.path.charAt(0) === '/'; }).slice(0, MAX + 2);
-      return Promise.all(live.map(function (x) {
-        return getJson(x.path + '?format=json').then(function (j) {
-          var i = j && j.item;
-          if (!i || !i.fullUrl) return null;
-          var html = String(i.promotedBlock || '') + String(i.body || '');
-          var m = html.match(/<img[^>]+data-src="([^"]+)"/i);
-          return { p: path(i.fullUrl), title: i.title || '', excerpt: String(i.excerpt || '').replace(/<[^>]+>/g, '').trim(),
-                   img: i.assetUrl || (m && m[1]) || '', pub: +i.publishOn || 0, at: +x.at || 0 };
+    var since = Date.now() - HOURS * 3600 * 1000, out = [];
+    function page(u, left) {
+      return getJson(u).then(function (j) {
+        (j.items || []).forEach(function (i) {
+          if (+i.updatedOn >= since && i.fullUrl) {
+            var html = String(i.promotedBlock || '') + String(i.body || '');
+            var m = html.match(/<img[^>]+data-src="([^"]+)"/i);
+            out.push({ p: path(i.fullUrl), title: i.title || '', excerpt: String(i.excerpt || '').replace(/<[^>]+>/g, '').trim(),
+                       img: i.assetUrl || (m && m[1]) || '', pub: +i.publishOn || 0, upd: +i.updatedOn });
+          }
         });
-      })).then(function (items) {
-        items = items.filter(Boolean);
-        try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), items: items })); } catch (e) {}
-        return items;
+        var next = j.pagination && j.pagination.nextPage && j.pagination.nextPageUrl;
+        if (!next || left <= 1) return out;
+        return page(next + (next.indexOf('?') < 0 ? '?' : '&') + 'format=json', left - 1);
       });
+    }
+    return page('/production-expert-1?format=json&tag=Updated', PAGES).then(function (items) {
+      items.sort(function (a, b) { return b.upd - a.upd; });
+      try { sessionStorage.setItem(KEY, JSON.stringify({ t: Date.now(), items: items })); } catch (e) {}
+      return items;
     });
   }
 
@@ -8757,452 +7919,6 @@ try {
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: refreshed articles on the homepage', e); }
-
-/* ================================================================
- * Production Expert: tables and the subscription calculator in dark mode (v7.5, 14 Nov 2026)
- * Tables in articles carry their colours inline (white and #fafafa rows, dark text, an orange header),
- * from the Tables tool and the pe-table-formatter skill. In dark mode the site's dark stylesheet only
- * darkened the header and the borders, so readers got white rows on a dark page with a grey header.
- * This adds dark rows, light text, softer green and amber, and keeps the orange header.
- * Inline styles lose to !important rules, so nothing in the articles needs changing.
- *
- * The subscription calculator (#pe-sub-calc) draws inside a Shadow DOM, which the site's stylesheets
- * can't reach, and its colours were light only, so its text went near-black on the dark page. Its colour
- * roles live in CSS variables on .viz-root, so this puts a second set of variables inside its shadow
- * root and switches them on with a class on the host whenever the page is dark. Any later embed built
- * the same way (an open shadow root with a .viz-root) picks this up too.
- * ================================================================ */
-try {
-(function () {
-  // Where article tables live: Code Blocks (the Tables tool) and Text Blocks (pasted tables)
-  var T = 'html.pe-dark .sqs-block-code table,html.pe-dark .sqs-block-html table,html.pe-dark .entry-content table';
-  // Builds a selector list: each part of T followed by the given ending
-  function each(end) { return T.split(',').map(function (s) { return s + end; }).join(','); }
-
-  var CSS =
-    // Rows: dark, with the same gentle stripe the light version has
-    each(' tbody tr') + '{background-color:#1a1b1f!important}' +
-    each(' tbody tr:nth-child(even)') + '{background-color:#1f2125!important}' +
-    each(' td') + '{background-color:transparent!important}' +
-    // Dividers inside the table (rows set their own bottom border inline)
-    each(' tr') + '{border-color:#33363c!important}' +
-    // Text: light for everything except the green and amber values handled below
-    each(' td') + ',' + each(' td span') + ',' + each(' td p') + ',' + each(' td strong') + '{color:#e6e7ea!important}' +
-    // The first-column labels and the sentence under a value read a touch quieter
-    each(' td span[style*="font-size:12px"]') + '{color:#c4c7cd!important}' +
-    // Highlighted column: green text and a faint green wash, readable on dark
-    each(' td[style*="234,243,222"]') + '{background-color:rgba(95,207,141,.10)!important}' +
-    each(' [style*="#3b6d11" i]') + '{color:#8fd16a!important}' +
-    // Amber for No, Not supported and the like
-    each(' [style*="#b85c00" i]') + '{color:#f1b452!important}' +
-    // Header: keep the orange from its row (the dark stylesheet had painted every th grey)
-    each(' thead tr[style*="background"] th') + '{background-color:inherit!important}' +
-    each(' th[style*="#E38501" i]') + '{background-color:#E38501!important}' +
-    // Header text that isn't white (plain grey headings, as in the calculator's price table) goes lighter
-    each(' th:not([style*="color:#fff"])') + '{color:#b8bcc3!important}' +
-    // The calculator's "See every price" panel sits outside its shadow root: its note text
-    'html.pe-dark .sqs-block-code details p[style*="#52514e"],html.pe-dark .sqs-block-code details summary{color:#c4c7cd!important}';
-
-  // The dark colour roles for embeds drawn in a shadow root with a .viz-root (the calculator)
-  var SHADOW_CSS =
-    ':host(.pe-dark-on) .viz-root{color-scheme:dark;' +
-      '--surface-0:#141518;--surface-1:#1d1f23;' +            // page and cards
-      '--text-primary:#e6e7ea;--text-secondary:#b8bcc3;--text-muted:#8d919a;' +
-      '--grid:#2c2e34;--border:#3a3d44;' +                    // lines
-      '--control-bg:#26282d;--control-on:#3a3d44;' +          // pick-list hover, segmented buttons
-      '--series-daw:#F08A3A;--series-plugins:#5a9be8;--accent:#4d93e6}' +
-    // Tooltip shadow is heavier on dark so it still lifts off the page
-    ':host(.pe-dark-on) .tooltip{box-shadow:0 4px 16px rgba(0,0,0,.5)}';
-
-  // Add the table rules to the page once
-  function addCss() {
-    if (document.getElementById('pe-dark-tables-css')) return;
-    var st = document.createElement('style');
-    st.id = 'pe-dark-tables-css';
-    st.textContent = CSS;
-    (document.head || document.documentElement).appendChild(st);
-  }
-
-  // Put the dark roles into each shadow-root embed, and match its host to the page's mode
-  function syncShadows() {
-    var dark = document.documentElement.classList.contains('pe-dark');
-    var hosts = document.querySelectorAll('[id^="pe-"]');
-    for (var i = 0; i < hosts.length; i++) {
-      var sr = hosts[i].shadowRoot;
-      if (!sr || !sr.querySelector('.viz-root')) continue;   // not one of ours, or not drawn yet
-      if (!sr.getElementById('pe-dark-roles')) {
-        var st = document.createElement('style');
-        st.id = 'pe-dark-roles';
-        st.textContent = SHADOW_CSS;
-        sr.appendChild(st);                                   // last in the root, so it wins ties
-      }
-      hosts[i].classList.toggle('pe-dark-on', dark);
-    }
-  }
-
-  function run() {
-    addCss();
-    syncShadows();
-    // Embeds can draw a moment after this script runs, so look again for a few seconds
-    var n = 0, t = setInterval(function () { syncShadows(); if (++n >= 10) clearInterval(t); }, 500);
-  }
-
-  // Follow the reader's light/dark switch: the toggle changes the class on <html>
-  try {
-    new MutationObserver(syncShadows).observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
-  } catch (e) {}
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
-  addEventListener('mercury:load', function () { setTimeout(run, 100); });   // Ajax page loads
-})();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: dark mode tables', e); }
-
-/* ================================================================
- * Production Expert: breathing room at the top of site pages (v7.9, 18 Nov 2026)
- * On ordinary pages (Contact Us, About, Write For Us, the free plug-ins and sound effects pages and so on)
- * the first heading sat about 12px under the menu bar, so pages looked pushed up against it.
- * This adds space above the page content: 48px on desktop, 28px on phones.
- * - Only Squarespace "page" pages get it (body.collection-type-page). Articles open with their hero
- *   picture and the blog lists have their own spacing, so they're left alone.
- * - The homepage is skipped (body.homepage) so the hero banner stays tight under the menu.
- * - !important is needed because a Squarespace stylesheet already sets this padding with !important.
- * To change the amount, edit the two numbers below.
- * ================================================================ */
-try {
-(function () {
-  var CSS =
-    // Desktop and tablet: the space above the page content
-    'body.collection-type-page:not(.homepage) #container-content{padding-top:48px!important}' +
-    // Phones: a little less, as the screen is shorter
-    '@media (max-width:767px){body.collection-type-page:not(.homepage) #container-content{padding-top:28px!important}}';
-
-  // Add the rule to the page once (the id stops a second copy on Ajax page loads)
-  function addCss() {
-    if (document.getElementById('pe-page-top-css')) return;
-    var st = document.createElement('style');
-    st.id = 'pe-page-top-css';
-    st.textContent = CSS;
-    (document.head || document.documentElement).appendChild(st);
-  }
-
-  addCss();
-})();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: breathing room at the top of site pages', e); }
-
-/* ================================================================
- * Production Expert: menu separators and the phone hamburger menu (v8.0, 19 Nov 2026)
- *
- * 1. SEPARATORS. The " |" between menu items used to be typed into every menu item's name in Squarespace.
- *    This section draws the line itself, so the names can be plain words ("Latest", "Free Plug-ins").
- *    - Any " |" still left on the end of a name is stripped first, so the menu looks right whether or not
- *      the names have been tidied yet, and never shows two lines.
- *    - The line sits after every top-level item except the last, as before. Dropdown items get none.
- *    - It is drawn in a slightly faded version of the menu's own colour, so it works in light and dark mode
- *      and no longer turns purple/blue beside the current page.
- *
- * 2. HAMBURGER MENU ON PHONES. Squarespace's own phone menu (the word MENU, opening a centred list) is
- *    replaced by a three-line button top right, which slides a panel in from the right.
- *    - The Search button moves to the centre of the top bar, where MENU used to sit; the dark mode
- *      switch stays top left. The hamburger matches the dark mode switch (same size and colours).
- *    - The panel is built from the desktop menu, so it always matches it: change the menu in Squarespace
- *      and the panel follows. Dropdowns (Studio Tools, Compatibility, Resources, About Us) open with the
- *      arrow on the right; the name itself still goes to that section's own page.
- *    - The current page is marked with an orange bar. Closes with the X, a tap outside, the Esc key or
- *      the phone's back gesture. The page behind can't scroll while it's open.
- *    - It applies at 639px wide and under, exactly where Squarespace switches to its phone menu on this
- *      template, so tablets and desktops are untouched (PHONE_MAX below).
- *
- * To switch either part off, set SEPARATORS or BURGER below to false.
- * ================================================================ */
-try {
-(function () {
-  var SEPARATORS = true;   // draw the | between menu items
-  var BURGER = true;       // the hamburger menu on phones
-  var ORANGE = '#E28602';  // Production Expert orange, for the current page marker
-  var PHONE_MAX = 639;     // widest screen that gets the hamburger (where Squarespace shows its phone menu)
-
-  // ---- Strip any typed " |" from the menu names (desktop menu, phone menu and footer menu) ----
-  // Walks the text inside each menu link and removes a trailing "|" plus the spaces around it.
-  function stripPipes() {
-    var links = document.querySelectorAll('#nav a, #mobile-navigation a, #bottomBar nav a');
-    for (var i = 0; i < links.length; i++) {
-      var walker = document.createTreeWalker(links[i], NodeFilter.SHOW_TEXT, null, false), n;
-      while ((n = walker.nextNode())) {
-        if (/\|\s*$/.test(n.nodeValue)) n.nodeValue = n.nodeValue.replace(/\s*\|\s*$/, '');
-      }
-    }
-  }
-
-  // Clean the name read from a link (used for the phone panel), in case stripping hasn't run on it
-  function cleanName(t) { return (t || '').replace(/\s+/g, ' ').replace(/\s*\|\s*$/, '').trim(); }
-
-  // ---- All the styling for both parts, added once ----
-  var CSS =
-    // Separators: after every top-level desktop menu item except the last one
-    (SEPARATORS ?
-      'html.pe-seps #nav>li:not(:last-child)::after{content:"|";margin-left:0;opacity:.55;pointer-events:none}' : '') +
-    (BURGER ?
-      // Hide Squarespace's MENU word and its list while the hamburger is in charge (the bar keeps its height,
-      // so the logo stays clear of the buttons that float over it)
-      // (639px and under is exactly where this template switches to its phone menu, measured 19 Nov 2026)
-      '@media (max-width:' + PHONE_MAX + 'px){html.pe-burger #mobile-navigation-label,html.pe-burger #mobile-navigation>ul{visibility:hidden!important}' +
-      'html.pe-burger #mobile-navigation>ul{display:none!important}' +
-      // Search moves to the centre of the top bar
-      'html.pe-burger .pe-search-btn{left:50%!important;right:auto!important;transform:translateX(-50%)}' +
-      'html.pe-burger #pe-burger{display:flex}}' +
-      // The hamburger button: the same 40px pill as the dark mode switch, top right
-      '#pe-burger{display:none;position:fixed;top:12px;right:16px;z-index:9999;width:40px;height:40px;padding:0;border-radius:20px;' +
-        'border:1px solid #dcdcdc;background:#fff;color:#111;cursor:pointer;align-items:center;justify-content:center;-webkit-tap-highlight-color:transparent}' +
-      'html.pe-dark #pe-burger{background:#ECEDEF;border-color:#ECEDEF;color:#141518}' +
-      '#pe-burger svg{display:block}' +
-      // The dimmed page behind the open panel
-      '#pe-menu-shade{position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,.45);opacity:0;visibility:hidden;transition:opacity .25s,visibility .25s}' +
-      // The panel itself: slides in from the right, full height, scrolls if the menu is long
-      '#pe-menu{position:fixed;top:0;right:0;bottom:0;z-index:10001;width:min(86vw,360px);background:#fff;color:#111;' +
-        'transform:translateX(100%);visibility:hidden;transition:transform .28s ease,visibility .28s;overflow-y:auto;-webkit-overflow-scrolling:touch;' +
-        'font-family:"Open Sans",sans-serif;box-shadow:-8px 0 24px rgba(0,0,0,.18);overscroll-behavior:contain}' +
-      'html.pe-menu-open #pe-menu{transform:none;visibility:visible}' +
-      'html.pe-menu-open #pe-menu-shade{opacity:1;visibility:visible}' +
-      'html.pe-menu-open,html.pe-menu-open body{overflow:hidden!important}' +
-      // Panel top row: the word Menu and the close button
-      '#pe-menu .pe-m-top{display:flex;align-items:center;justify-content:space-between;padding:12px 16px 12px 20px;border-bottom:1px solid #e6e6e6}' +
-      '#pe-menu .pe-m-title{font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;opacity:.6}' +
-      '#pe-menu .pe-m-close{width:40px;height:40px;border:0;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;border-radius:20px;padding:0}' +
-      // Menu rows
-      '#pe-menu ul{list-style:none;margin:0;padding:0}' +
-      '#pe-menu li{margin:0;padding:0;border-bottom:1px solid #eee}' +
-      '#pe-menu .pe-m-row{display:flex;align-items:stretch}' +
-      '#pe-menu a{display:flex;align-items:center;flex:1;min-height:52px;padding:0 20px;color:inherit!important;text-decoration:none!important;' +
-        'font-weight:600;font-size:15px;letter-spacing:.04em;text-transform:uppercase;border-left:4px solid transparent}' +
-      '#pe-menu a.pe-m-here{border-left-color:' + ORANGE + '}' +
-      // The arrow that opens a dropdown section
-      '#pe-menu .pe-m-more{width:56px;border:0;border-left:1px solid #eee;background:transparent;color:inherit;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}' +
-      '#pe-menu .pe-m-more svg{transition:transform .2s}' +
-      '#pe-menu li.pe-m-open>.pe-m-row .pe-m-more svg{transform:rotate(180deg)}' +
-      // Dropdown items: hidden until opened, normal case, slightly indented
-      '#pe-menu .pe-m-sub{display:none;background:#f6f6f6}' +
-      '#pe-menu li.pe-m-open>.pe-m-sub{display:block}' +
-      '#pe-menu .pe-m-sub li{border-bottom:0;border-top:1px solid #ebebeb}' +
-      '#pe-menu .pe-m-sub a{min-height:46px;padding-left:36px;font-weight:400;text-transform:none;letter-spacing:0}' +
-      // Dark mode colours (the site's own dark palette)
-      'html.pe-dark #pe-menu{background:#1D1F23;color:#E6E7EA}' +
-      'html.pe-dark #pe-menu .pe-m-top,html.pe-dark #pe-menu li,html.pe-dark #pe-menu .pe-m-more{border-color:#33363C}' +
-      'html.pe-dark #pe-menu .pe-m-sub{background:#141518}' +
-      'html.pe-dark #pe-menu .pe-m-sub li{border-color:#2A2D32}' +
-      // Readers who ask their phone for less motion get no slide
-      '@media (prefers-reduced-motion:reduce){#pe-menu,#pe-menu-shade,#pe-menu .pe-m-more svg{transition:none}}'
-    : '');
-
-  function addCss() {
-    if (document.getElementById('pe-menu-css')) return;
-    var st = document.createElement('style');
-    st.id = 'pe-menu-css';
-    st.textContent = CSS;
-    (document.head || document.documentElement).appendChild(st);
-  }
-
-  // ---- Separators: strip the typed pipes, then switch the drawn ones on (same moment, so never two) ----
-  function doSeparators() {
-    stripPipes();
-    if (SEPARATORS) document.documentElement.classList.add('pe-seps');
-  }
-
-  // ---- Hamburger menu ----
-  var ICON_BURGER = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>';
-  var ICON_CLOSE = '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><line x1="6" y1="6" x2="18" y2="18"/><line x1="18" y1="6" x2="6" y2="18"/></svg>';
-  var ICON_DOWN = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>';
-
-  var burger, panel, shade, lastFocus = null, pushedState = false, pendingHref = null;
-
-  // Is this link the page we're on? (matches the path, ignoring a trailing slash)
-  function isHere(href) {
-    try {
-      var u = new URL(href, location.href);
-      if (u.host !== location.host) return false;
-      var a = u.pathname.replace(/\/$/, '') || '/', b = location.pathname.replace(/\/$/, '') || '/';
-      return a === b;
-    } catch (e) { return false; }
-  }
-
-  // Make one menu link for the panel
-  function makeLink(a) {
-    var link = document.createElement('a');
-    link.href = a.getAttribute('href') || '#';
-    link.textContent = cleanName(a.textContent);
-    if (isHere(link.href)) { link.className = 'pe-m-here'; link.setAttribute('aria-current', 'page'); }
-    return link;
-  }
-
-  // Build the panel's list from the desktop menu (#nav), dropdowns included
-  function buildList() {
-    var ul = document.createElement('ul');
-    var items = document.querySelectorAll('#nav > li');
-    for (var i = 0; i < items.length; i++) {
-      var top = items[i].querySelector(':scope > a');
-      if (!top) continue;
-      var li = document.createElement('li');
-      var row = document.createElement('div');
-      row.className = 'pe-m-row';
-      row.appendChild(makeLink(top));
-      li.appendChild(row);
-
-      var subLinks = items[i].querySelectorAll('.subnav a');
-      if (subLinks.length) {
-        // A dropdown section: an arrow button to open it, and the list of its pages
-        var sub = document.createElement('ul');
-        sub.className = 'pe-m-sub';
-        sub.id = 'pe-m-sub-' + i;
-        var openIt = false;
-        for (var j = 0; j < subLinks.length; j++) {
-          var sli = document.createElement('li');
-          var sa = makeLink(subLinks[j]);
-          if (sa.className === 'pe-m-here') openIt = true;   // open the section holding the current page
-          sli.appendChild(sa);
-          sub.appendChild(sli);
-        }
-        var more = document.createElement('button');
-        more.type = 'button';
-        more.className = 'pe-m-more';
-        more.setAttribute('aria-controls', sub.id);
-        more.setAttribute('aria-label', 'Show pages in ' + cleanName(top.textContent));
-        more.innerHTML = ICON_DOWN;
-        row.appendChild(more);
-        li.appendChild(sub);
-        setOpen(li, more, openIt);
-        more.addEventListener('click', (function (li, more) {
-          return function () { setOpen(li, more, !li.classList.contains('pe-m-open')); };
-        })(li, more));
-      }
-      ul.appendChild(li);
-    }
-    return ul;
-  }
-
-  function setOpen(li, btn, open) {
-    li.classList.toggle('pe-m-open', open);
-    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-  }
-
-  function build() {
-    if (document.getElementById('pe-burger') || !document.querySelector('#nav > li')) return false;
-
-    // The three-line button
-    burger = document.createElement('button');
-    burger.id = 'pe-burger';
-    burger.type = 'button';
-    burger.setAttribute('aria-label', 'Open menu');
-    burger.setAttribute('aria-expanded', 'false');
-    burger.setAttribute('aria-controls', 'pe-menu');
-    burger.innerHTML = ICON_BURGER;
-
-    // The dimmed page behind the panel; a tap on it closes the menu
-    shade = document.createElement('div');
-    shade.id = 'pe-menu-shade';
-
-    // The panel
-    panel = document.createElement('nav');
-    panel.id = 'pe-menu';
-    panel.setAttribute('aria-label', 'Site menu');
-    panel.setAttribute('role', 'dialog');
-    panel.setAttribute('aria-modal', 'true');
-    var topRow = document.createElement('div');
-    topRow.className = 'pe-m-top';
-    topRow.innerHTML = '<span class="pe-m-title">Menu</span>';
-    var close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'pe-m-close';
-    close.setAttribute('aria-label', 'Close menu');
-    close.innerHTML = ICON_CLOSE;
-    topRow.appendChild(close);
-    panel.appendChild(topRow);
-    panel.appendChild(buildList());
-
-    document.body.appendChild(burger);
-    document.body.appendChild(shade);
-    document.body.appendChild(panel);
-
-    burger.addEventListener('click', function () { isOpen() ? closeMenu() : openMenu(); });
-    close.addEventListener('click', function () { closeMenu(); });
-    shade.addEventListener('click', function () { closeMenu(); });
-
-    // A tap on a page link: take back the history step the menu added (so Back from the new page goes to
-    // the page the reader was on, not to an empty copy of it), then go to the link
-    panel.addEventListener('click', function (e) {
-      var a = e.target.closest && e.target.closest('a');
-      if (!a) return;
-      if (pushedState && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
-        e.preventDefault();
-        pendingHref = a.href;
-        pushedState = false;
-        try { history.back(); } catch (err) { location.href = pendingHref; }
-        setTimeout(function () { if (pendingHref) location.href = pendingHref; }, 400);   // in case Back is slow
-      } else closeMenu(true);
-    });
-
-    // Keyboard: Esc closes; Tab stays inside the panel while it's open
-    document.addEventListener('keydown', function (e) {
-      if (!isOpen()) return;
-      if (e.key === 'Escape') { e.preventDefault(); closeMenu(); return; }
-      if (e.key === 'Tab') {
-        var f = panel.querySelectorAll('a,button');
-        if (!f.length) return;
-        var first = f[0], last = f[f.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-      }
-    });
-
-    // The phone's back gesture closes the menu instead of leaving the page
-    window.addEventListener('popstate', function () {
-      if (pendingHref) { var h = pendingHref; pendingHref = null; location.href = h; return; }
-      if (isOpen()) { pushedState = false; closeMenu(true); }
-    });
-    return true;
-  }
-
-  function isOpen() { return document.documentElement.classList.contains('pe-menu-open'); }
-
-  function openMenu() {
-    lastFocus = document.activeElement;
-    document.documentElement.classList.add('pe-menu-open');
-    burger.setAttribute('aria-expanded', 'true');
-    // Add a history step so the back gesture has something to close
-    try { history.pushState({ peMenu: 1 }, ''); pushedState = true; } catch (e) {}
-    setTimeout(function () { var c = panel.querySelector('.pe-m-close'); if (c) c.focus(); }, 50);
-  }
-
-  // leaving = true when the reader tapped a link, so the history step is left alone
-  function closeMenu(leaving) {
-    if (!isOpen()) return;
-    document.documentElement.classList.remove('pe-menu-open');
-    burger.setAttribute('aria-expanded', 'false');
-    if (pushedState && !leaving) { pushedState = false; try { history.back(); } catch (e) {} }
-    if (!leaving && lastFocus && lastFocus.focus) lastFocus.focus();
-  }
-
-  // Hamburger on: the html.pe-burger class switches the phone styles on (only below PHONE_MAX, by the CSS),
-  // and the panel closes itself if the screen is turned or widened past that point while it's open
-  function startBurger() {
-    if (!BURGER || !build()) return;
-    document.documentElement.classList.add('pe-burger');
-    var mq = window.matchMedia('(max-width:' + PHONE_MAX + 'px)');
-    var onChange = function () { if (!mq.matches && isOpen()) closeMenu(); };
-    if (mq.addEventListener) mq.addEventListener('change', onChange); else if (mq.addListener) mq.addListener(onChange);
-  }
-
-  function start() {
-    addCss();
-    doSeparators();
-    startBurger();
-  }
-
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start);
-  else start();
-  // Run the strip again once everything has loaded, in case Squarespace redrew a menu late
-  window.addEventListener('load', stripPipes);
-})();
-} catch (e) { if (window.console) console.warn('Production Expert script failed: menu separators and hamburger menu', e); }
-
 
 /* ================================================================
  * Production Expert: placement for the top-of-article boxes
