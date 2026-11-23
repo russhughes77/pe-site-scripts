@@ -1375,8 +1375,11 @@ try {
    *                              change and how many suggestions were ticked, or that he can see no change at all. In the
    *                              Edit Post window Joe reads the text being edited, where he used to read the unsaved
    *                              preview behind it. Roll back to v8.7 (71a5605)
+   *   8.9  23 Nov 2026          Homepage speed, first step: the hero picture on show is fetched at high priority
+   *                              (fetchpriority=high), which PageSpeed flagged as missing on mobile and desktop.
+   *                              Hero behaviour is otherwise unchanged. Roll back to v8.8 (81cd624)
    */
-  var PE_VERSION = '8.8';
+  var PE_VERSION = '8.9';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -8021,6 +8024,15 @@ try {
     // Show the picture once it has loaded, so the slide never flashes empty. If it
     // has been swapped again in the meantime, this older picture is dropped.
     var im = new Image();
+    // v8.9: the picture on show is the page's largest element, so the browser is told to fetch it
+    // first (fetchpriority=high). Pictures on hidden slides keep the normal priority. Before
+    // Squarespace has marked an active slide, only the first slide counts as the one on show.
+    try {
+      var g = s.closest && s.closest('.sqs-block-gallery');
+      var onShow = s.classList.contains('sqs-active-slide') ||
+        (g && !g.querySelector('.slide.sqs-active-slide') && g.querySelector('.slide') === s);
+      if (onShow) im.fetchPriority = 'high';
+    } catch (e) {}
     im.onload = function () {
       if (s.getAttribute('data-pe-hero') !== href) return;
       pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
