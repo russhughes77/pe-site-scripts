@@ -2,7 +2,7 @@
 #
 # Actions tab > "Switch version" > Run workflow > type the version (for example v6.6) > Run workflow.
 # It finds the commit whose message starts with that version ("v6.6: ..."), copies that commit's pe-site.js
-# and pe-site.min.js onto main and pushes them. GitHub Pages republishes in about a minute and everyone has the
+# and pe-site.min.js (plus pe-checklist.js and pe-checklist.min.js, from v9.0 on) onto main and pushes them. GitHub Pages republishes in about a minute and everyone has the
 # chosen version within about 10 minutes (browsers keep their copy for 10 minutes). The version shows beside
 # the checks panel's title, so anyone can see which one they're running.
 #
@@ -48,10 +48,15 @@ jobs:
           if [ -z "$sha" ]; then echo "::error::No commit starts with '$want:'. Versions available:"; git log --format='%s' | grep -Eo '^v[0-9]+(\.[0-9]+)?:' | tr -d ':' | sort -uV | tr '\n' ' '; exit 1; fi
           echo "Switching to $want from commit $sha"
           git checkout "$sha" -- pe-site.js pe-site.min.js
+          # From v9.0 the team-only checklist is its own pair of files; older versions do not have them
+          for f in pe-checklist.js pe-checklist.min.js; do
+            if git cat-file -e "$sha:$f" 2>/dev/null; then git checkout "$sha" -- "$f"; fi
+          done
           if git diff --cached --quiet && git diff --quiet; then echo "Already on $want: nothing to change."; exit 0; fi
           git config user.name "Switch version"
           git config user.email "actions@users.noreply.github.com"
           git add pe-site.js pe-site.min.js
+          for f in pe-checklist.js pe-checklist.min.js; do if [ -f "$f" ]; then git add "$f"; fi; done
           # Not starting with the version, so a later switch always finds the real version commit
           git commit -m "Switched the site scripts to $want (commit ${sha:0:7})"
           git push origin HEAD:main
