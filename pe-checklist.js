@@ -282,7 +282,7 @@ try {
    *   9.0  23 Nov 2026          Homepage speed, second step: the team-only checklist, Joe and the panel moved out of
    *                              pe-site.js into this file (pe-checklist.js), which only the team downloads. Readers' script
    *                              shrinks from 267 KB to 112 KB minified (80 KB to 33 KB compressed). Behaviour for the team
-   *                              is unchanged. The version history now lives here. Roll back to v8.9 (33d84d7)
+   *                              is unchanged. The version history now lives here. Roll back to v8.9 (33d84d7). Commit 808acba
    */
   var PE_VERSION = '9.0';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
