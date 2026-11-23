@@ -1377,7 +1377,7 @@ try {
    *                              preview behind it. Roll back to v8.7 (71a5605)
    *   8.9  23 Nov 2026          Homepage speed, first step: the hero picture on show is fetched at high priority
    *                              (fetchpriority=high), which PageSpeed flagged as missing on mobile and desktop.
-   *                              Hero behaviour is otherwise unchanged. Roll back to v8.8 (81cd624)
+   *                              Hero behaviour is otherwise unchanged. Roll back to v8.8 (81cd624). Commit f96b840
    */
   var PE_VERSION = '8.9';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
