@@ -31,6 +31,14 @@ only for the team (a signed-in Squarespace account, the Squarespace editor, or a
 Each section is fenced off, so a fault in one never stops the others. The placement section must stay last.
 The editor guard stays in the Squarespace Header box, because it has to run before the page draws.
 
+## Homepage hero list
+
+From v9.1 the homepage hero reads `heroes.json`, a short list of the Hero-tagged articles with their pictures
+already picked out. The **Heroes** workflow (`.github/workflows/heroes.yml`, `scripts/heroes.py`) rewrites it
+every 30 minutes, committing only when the list changes (and once a day to show it is still running). To put a
+newly tagged article on the homepage at once, run it from the Actions tab: **Heroes**, then **Run workflow**.
+If `heroes.json` is missing, unreadable or older than 3 days, the homepage falls back to the blog feed as before.
+
 ## Versions and rolling back
 
 Joe shows the version beside its name (for example JOE v1.0), and the browser console logs it.

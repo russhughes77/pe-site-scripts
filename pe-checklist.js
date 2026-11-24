@@ -283,8 +283,12 @@ try {
    *                              pe-site.js into this file (pe-checklist.js), which only the team downloads. Readers' script
    *                              shrinks from 267 KB to 112 KB minified (80 KB to 33 KB compressed). Behaviour for the team
    *                              is unchanged. The version history now lives here. Roll back to v8.9 (33d84d7). Commit 808acba
+   *   9.1  24 Nov 2026          Homepage speed, third step: the hero reads a short list (heroes.json, rewritten every 30
+   *                              minutes by a GitHub job) instead of the whole Hero-tag blog feed, and on a first visit the
+   *                              hand-made slides are painted straight away. If the list is missing, broken or over 3 days
+   *                              old, the blog feed is used as before. Roll back to v9.0 (808acba).
    */
-  var PE_VERSION = '9.0';
+  var PE_VERSION = '9.1';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';

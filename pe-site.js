@@ -2811,6 +2811,11 @@ try {
  * - Testing: add ?pe-hero-tag=News to the homepage address to fill the tagged
  *   part from another tag. Only that browser tab sees it.
  * - Homepage only. Leaves the editor alone.
+ * - Faster start (v9.1, 24 Nov 2026): the tagged list is read from heroes.json, a short file
+ *   a GitHub job rewrites every 30 minutes (scripts/heroes.py), instead of the whole blog feed.
+ *   The request starts as soon as this section runs, and on a first visit the hand-made
+ *   slides are painted at once rather than after the list arrives. If heroes.json is missing,
+ *   broken or older than 3 days, the blog feed is used exactly as before. Roll back to v9.0 (808acba).
  * ================================================================ */
 try {
 (function () {
@@ -2823,7 +2828,9 @@ try {
     swapDelay: 1500,                  // ms after a slide change before the hidden slides are swapped, so a
                                       // slide is never changed while it is still fading out
     oneSlideEvery: 6000,              // ms between slides when the gallery has only one slide
-    key: 'pe-hero-v2'                 // this browser's copy of the last tagged list, for an instant start
+    key: 'pe-hero-v2',                // this browser's copy of the last tagged list, for an instant start
+    json: 'https://russhughes77.github.io/pe-site-scripts/heroes.json',   // v9.1: the short list a daily job keeps
+    jsonMaxAgeDays: 3                 // older than this, the job is presumed stopped and the blog feed is used
   };
 
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // the Squarespace editor
@@ -2982,6 +2989,59 @@ try {
         });
         return out;
       });
+  }
+
+  /* ---------- The short list (v9.1) ----------
+   * heroes.json holds the tagged articles with their pictures already picked out, so this page
+   * needn't download and read the blog feed. The request starts now, before the page has finished
+   * loading, and run() picks up the answer. Resolves to the file's items, or null when the file
+   * can't be used (missing, not a list, or older than C.jsonMaxAgeDays), so the blog feed takes over. */
+  var jsonReady = null;
+  function startJson() {
+    if (jsonReady || testTag) return;
+    jsonReady = fetch(C.json, { credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !Array.isArray(j.items)) return null;
+        var made = Date.parse(j.generated);
+        if (!made || Date.now() - made > C.jsonMaxAgeDays * 864e5) return null;
+        return j.items;
+      })
+      .catch(function () { return null; });
+  }
+  if (isHome() || /^\/?$/.test(location.pathname)) startJson();
+
+  // The same result as fetchList(), from the short list: newest first, published already,
+  // not in the hand-made slides, sharp enough, at most C.max. A picture whose width the job
+  // couldn't read (w 0) is measured here, as before.
+  function fromJson(items, skip) {
+    var now = Date.now();
+    var rows = items.filter(function (h) {
+      return h && h.url && h.src && (+h.on || 0) <= now && !skip[key(h.url)];
+    }).sort(function (a, b) { return (+b.on || 0) - (+a.on || 0); });
+    return Promise.all(rows.map(function (h) {
+      var p = { src: h.src, w: +h.w || 0, h: 0, fx: h.fx, fy: h.fy };
+      return measure(p).then(function (p2) { return { h: h, p: p2 }; });
+    })).then(function (list) {
+      var out = [];
+      list.forEach(function (r) {
+        if (out.length >= C.max) return;
+        if (r.p.w < C.minWidth) {
+          try { console.info('Hero: skipped "' + r.h.title + '", picture is ' + (r.p.w || 'an unknown') + 'px wide (needs ' + C.minWidth + ')'); } catch (e) {}
+          return;
+        }
+        out.push({ url: r.h.url, title: r.h.title || '', src: r.p.src, fx: r.p.fx, fy: r.p.fy });
+      });
+      return out;
+    });
+  }
+
+  // The tagged list: from heroes.json when it can be used, otherwise from the blog feed
+  function getTagged(skip) {
+    startJson();
+    return (jsonReady || Promise.resolve(null)).then(function (items) {
+      return items ? fromJson(items, skip) : fetchList(skip);
+    });
   }
 
   /* ---------- Putting a slide on screen ---------- */
@@ -3152,10 +3212,14 @@ try {
     var saved = !testTag && ls();
     var savedList = saved && saved.list ? saved.list.filter(function (h) { return !skip[key(h.url)]; }) : null;
     if (savedList && savedList.length) setup(gallery, combine(manual, savedList));
-    fetchList(skip).then(function (tagged) {
+    // v9.1: a first visit has no saved list, so the hand-made slides are painted now, and the first
+    // picture starts loading, instead of waiting for the tagged list. They keep their places when
+    // the full list arrives, so nothing on screen changes.
+    else if (!testTag && manual.length) setup(gallery, manual);
+    getTagged(skip).then(function (tagged) {
       if (!testTag) ls({ t: Date.now(), list: tagged });
       if (!savedList || !same(savedList, tagged) || testTag) setup(gallery, combine(manual, tagged));
-    }).catch(function (e) { try { console.warn('Hero: tag feed failed, hand-made slides only', e); } catch (x) {} });
+    }).catch(function (e) { try { console.warn('Hero: tag list failed, hand-made slides only', e); } catch (x) {} });
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', run); else run();
