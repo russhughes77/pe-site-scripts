@@ -297,9 +297,12 @@ try {
    *                              broken or over 3 days old the feeds are read in the browser as before. Roll back to v9.2 (09a5902). Commit fd8bbda
    *   9.4  24 Nov 2026          Accessibility: the homepage hero link now has the headline as its accessible name. PageSpeed's
    *                              agentic browsing audit failed it with "Links must have discernible text", because the picture
-   *                              is a CSS background and the real image is hidden. No visible change. Roll back to v9.3 (fd8bbda).
+   *                              is a CSS background and the real image is hidden. No visible change. Roll back to v9.3 (fd8bbda). Commit 6be8e6e
+   *   9.5  24 Nov 2026          Homepage speed, sixth step: the first hero picture appears at once instead of fading in over
+   *                              0.4 seconds (the fade held back the largest paint). Later slide changes still fade. Pairs with
+   *                              an early request for heroes.json in the Squarespace Header. Roll back to v9.4 (6be8e6e).
    */
-  var PE_VERSION = '9.4';
+  var PE_VERSION = '9.5';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';

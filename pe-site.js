@@ -2867,6 +2867,9 @@ try {
  * - Link name (v9.4, 24 Nov 2026): each slide's link is given the headline as its accessible name,
  *   because the picture is a hidden image plus a CSS background and left the link with no text
  *   for screen readers and AI agents. Looks the same. Roll back to v9.3 (fd8bbda).
+ * - Instant first picture (v9.5, 24 Nov 2026): the first picture a slide shows appears at once instead
+ *   of fading in over 0.4 seconds, which held back the page's largest paint. Later changes still fade.
+ *   Roll back to v9.4 (6be8e6e).
  * ================================================================ */
 try {
 (function () {
@@ -2901,6 +2904,7 @@ try {
     '.pe-hero-pic{position:absolute;top:0;left:0;right:0;bottom:0;background-size:cover;' +
       'background-repeat:no-repeat;opacity:0;transition:opacity .4s ease}' +
     '.pe-hero-pic.pe-in{opacity:1}' +
+    '.pe-hero-pic.pe-nofade{transition:none}' +   // v9.5: a picture's first appearance has no fade
     // A placeholder slide's own picture and "Placeholder" headline never show
     '.pe-hero-ph:not(.pe-hero-filled) img{visibility:hidden !important}' +
     '.pe-hero-ph:not(.pe-hero-filled) .meta-title,.pe-hero-ph:not(.pe-hero-filled) .meta-description{visibility:hidden !important}';
@@ -3152,10 +3156,20 @@ try {
     } catch (e) {}
     im.onload = function () {
       if (s.getAttribute('data-pe-hero') !== href) return;
+      // v9.5: the first picture a slide ever shows appears at once. The 0.4 second fade-in held back
+      // the page's largest paint, and on a first visit there is nothing for it to fade from. Later
+      // changes (the slideshow moving on, the full list arriving) still fade.
+      var first = !pic.style.backgroundImage;
+      if (first) pic.classList.add('pe-nofade');
       pic.style.backgroundImage = 'url("' + src.replace(/"/g, '%22') + '")';
       if (late) t.textContent = h.title;
       s.classList.add('pe-hero-filled');
-      requestAnimationFrame(function () { pic.classList.add('pe-in'); });
+      if (first) {
+        pic.classList.add('pe-in');
+        setTimeout(function () { pic.classList.remove('pe-nofade'); }, 100);
+      } else {
+        requestAnimationFrame(function () { pic.classList.add('pe-in'); });
+      }
     };
     im.onerror = function () {
       if (src === orig || s.getAttribute('data-pe-hero') !== href) return;
