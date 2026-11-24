@@ -2876,6 +2876,10 @@ try {
  * - Instant first picture (v9.5, 24 Nov 2026): the first picture a slide shows appears at once instead
  *   of fading in over 0.4 seconds, which held back the page's largest paint. Later changes still fade.
  *   Roll back to v9.4 (6be8e6e).
+ * - Hidden on phones (v9.7, 24 Nov 2026): on a phone the hero looked like any other story and could
+ *   show the same one for days, so it is hidden at 640px and under and does no work there (no list,
+ *   no pictures). Tablets and desktops are unchanged. C.phoneHide: false brings it back. The Header
+ *   box also hides it in CSS so it never flashes. Roll back to v9.6 (979cf4d).
  * ================================================================ */
 try {
 (function () {
@@ -2891,7 +2895,9 @@ try {
     key: 'pe-hero-v2',                // this browser's copy of the last tagged list, for an instant start
     json: 'https://russhughes77.github.io/pe-site-scripts/heroes.json',   // v9.1: the short list a daily job keeps
     jsonMaxAgeDays: 3,                // older than this, the job is presumed stopped and the blog feed is used
-    base: 'https://russhughes77.github.io/pe-site-scripts/'   // v9.2: where the job's lean pictures (heroes/…) live
+    base: 'https://russhughes77.github.io/pe-site-scripts/',   // v9.2: where the job's lean pictures (heroes/…) live
+    phoneHide: true,                  // v9.7: no hero on phones (false brings it back there)
+    phone: '(max-width: 640px)'       // what counts as a phone: the same width the homepage styles use
   };
 
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // the Squarespace editor
@@ -2900,6 +2906,15 @@ try {
   // A test tag from the address (?pe-hero-tag=News), otherwise the real one
   var testTag = (location.search.match(/[?&]pe-hero-tag=([^&]+)/) || [])[1];
   var TAG = testTag ? decodeURIComponent(testTag.replace(/\+/g, ' ')) : C.tag;
+
+  // v9.7: on phones the hero is hidden and none of its work is done: no list, no pictures
+  var onPhone = !!(C.phoneHide && !testTag && window.matchMedia && window.matchMedia(C.phone).matches);
+  if (onPhone && isHome() && !document.getElementById('pe-hero-phone-css')) {
+    var hs = document.createElement('style');
+    hs.id = 'pe-hero-phone-css';
+    hs.textContent = '@media ' + C.phone + '{body.homepage .sqs-block-gallery{display:none !important}}';
+    document.head.appendChild(hs);
+  }
 
   // The styles. The picture sits in its own layer inside the slide's link, so
   // clicks still go to the article, and the headline and its shading stay on top.
@@ -3071,7 +3086,7 @@ try {
       })
       .catch(function () { return null; });
   }
-  if (isHome() || /^\/?$/.test(location.pathname)) startJson();
+  if (!onPhone && (isHome() || /^\/?$/.test(location.pathname))) startJson();
 
   // The same result as fetchList(), from the short list: newest first, published already,
   // not in the hand-made slides, sharp enough, at most C.max. A picture whose width the job
@@ -3292,7 +3307,7 @@ try {
   function same(a, b) { return JSON.stringify(a) === JSON.stringify(b); }
 
   function run() {
-    if (!isHome()) return;
+    if (!isHome() || onPhone) return;
     var gallery = document.querySelector('.sqs-block-gallery');
     if (!gallery || !gallery.querySelector('.slide')) return;
     addStyle();

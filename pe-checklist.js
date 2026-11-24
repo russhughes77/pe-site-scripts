@@ -304,9 +304,13 @@ try {
    *   9.6  24 Nov 2026          Homepage speed and layout shift: on phones the banner moves from under the hero to after the
    *                              third article, just below the first screen. An 804 KiB GIF banner was competing with the hero
    *                              picture, and a late banner could push visible content down. Desktop and tablet are unchanged.
-   *                              Roll back to v9.5 (6a311c5).
+   *                              Roll back to v9.5 (6a311c5). Commit 979cf4d
+   *   9.7  24 Nov 2026          Homepage speed: the hero is hidden on phones (640px and under) and does no work there, no list and
+   *                              no pictures. On a phone it looked like any other story and could show the same one for days.
+   *                              Tablets and desktops are unchanged. The Squarespace Header also hides it in CSS so it never
+   *                              flashes. Roll back to v9.6 (979cf4d).
    */
-  var PE_VERSION = '9.6';
+  var PE_VERSION = '9.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
