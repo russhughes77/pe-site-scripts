@@ -3,7 +3,13 @@ Heroes: writes heroes.json for the homepage hero (pe-site.js v9.1).
 
 Runs from .github/workflows/heroes.yml. Asks the blog for the articles tagged "Hero", picks
 out each one's picture the same way the homepage script always has, and saves a short list:
-{"generated": "...", "tag": "Hero", "items": [{"url", "title", "src", "fx", "fy", "w", "on"}, ...]}
+{"generated": "...", "tag": "Hero", "items": [{"url", "title", "src", "fx", "fy", "w", "on", "img", "ws"}, ...]}
+
+Lean pictures (v9.2): each article's picture is downloaded, compressed to WebP at up to three
+widths and saved in heroes/ (named heroes/<id>-<width>.webp). "img" is the id and "ws" the widths
+saved. The homepage uses these in place of the original, which can be a heavy PNG. If a picture
+can't be fetched or converted the item has no "img" and the homepage uses the original as before.
+Pictures no longer in the list are deleted.
 
 The homepage then reads this small file instead of the whole blog feed, so the first hero
 picture can start loading much sooner.
@@ -14,6 +20,8 @@ empty list. The file is only rewritten when the list changes, or once a day so t
 tell the job is still running.
 """
 import datetime
+import hashlib
+import io
 import json
 import os
 import re
@@ -30,6 +38,10 @@ TAG = "Hero"
 MIN_WIDTH = 1500      # same number as the homepage script and the pre-publish checks
 KEEP = 10             # the homepage shows five, but some may be skipped there
 REFRESH_HOURS = 20    # rewrite at least this often, so "generated" shows the job is alive
+LEAN_DIR = os.environ.get("HEROES_DIR") or os.path.join(ROOT, "heroes")
+WIDTHS = (750, 1500, 2500)   # sizes made; the picture's own width is added when it falls between
+QUALITY = 80
+LEAN_ITEMS = 6        # only the first few are made lean; the homepage shows five
 
 
 def picture_of(it):
@@ -81,6 +93,67 @@ def build(feed):
     return rows[:KEEP]
 
 
+def lean_id(src):
+    """A short stable name for a picture, from its address."""
+    return hashlib.sha1(src.encode()).hexdigest()[:12]
+
+
+def lean_widths(w):
+    ws = [x for x in WIDTHS if x <= w]
+    if not ws or ws[-1] < min(w, WIDTHS[-1]):
+        ws.append(min(w, WIDTHS[-1]))
+    return ws
+
+
+def make_lean(item):
+    """Download the picture and save it as WebP at each width. Returns (id, widths) or None."""
+    try:
+        from PIL import Image
+    except ImportError:
+        print("::warning::Pillow is not installed, so no lean pictures were made.")
+        return None
+    pid = lean_id(item["src"])
+    sep = "&" if "?" in item["src"] else "?"
+    try:
+        req = urllib.request.Request(item["src"] + sep + "format=2500w",
+                                     headers={"User-Agent": "pe-site-scripts heroes job"})
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = r.read()
+        im = Image.open(io.BytesIO(data))
+        im.load()
+    except Exception as e:  # any failure just means this one keeps its original picture
+        print(f"::warning::Could not fetch \"{item['title']}\" picture ({e}); the original will be used.")
+        return None
+    if im.mode not in ("RGB", "RGBA"):
+        im = im.convert("RGBA" if "transparency" in im.info else "RGB")
+    w, h = im.size
+    ws = lean_widths(w)
+    made = []
+    os.makedirs(LEAN_DIR, exist_ok=True)
+    for tw in ws:
+        path = os.path.join(LEAN_DIR, f"{pid}-{tw}.webp")
+        if not os.path.exists(path):
+            out = im if tw >= w else im.resize((tw, max(1, round(h * tw / w))), Image.LANCZOS)
+            out.save(path, "WEBP", quality=QUALITY, method=6)
+        made.append(tw)
+    item["w"] = item["w"] or w   # a Featured Image's width is now known
+    return pid, made
+
+
+def tidy(items):
+    """Delete lean pictures that no item in the list uses any more."""
+    keep = set()
+    for it in items:
+        if it.get("img"):
+            for tw in it.get("ws", []):
+                keep.add(f"{os.path.basename(it['img'])}-{tw}.webp")
+    if not os.path.isdir(LEAN_DIR):
+        return
+    for name in os.listdir(LEAN_DIR):
+        if name.endswith(".webp") and name not in keep:
+            os.remove(os.path.join(LEAN_DIR, name))
+
+
 def main():
     url = f"{SITE}{BLOG}?format=json&tag={urllib.parse.quote(TAG)}"
     req = urllib.request.Request(url, headers={"User-Agent": "pe-site-scripts heroes job", "Accept": "application/json"})
@@ -95,6 +168,11 @@ def main():
         return 1
 
     items = build(feed)
+    for it in items[:LEAN_ITEMS]:
+        got = make_lean(it)
+        if got:
+            it["img"], it["ws"] = "heroes/" + got[0], got[1]
+    tidy(items)
     now = datetime.datetime.now(datetime.timezone.utc)
 
     old = None

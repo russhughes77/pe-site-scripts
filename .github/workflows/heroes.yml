@@ -1,4 +1,5 @@
-# Heroes: refreshes heroes.json for the homepage hero (pe-site.js v9.1).
+# Heroes: refreshes heroes.json, and lean WebP copies of the hero pictures in heroes/, for the homepage hero
+# (pe-site.js v9.1 and v9.2).
 # Runs every 30 minutes, so a newly tagged Hero article reaches the homepage within about 40 minutes
 # (30 for this job, up to 10 for browsers to drop their old copy). It saves a commit only when the
 # list changes, or once a day to show it is still running. Also runs on demand from the Actions tab
@@ -27,22 +28,28 @@ jobs:
       - name: Get the code
         uses: actions/checkout@v5
 
-      - name: Read the Hero feed
+      - name: Install the picture tool
+        run: pip install --quiet pillow
+
+      - name: Read the Hero feed and make lean pictures
         run: python3 scripts/heroes.py
 
       - name: Save it if it changed
         id: save
         run: |
+          git add -A heroes.json
+          if [ -d heroes ]; then git add -A heroes; fi
+          # a deleted last picture leaves no folder, so stage removals too
+          git add -u heroes 2>/dev/null || true
           if [ ! -f heroes.json ]; then
             echo "No file to save."
             echo "changed=no" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet -- heroes.json && git ls-files --error-unmatch heroes.json >/dev/null 2>&1; then
+          elif git diff --cached --quiet && git ls-files --error-unmatch heroes.json >/dev/null 2>&1; then
             echo "No change."
             echo "changed=no" >> "$GITHUB_OUTPUT"
           else
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add heroes.json
             git commit -m "Heroes: $(date -u +%FT%H:%MZ)"
             git pull --rebase origin main || true
             git push

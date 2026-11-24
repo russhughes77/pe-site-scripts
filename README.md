@@ -39,6 +39,11 @@ every 30 minutes, committing only when the list changes (and once a day to show 
 newly tagged article on the homepage at once, run it from the Actions tab: **Heroes**, then **Run workflow**.
 If `heroes.json` is missing, unreadable or older than 3 days, the homepage falls back to the blog feed as before.
 
+From v9.2 the same job also saves a compressed WebP copy of each tagged article's picture in `heroes/`
+(about three widths each, named `<id>-<width>.webp`) and lists them in `heroes.json`. The homepage uses these
+instead of the original, which can be a heavy PNG. If a copy is missing or fails to load, the original is used.
+Pictures that leave the list are deleted by the job. Hand-made slides keep their own pictures.
+
 ## Versions and rolling back
 
 Joe shows the version beside its name (for example JOE v1.0), and the browser console logs it.

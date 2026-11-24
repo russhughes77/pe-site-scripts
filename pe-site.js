@@ -2816,6 +2816,10 @@ try {
  *   The request starts as soon as this section runs, and on a first visit the hand-made
  *   slides are painted at once rather than after the list arrives. If heroes.json is missing,
  *   broken or older than 3 days, the blog feed is used exactly as before. Roll back to v9.0 (808acba).
+ * - Lean pictures (v9.2, 24 Nov 2026): the same job saves a compressed WebP copy of each tagged
+ *   article's picture (heroes/, three widths) and the hero uses it in place of the original, which
+ *   can be a heavy PNG (PageSpeed: 222 KiB saveable on one). If a copy is missing or fails to load,
+ *   the original is used. Hand-made slides keep their own pictures. Roll back to v9.1 (a540acd).
  * ================================================================ */
 try {
 (function () {
@@ -2830,7 +2834,8 @@ try {
     oneSlideEvery: 6000,              // ms between slides when the gallery has only one slide
     key: 'pe-hero-v2',                // this browser's copy of the last tagged list, for an instant start
     json: 'https://russhughes77.github.io/pe-site-scripts/heroes.json',   // v9.1: the short list a daily job keeps
-    jsonMaxAgeDays: 3                 // older than this, the job is presumed stopped and the blog feed is used
+    jsonMaxAgeDays: 3,                // older than this, the job is presumed stopped and the blog feed is used
+    base: 'https://russhughes77.github.io/pe-site-scripts/'   // v9.2: where the job's lean pictures (heroes/…) live
   };
 
   try { if ((window.top !== window && !window.PE_FC_PREVIEW)) return; } catch (e) { return; }   // the Squarespace editor
@@ -3030,7 +3035,7 @@ try {
           try { console.info('Hero: skipped "' + r.h.title + '", picture is ' + (r.p.w || 'an unknown') + 'px wide (needs ' + C.minWidth + ')'); } catch (e) {}
           return;
         }
-        out.push({ url: r.h.url, title: r.h.title || '', src: r.p.src, fx: r.p.fx, fy: r.p.fy });
+        out.push({ url: r.h.url, title: r.h.title || '', src: r.p.src, fx: r.p.fx, fy: r.p.fy, img: r.h.img || '', ws: r.h.ws || [] });
       });
       return out;
     });
@@ -3073,7 +3078,16 @@ try {
     if (!pic) { pic = document.createElement('div'); pic.className = 'pe-hero-pic'; a.appendChild(pic); }
     pic.classList.remove('pe-in');
     pic.style.backgroundPosition = (h.fx * 100) + '% ' + (h.fy * 100) + '%';
-    var src = h.src + (h.src.indexOf('?') < 0 ? '?' : '&') + 'format=' + w + 'w';
+    var orig = h.src + (h.src.indexOf('?') < 0 ? '?' : '&') + 'format=' + w + 'w';
+    // v9.2: a tagged article's picture has a lean WebP copy on our own pages (made by the Heroes job),
+    // which can be a fifth of the size of the original PNG. The smallest copy wide enough is used. If
+    // that file can't be loaded, the original is used instead.
+    var src = orig;
+    if (h.img && h.ws && h.ws.length) {
+      var ws = h.ws.slice().sort(function (a, b) { return a - b; }), pick = ws[ws.length - 1];
+      for (var k = 0; k < ws.length; k++) if (ws[k] >= w) { pick = ws[k]; break; }
+      src = C.base + h.img + '-' + pick + '.webp';
+    }
     // Show the picture once it has loaded, so the slide never flashes empty. If it
     // has been swapped again in the meantime, this older picture is dropped.
     var im = new Image();
@@ -3092,6 +3106,13 @@ try {
       if (late) t.textContent = h.title;
       s.classList.add('pe-hero-filled');
       requestAnimationFrame(function () { pic.classList.add('pe-in'); });
+    };
+    im.onerror = function () {
+      if (src === orig || s.getAttribute('data-pe-hero') !== href) return;
+      src = orig;   // the lean copy failed: show the original instead
+      var im2 = new Image();
+      im2.onload = im.onload;
+      im2.src = src;
     };
     im.src = src;
   }
