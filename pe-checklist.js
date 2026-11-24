@@ -308,7 +308,7 @@ try {
    *   9.7  24 Nov 2026          Homepage speed: the hero is hidden on phones (640px and under) and does no work there, no list and
    *                              no pictures. On a phone it looked like any other story and could show the same one for days.
    *                              Tablets and desktops are unchanged. The Squarespace Header also hides it in CSS so it never
-   *                              flashes. Roll back to v9.6 (979cf4d).
+   *                              flashes. Roll back to v9.6 (979cf4d). Commit 5b3fe51
    */
   var PE_VERSION = '9.7';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
