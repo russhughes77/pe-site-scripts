@@ -2270,8 +2270,10 @@ try {
  * No banner goes within 4 articles of the end of the grid, because a manual
  * banner already sits just below it (after "Older articles archive"); with 30
  * articles that means banners after 9 and 18 on desktop, 8, 16 and 24 on tablet.
- * Phones (640px and under, one article per row) are left as Squarespace built
- * them: the ad stays under the hero and no banners are added.
+ * Phones (640px and under, one article per row) get the one banner only, after the
+ * third article (v9.6, 24 Nov 2026; before that it stayed under the hero). Just below
+ * the first screen it no longer competes with the hero picture for bandwidth, and a
+ * banner that loads late can't push visible content down. No extra banners are added.
  * The ad is found by the ad server's placeholder (.antur-ad), since the banner
  * itself loads after this runs. If the hero, the ad or the grid is missing, the
  * page is left untouched.
@@ -2281,6 +2283,7 @@ try {
   var PHONE = '(max-width: 640px)';  // same width the homepage hero CSS uses for phones
   var EVERY = { 3: 9, 2: 8 };        // articles per banner, by articles per row
   var CLEAR_OF_END = 4;              // no banner this close to the end of the grid
+  var PHONE_AFTER = 3;               // v9.6: on phones the one banner sits after this many articles, just below the first screen
   var SLOT_CSS = 'clear:both;float:none;width:100%;padding:8px 0 calc(0.877193% + 8px);';
 
   if (!document.body || !document.body.classList.contains('homepage')) return;
@@ -2345,9 +2348,12 @@ try {
     // Where the banners go: after article 9, 18 ... (or 8, 16 ...), clear of the end
     var after = [];
     if (every) for (var n = every; n <= items.length - CLEAR_OF_END; n += every) after.push(n);
+    // v9.6: phones get the single banner after article 3, below the first screen, so it no longer
+    // competes with the hero picture for the phone's bandwidth. A grid too short for that leaves it under the hero.
+    if (phone && items.length >= PHONE_AFTER + CLEAR_OF_END) after = [PHONE_AFTER];
 
     if (!after.length) {
-      // Phones, or a grid too short: ad back under the hero, added banners hidden
+      // A grid too short: ad back under the hero, added banners hidden
       putAdHome();
       slots.forEach(function (s) { s.style.display = 'none'; });
       return;

@@ -300,9 +300,13 @@ try {
    *                              is a CSS background and the real image is hidden. No visible change. Roll back to v9.3 (fd8bbda). Commit 6be8e6e
    *   9.5  24 Nov 2026          Homepage speed, sixth step: the first hero picture appears at once instead of fading in over
    *                              0.4 seconds (the fade held back the largest paint). Later slide changes still fade. Pairs with
-   *                              an early request for heroes.json in the Squarespace Header. Roll back to v9.4 (6be8e6e).
+   *                              an early request for heroes.json in the Squarespace Header. Roll back to v9.4 (6be8e6e). Commit 6a311c5
+   *   9.6  24 Nov 2026          Homepage speed and layout shift: on phones the banner moves from under the hero to after the
+   *                              third article, just below the first screen. An 804 KiB GIF banner was competing with the hero
+   *                              picture, and a late banner could push visible content down. Desktop and tablet are unchanged.
+   *                              Roll back to v9.5 (6a311c5).
    */
-  var PE_VERSION = '9.5';
+  var PE_VERSION = '9.6';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
