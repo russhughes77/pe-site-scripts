@@ -294,9 +294,12 @@ try {
    *   9.3  24 Nov 2026          Homepage speed, fifth step: the FREE, UPDATED, DEAL, REVIEW and NEWS card labels are read from
    *                              card-labels.json, kept by a 30-minute GitHub job, instead of about 1 MB of blog feeds in every
    *                              visitor's browser. Tested for identical labels against the old method. If the file is missing,
-   *                              broken or over 3 days old the feeds are read in the browser as before. Roll back to v9.2 (09a5902).
+   *                              broken or over 3 days old the feeds are read in the browser as before. Roll back to v9.2 (09a5902). Commit fd8bbda
+   *   9.4  24 Nov 2026          Accessibility: the homepage hero link now has the headline as its accessible name. PageSpeed's
+   *                              agentic browsing audit failed it with "Links must have discernible text", because the picture
+   *                              is a CSS background and the real image is hidden. No visible change. Roll back to v9.3 (fd8bbda).
    */
-  var PE_VERSION = '9.3';
+  var PE_VERSION = '9.4';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';

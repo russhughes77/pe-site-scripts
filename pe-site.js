@@ -2864,6 +2864,9 @@ try {
  *   article's picture (heroes/, three widths) and the hero uses it in place of the original, which
  *   can be a heavy PNG (PageSpeed: 222 KiB saveable on one). If a copy is missing or fails to load,
  *   the original is used. Hand-made slides keep their own pictures. Roll back to v9.1 (a540acd).
+ * - Link name (v9.4, 24 Nov 2026): each slide's link is given the headline as its accessible name,
+ *   because the picture is a hidden image plus a CSS background and left the link with no text
+ *   for screen readers and AI agents. Looks the same. Roll back to v9.3 (fd8bbda).
  * ================================================================ */
 try {
 (function () {
@@ -3115,6 +3118,9 @@ try {
     s.setAttribute('data-pe-hero', href);
     var img = a.querySelector('img');
     if (img) img.alt = h.title;
+    // v9.4: the picture is hidden and the headline sits outside the link, so the link had no
+    // text a screen reader or an AI agent could read (Lighthouse: "Links must have discernible text")
+    a.setAttribute('aria-label', h.title);
     var t = titleBox(s);
     // On a slide that is showing (one-slide gallery), the headline changes with the picture
     if (!late) t.textContent = h.title;
