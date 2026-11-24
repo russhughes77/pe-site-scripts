@@ -1,0 +1,55 @@
+# Card labels: refreshes card-labels.json for the homepage FREE, UPDATED, DEAL, REVIEW and NEWS labels
+# (pe-site.js v9.3). Runs every 30 minutes and saves a commit only when the lists change, or once a day to
+# show it is still running. Also runs on demand from the Actions tab ("Card labels", then "Run workflow").
+# No secrets needed: it reads the public blog feeds.
+name: Card labels
+
+on:
+  schedule:
+    - cron: "23,53 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pages: write
+
+concurrency:
+  group: card-labels
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Get the code
+        uses: actions/checkout@v5
+
+      - name: Read the feeds
+        run: node scripts/card-labels.js
+
+      - name: Save it if it changed
+        id: save
+        run: |
+          git add -A card-labels.json
+          if [ ! -f card-labels.json ]; then
+            echo "No file to save."
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+          elif git diff --cached --quiet && git ls-files --error-unmatch card-labels.json >/dev/null 2>&1; then
+            echo "No change."
+            echo "changed=no" >> "$GITHUB_OUTPUT"
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git commit -m "Card labels: $(date -u +%FT%H:%MZ)"
+            git pull --rebase origin main || true
+            git push
+            echo "changed=yes" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ask GitHub Pages to republish
+        if: steps.save.outputs.changed == 'yes'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X POST "repos/${{ github.repository }}/pages/builds" || echo "Pages will pick it up on its own."

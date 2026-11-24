@@ -44,6 +44,15 @@ From v9.2 the same job also saves a compressed WebP copy of each tagged article'
 instead of the original, which can be a heavy PNG. If a copy is missing or fails to load, the original is used.
 Pictures that leave the list are deleted by the job. Hand-made slides keep their own pictures.
 
+## Homepage card labels
+
+From v9.3 the FREE, UPDATED, DEAL, REVIEW and NEWS labels on homepage cards come from `card-labels.json`, written
+every 30 minutes by the **Card labels** workflow (`.github/workflows/card-labels.yml`, `scripts/card-labels.js`).
+The label rules exist in two places: the `LABELS` list and deal end-date reading in `pe-site.js` (the fallback, and
+the part that applies priority and drops ended deals in the reader's time zone) and the copy of the lookups in
+`scripts/card-labels.js`. Change a rule in both. To get a change onto the homepage at once, run the workflow from the
+Actions tab. If the file is missing, unreadable or older than 3 days, the homepage reads the blog feeds itself as before.
+
 ## Versions and rolling back
 
 Joe shows the version beside its name (for example JOE v1.0), and the browser console logs it.

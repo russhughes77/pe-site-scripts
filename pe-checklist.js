@@ -290,9 +290,13 @@ try {
    *   9.2  24 Nov 2026          Homepage speed, fourth step: the same job saves a compressed WebP copy of each tagged hero
    *                              picture (heroes/, up to three widths) and the hero uses it instead of the original, which
    *                              can be a heavy PNG (PageSpeed: 222 KiB saveable on today's). A missing or failing copy falls
-   *                              back to the original. Roll back to v9.1 (a540acd).
+   *                              back to the original. Roll back to v9.1 (a540acd). Commit 09a5902
+   *   9.3  24 Nov 2026          Homepage speed, fifth step: the FREE, UPDATED, DEAL, REVIEW and NEWS card labels are read from
+   *                              card-labels.json, kept by a 30-minute GitHub job, instead of about 1 MB of blog feeds in every
+   *                              visitor's browser. Tested for identical labels against the old method. If the file is missing,
+   *                              broken or over 3 days old the feeds are read in the browser as before. Roll back to v9.2 (09a5902).
    */
-  var PE_VERSION = '9.2';
+  var PE_VERSION = '9.3';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';

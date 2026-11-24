@@ -2424,6 +2424,11 @@ try {
  * simply returns nothing, so the extra spellings cost nothing.
  * All homepage article lists are labelled, including the "Latest Music And Audio
  * Production News" section (v2.3); set SECTION_TOO to false for the main grid only.
+ * Faster start (v9.3, 24 Nov 2026): the lists used to be read from the blog feeds in every
+ *   visitor's browser, about 1 MB on a first visit. A GitHub job now reads them every 30 minutes and
+ *   saves the answer in card-labels.json (scripts/card-labels.js, a copy of the lookups below), and
+ *   the homepage reads that. If the file is missing, unreadable or older than 3 days, the feeds are
+ *   read in the browser exactly as before. Roll back to v9.2 (09a5902).
  * ================================================================ */
 try {
 (function () {
@@ -2431,6 +2436,8 @@ try {
   var KEY = 'pe-card-labels-v60';   // renamed whenever the rules change so old cached lists are ignored
   var KEEP_MS = 60 * 60 * 1000;      // reuse the lists for an hour
   var BASE = '/production-expert-1?format=json&';
+  var LISTS_URL = 'https://russhughes77.github.io/pe-site-scripts/card-labels.json';   // v9.3
+  var LISTS_MAX_AGE = 3 * 864e5;     // older than this, the job is presumed stopped and the feeds are read here
   var MOST_READ = { text: 'Most Read', count: 3,
     url: 'https://russhughes77.github.io/pe-site-scripts/most-read.json' };
 
@@ -2586,9 +2593,44 @@ try {
       });
   }
 
+  // v9.3: the lists from card-labels.json, in the same shape as slowLists() gives: one array of
+  // article paths per label, in LABELS order. A deal whose end date has passed (in this reader's
+  // own time zone) is dropped, as before. Resolves to null when the file can't be used.
+  function fastLists() {
+    return fetch(LISTS_URL + '?d=' + new Date().toISOString().slice(0, 13), { mode: 'cors', credentials: 'omit' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (j) {
+        if (!j || !Array.isArray(j.labels)) return null;
+        var made = Date.parse(j.generated);
+        if (!made || Date.now() - made > LISTS_MAX_AGE) return null;
+        var n = new Date(), today = new Date(n.getFullYear(), n.getMonth(), n.getDate());
+        var out = [];
+        for (var i = 0; i < LABELS.length; i++) {
+          var L = LABELS[i], f = null;
+          for (var k = 0; k < j.labels.length; k++) if (j.labels[k] && j.labels[k].text === L.text) f = j.labels[k];
+          if (!f || !Array.isArray(f.items)) return null;
+          out.push(f.items.filter(function (x) {
+            if (!x || !x.p) return false;
+            if (!(L.dropEnded && x.e)) return true;
+            var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(x.e);
+            return !(m && new Date(+m[1], +m[2] - 1, +m[3]) < today);
+          }).map(function (x) { return x.p; }));
+        }
+        return out;
+      })
+      .catch(function () { return null; });
+  }
+
   // Builds { m: { "/article-path": "Free", ... }, r: { "/article-path": views } }
   function fetchMap() {
     var reads = fetchReads();
+    return fastLists().then(function (per) {
+      return per ? build(per, reads) : slowLists().then(function (per2) { return build(per2, reads); });
+    });
+  }
+
+  // The old way: read the blog feeds here (about 1 MB). Used when card-labels.json can't be.
+  function slowLists() {
     return Promise.all(LABELS.map(function (L) {
       var qs = [];
       L.names.forEach(function (n) {
@@ -2602,17 +2644,19 @@ try {
           .filter(function (x) { return x && !(L.dropEnded && x.ended); })
           .map(function (x) { return x.p; });
       });
-    })).then(function (perLabel) {
-      var map = {};
-      // Walk from lowest to highest priority so the higher label overwrites
-      for (var i = LABELS.length - 1; i >= 0; i--) {
-        perLabel[i].forEach(function (p) { if (p) map[p] = LABELS[i].text; });
-      }
-      return reads.then(function (r) {
-        var data = { t: Date.now(), m: map, r: r };
-        try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
-        return data;
-      });
+    }));
+  }
+
+  function build(perLabel, reads) {
+    var map = {};
+    // Walk from lowest to highest priority so the higher label overwrites
+    for (var i = LABELS.length - 1; i >= 0; i--) {
+      perLabel[i].forEach(function (p) { if (p) map[p] = LABELS[i].text; });
+    }
+    return reads.then(function (r) {
+      var data = { t: Date.now(), m: map, r: r };
+      try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) {}
+      return data;
     });
   }
 
