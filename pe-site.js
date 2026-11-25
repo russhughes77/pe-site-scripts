@@ -589,6 +589,76 @@ try {
     byline.parentNode.insertBefore(box, byline.nextSibling);
   }
 
+  /* Phone byline under the headline (v9.8, 25 Nov 2026). A reader asked for it: on a phone the
+   * "Posted by" column and photo sit at the very bottom of the page, so you only learn who wrote
+   * a personal piece after reading it. This adds a small line at the top of the article body, on
+   * phones only: round photo (36px), "By <name>" linking to their other articles, and the date.
+   * The placement section at the end of this file puts it first, above the partner label, read
+   * time and contents box. No photo for writers without one; nothing at all for the generic
+   * "Production Expert" byline. Tablets and desktops are untouched (hidden there). */
+  var BYLINE_CSS =
+    '.pe-byline{display:none}' +
+    '@media (max-width:640px){' +
+      '.pe-byline{display:flex;align-items:center;gap:10px;clear:both;margin:14px 0 14px;font-family:"Open Sans",sans-serif;font-size:14px;line-height:1.4;color:#6b6b70}' +
+      '.pe-byline-photo{flex:0 0 36px;width:36px;height:36px;border-radius:50%;overflow:hidden;background:#f4f6f8;display:block}' +
+      '.pe-byline-photo img{display:block;width:100%;height:100%;object-fit:cover}' +
+      '.pe-byline-text{min-width:0}' +
+      '.pe-byline-name{color:#222;font-weight:700;text-decoration:none}' +
+      '.pe-byline-date{display:block;font-size:13px}' +
+      'html.pe-dark .pe-byline{color:#a9adb3}' +
+      'html.pe-dark .pe-byline-name{color:#e8e8e8}' +
+      'html.pe-dark .pe-byline-photo{background:#26292e}' +
+    '}';
+
+  function addMobileByline(bio, author) {
+    if (document.querySelector('.pe-byline')) return;
+    var name = (bio && bio.name) || author;
+    if (!name || norm(name) === 'production expert') return;
+    var body = document.querySelector('body.view-item article.hentry .body.entry-content');
+    if (!body) return;
+    if (!document.getElementById('pe-byline-css')) {
+      var st = document.createElement('style');
+      st.id = 'pe-byline-css';
+      st.textContent = BYLINE_CSS;
+      document.head.appendChild(st);
+    }
+    var link = document.querySelector('article.hentry a[href*="?author="]');
+    var href = link ? link.getAttribute('href') : (bio && bio.url) || '';
+    var t = document.querySelector('article.hentry time');
+    var date = t ? t.textContent.replace(/\s+/g, ' ').trim() : '';
+    var iso = t && t.getAttribute('datetime'), dm = iso && iso.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (dm) date = ['January','February','March','April','May','June','July','August','September','October','November','December'][+dm[2] - 1] + ' ' + (+dm[3]) + ', ' + dm[1];   // same format as the date section
+
+    var box = document.createElement('div');
+    box.className = 'pe-byline pe-ui';
+    if (bio && bio.img) {
+      var pic = document.createElement(href ? 'a' : 'span');
+      pic.className = 'pe-byline-photo';
+      if (href) { pic.href = href; pic.setAttribute('aria-label', 'More from ' + name); }
+      var img = document.createElement('img');
+      img.src = bio.img.split('?')[0] + '?format=100w';   // tiny copy, enough for a 36px circle
+      img.alt = name;
+      pic.appendChild(img);
+      box.appendChild(pic);
+    }
+    var text = document.createElement('div');
+    text.className = 'pe-byline-text';
+    var by = document.createElement(href ? 'a' : 'span');
+    by.className = 'pe-byline-name';
+    if (href) by.href = href;
+    by.textContent = 'By ' + name;
+    text.appendChild(by);
+    if (date) {
+      var d = document.createElement('span');
+      d.className = 'pe-byline-date';
+      d.textContent = date;
+      text.appendChild(d);
+    }
+    box.appendChild(text);
+    body.insertBefore(box, body.firstChild);   // the placement section moves it into its final spot
+    window.dispatchEvent(new Event('pe-byline-ready'));
+  }
+
   function run() {
     if (!isArticlePage()) { log('not an article page'); return; }
 
@@ -603,8 +673,9 @@ try {
 
     loadAllBios().then(function (bios) {
       var bio = findBio(bios, author);
-      if (!bio) { log('no bio found for', author); return; }
+      if (!bio) { log('no bio found for', author); addMobileByline(null, author); return; }
       addPhoto(bio);
+      addMobileByline(bio, author);
       if (manual || document.querySelector('.pe-author-bio')) return;
       var target = null;
       for (var i = 0; i < TARGETS.length && !target; i++) target = document.querySelector(TARGETS[i]);
@@ -4307,7 +4378,7 @@ try {
  * ================================================================ */
 try {
 (function () {
-  var ORDER = ['.pe-partner-label', '.pe-badge', '.pe-contents'];
+  var ORDER = ['.pe-byline', '.pe-partner-label', '.pe-badge', '.pe-contents'];   // v9.8: phone byline first
   var LOOKAHEAD = 6;      // how many blocks from the top to search for the hero image
   var MIN_WIDTH = 0.6;    // a hero must fill at least 60% of the article column
   var NOTE_CHARS = 350;   // a text block longer than this is the article itself, not a note
@@ -4398,6 +4469,7 @@ try {
   setTimeout(run, 1500);
   addEventListener('load', run);
   addEventListener('mercury:load', function () { setTimeout(run, 100); });
+  addEventListener('pe-byline-ready', run);   // v9.8: the byline arrives after the bios load
 })();
 } catch (e) { if (window.console) console.warn('Production Expert script failed: placement for the top-of-article boxes', e); }
 
