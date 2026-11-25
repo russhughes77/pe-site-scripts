@@ -599,14 +599,14 @@ try {
   var BYLINE_CSS =
     '.pe-byline{display:none}' +
     '@media (max-width:640px){' +
-      '.pe-byline{display:flex;align-items:center;gap:12px;clear:both;margin:14px 0 18px;padding:4px 0 14px!important;background:none!important;border:0!important;border-bottom:1px solid #e3e3e6!important;border-radius:0!important;box-shadow:none!important;font-family:"Open Sans",sans-serif;font-size:13px;line-height:1.4;color:#6b6b70}' +
+      'html .pe-byline.pe-ui{display:flex;align-items:center;gap:12px;clear:both;margin:14px 0 18px;padding:4px 0 14px!important;background:none!important;border:0!important;border-bottom:1px solid #e3e3e6!important;border-radius:0!important;box-shadow:none!important;font-family:"Open Sans",sans-serif;font-size:13px;line-height:1.4;color:#6b6b70}' +
       '.pe-byline-photo{flex:0 0 40px;width:40px;height:40px;border-radius:50%;overflow:hidden;background:#f4f6f8;display:block}' +
       '.pe-byline-photo img{display:block;width:100%;height:100%;object-fit:cover}' +
       '.pe-byline-text{min-width:0}' +
-      '.pe-byline-name{display:block;font-size:14px;color:#222!important;font-weight:700;text-decoration:none}' +
-      '.pe-byline-date{display:block;font-size:12px}' +
-      'html.pe-dark .pe-byline,body.pe-dark .pe-byline{color:#a9adb3!important;border-bottom-color:#2a2c31!important}' +
-      'html.pe-dark .pe-byline-name,body.pe-dark .pe-byline-name{color:#e8e8e8!important}' +
+      'html .pe-byline .pe-byline-name{display:block;font-size:14px;color:#222!important;font-weight:700;text-decoration:none}' +
+      'html .pe-byline .pe-byline-date{display:block;font-size:12px;color:inherit!important}' +
+      'html.pe-dark .pe-byline.pe-ui,body.pe-dark .pe-byline.pe-ui{color:#a9adb3!important;border-bottom-color:#2a2c31!important}' +
+      'html.pe-dark .pe-byline.pe-ui .pe-byline-name,body.pe-dark .pe-byline.pe-ui .pe-byline-name{color:#e8e8e8!important}' +
       'html.pe-dark .pe-byline-photo,body.pe-dark .pe-byline-photo{background:#26292e}' +
     '}';
 
