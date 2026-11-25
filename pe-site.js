@@ -4401,7 +4401,18 @@ try {
 
   function isImage(b) { return /\b(image-block|gallery-block)\b/.test(b.className); }
 
+  // True when the article's hero picture sits outside the body (the promoted image carrying the title).
+  // Then no picture inside the body is the hero, so the boxes stay at the top of the body.
+  // Fixed 25 Nov 2026: on the 6 Vintage EQ round-up the boxes landed under the first plugin picture.
+  function heroOutsideBody(body) {
+    var h1 = document.querySelector('article.hentry h1');
+    if (!h1 || body.contains(h1)) return false;
+    var fig = h1.closest('figure, .sqs-block-image, .pe-hero-title-wrap');
+    return !!(fig && fig.querySelector('img') && !body.contains(fig));
+  }
+
   function hero(body) {
+    if (heroOutsideBody(body)) return null;
     var layout = body.querySelector('.sqs-layout');
     if (!layout) return null;
     var blocks = layout.querySelectorAll('.sqs-block');
