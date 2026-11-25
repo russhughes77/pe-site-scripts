@@ -309,8 +309,13 @@ try {
    *                              no pictures. On a phone it looked like any other story and could show the same one for days.
    *                              Tablets and desktops are unchanged. The Squarespace Header also hides it in CSS so it never
    *                              flashes. Roll back to v9.6 (979cf4d). Commit 5b3fe51
+   *   9.8  25 Nov 2026          Joe's alt text Use on an article with several pictures: before opening the next picture's panel,
+   *                              Joe now closes the open one (a click into the article text, as a person does) and waits for its
+   *                              alt box to go, then ignores any box that was already on screen. Fixes the second Use filling
+   *                              the first picture's box and not sticking unless you clicked into the text first.
+   *                              Roll back to v9.7 (ea0014f)
    */
-  var PE_VERSION = '9.7';
+  var PE_VERSION = '9.8';
   // 5.4: the help guide. The public editor copy, because contributors use the panel and Joe but can't sign in
   // to the dashboard; the team's full guide is linked from it. #t= picks the topic, &from= says where from.
   var HELP_URL = 'https://pe-related-answers.pages.dev/help';
@@ -3320,27 +3325,81 @@ try {
     });
     return out;
   }
+  // 9.8: closes the picture panel the way a person does, by clicking into the article's text, and waits
+  // until the alt text box has gone. Before this, a second Use found the first picture's box still on
+  // screen, filled that one, and Squarespace then opened the second picture's panel over the top, so
+  // the words never reached it (Russ, 25 Nov 2026: Use only worked again after clicking into the text).
+  function closeImagePanel() {
+    if (!altField()) return Promise.resolve();
+    var docs = [hostDoc(), document], para = null;
+    docs.some(function (doc) {
+      para = Array.prototype.filter.call(doc.querySelectorAll('.sqs-layout.sqs-editing .sqs-block-html p'), function (p) {
+        return !ours(p) && visible(p);
+      })[0] || null;
+      return !!para;
+    });
+    if (para) {
+      var w = para.ownerDocument.defaultView, r = para.getBoundingClientRect();
+      var at = { bubbles: true, cancelable: true, view: w, detail: 1, clientX: r.left + Math.min(20, r.width / 2), clientY: r.top + r.height / 2 };
+      ['mousedown', 'mouseup', 'click'].forEach(function (t) { para.dispatchEvent(new w.MouseEvent(t, at)); });
+    }
+    return waitFor(function () { return altField() ? null : true; }, 1500).then(function (gone) {
+      if (gone) return wait(250); // a moment for the editor to settle before the next picture opens
+      // still open: Escape closes it in most Squarespace panels
+      [hostDoc(), document].forEach(function (doc) {
+        try { doc.dispatchEvent(new doc.defaultView.KeyboardEvent('keydown', { key: 'Escape', keyCode: 27, bubbles: true })); } catch (e) {}
+      });
+      return waitFor(function () { return altField() ? null : true; }, 1000).then(function () { return wait(250); });
+    });
+  }
+
+  // 9.8: opens the target picture's panel and resolves with its alt text box, or null. Ignores a box that
+  // was already on screen before the double-click (the old picture's), and tries the double-click twice.
+  function openAltBox(src) {
+    var stale = altField();
+    function fresh() { var f = altField(); return f && f !== stale && f.isConnected ? f : null; }
+    function open() {
+      var img = editorImage(src);
+      if (!img) return Promise.resolve(null);
+      img.scrollIntoView({ block: 'center' });
+      var r = img.getBoundingClientRect(), w = img.ownerDocument.defaultView;
+      img.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, cancelable: true, view: w, detail: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
+      return waitFor(fresh, 1800);
+    }
+    return open().then(function (f) {
+      if (f) return f;
+      return open().then(function (g) {
+        if (g) return g;
+        // Squarespace can reuse the same box for the next picture; if so, take it once it has settled
+        return stale ? wait(600).then(function () { return altField(); }) : null;
+      });
+    });
+  }
+
   function useAlt(key, src, text) {
     var img = editorImage(src);
     if (!img) { useDone[key] = { st: 'failed', why: 'That picture isn’t open for editing. Click Edit, then Use again.' }; return drawDrawer(); }
     useDone[key] = { st: 'busy' };
     drawDrawer();
-    img.scrollIntoView({ block: 'center' });
-    var r = img.getBoundingClientRect(), w = img.ownerDocument.defaultView;
-    img.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, cancelable: true, view: w, detail: 2, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2 }));
-    var tries = 0;
-    (function look() {
-      var f = altField();
-      if (!f && ++tries < 12) return setTimeout(look, 150);
-      if (!f) { useDone[key] = { st: 'failed', why: 'Squarespace didn’t open the picture’s settings.' }; return drawDrawer(); }
+    function fail(why) { useDone[key] = { st: 'failed', why: why }; drawDrawer(); }
+    function fill(f, again) {
       // 5.5: same typing and checks as the other fields (was one try, checked after 150ms)
-      fillAndHold(f, text).then(function (held) {
-        useDone[key] = held
-          ? { st: 'used', at: Date.now(), field: 'alt', value: text, why: '✓ Filled in. Click away from the picture panel, then Save.' }
-          : { st: 'failed', why: 'Squarespace didn’t take the alt text. Copy it and paste it in.' };
+      return fillAndHold(f, text).then(function (held) {
+        // 9.8: Squarespace can redraw the panel while it settles, leaving Joe holding a box that has gone
+        if (held && f.isConnected && altField() === f) return true;
+        if (!again) return false;
+        var g = altField();
+        return g ? fill(g, false) : false;
+      });
+    }
+    closeImagePanel().then(function () { return openAltBox(src); }).then(function (f) {
+      if (!f) return fail('Squarespace didn’t open the picture’s settings.');
+      return fill(f, true).then(function (ok) {
+        if (!ok) return fail('Squarespace didn’t take the alt text. Copy it and paste it in.');
+        useDone[key] = { st: 'used', at: Date.now(), field: 'alt', value: text, why: '✓ Filled in. Click away from the picture panel, then Save.' };
         drawDrawer();
       });
-    })();
+    }).catch(function () { fail('Squarespace didn’t take the alt text. Copy it and paste it in.'); });
   }
 
   // The buttons for one suggestion: Use (one per field), then its state
