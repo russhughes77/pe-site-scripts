@@ -592,22 +592,22 @@ try {
   /* Phone byline under the headline (v9.8, 25 Nov 2026). A reader asked for it: on a phone the
    * "Posted by" column and photo sit at the very bottom of the page, so you only learn who wrote
    * a personal piece after reading it. This adds a small line at the top of the article body, on
-   * phones only: round photo (36px), "By <name>" linking to their other articles, and the date.
+   * phones only: round photo (40px), "By <name>" linking to their other articles, and the date.
    * The placement section at the end of this file puts it first, above the partner label, read
    * time and contents box. No photo for writers without one; nothing at all for the generic
    * "Production Expert" byline. Tablets and desktops are untouched (hidden there). */
   var BYLINE_CSS =
     '.pe-byline{display:none}' +
     '@media (max-width:640px){' +
-      '.pe-byline{display:flex;align-items:center;gap:10px;clear:both;margin:14px 0 14px;font-family:"Open Sans",sans-serif;font-size:14px;line-height:1.4;color:#6b6b70}' +
-      '.pe-byline-photo{flex:0 0 36px;width:36px;height:36px;border-radius:50%;overflow:hidden;background:#f4f6f8;display:block}' +
+      '.pe-byline{display:flex;align-items:center;gap:12px;clear:both;margin:14px 0 18px;padding:4px 0 14px!important;background:none!important;border:0!important;border-bottom:1px solid #e3e3e6!important;border-radius:0!important;box-shadow:none!important;font-family:"Open Sans",sans-serif;font-size:13px;line-height:1.4;color:#6b6b70}' +
+      '.pe-byline-photo{flex:0 0 40px;width:40px;height:40px;border-radius:50%;overflow:hidden;background:#f4f6f8;display:block}' +
       '.pe-byline-photo img{display:block;width:100%;height:100%;object-fit:cover}' +
       '.pe-byline-text{min-width:0}' +
-      '.pe-byline-name{color:#222;font-weight:700;text-decoration:none}' +
-      '.pe-byline-date{display:block;font-size:13px}' +
-      'html.pe-dark .pe-byline{color:#a9adb3}' +
-      'html.pe-dark .pe-byline-name{color:#e8e8e8}' +
-      'html.pe-dark .pe-byline-photo{background:#26292e}' +
+      '.pe-byline-name{display:block;font-size:14px;color:#222!important;font-weight:700;text-decoration:none}' +
+      '.pe-byline-date{display:block;font-size:12px}' +
+      'html.pe-dark .pe-byline,body.pe-dark .pe-byline{color:#a9adb3!important;border-bottom-color:#2a2c31!important}' +
+      'html.pe-dark .pe-byline-name,body.pe-dark .pe-byline-name{color:#e8e8e8!important}' +
+      'html.pe-dark .pe-byline-photo,body.pe-dark .pe-byline-photo{background:#26292e}' +
     '}';
 
   function addMobileByline(bio, author) {
@@ -636,7 +636,7 @@ try {
       pic.className = 'pe-byline-photo';
       if (href) { pic.href = href; pic.setAttribute('aria-label', 'More from ' + name); }
       var img = document.createElement('img');
-      img.src = bio.img.split('?')[0] + '?format=100w';   // tiny copy, enough for a 36px circle
+      img.src = bio.img.split('?')[0] + '?format=100w';   // tiny copy, enough for a 40px circle
       img.alt = name;
       pic.appendChild(img);
       box.appendChild(pic);
