@@ -3908,9 +3908,23 @@ try {
       css();
       var list = first.parentNode;
       var at = list.querySelectorAll('.summary-item')[POSITION] || null;
+      // Keep the grid at the number Squarespace was set to (18): each refreshed card added at the top
+      // pushes the oldest card off the end, so the last row stays full (26 Nov 2026)
+      var before = list.querySelectorAll('.summary-item').length;
+      var added = 0;
       items.filter(function (a) { return !have[a.p]; }).slice(0, MAX).forEach(function (a) {
         list.insertBefore(card(first, a), at);
+        added++;
       });
+      if (added) {
+        var all = Array.prototype.slice.call(list.querySelectorAll('.summary-item'));
+        while (added > 0 && all.length > before) {
+          var last = all.pop();
+          if (last.classList.contains('pe-updated-card')) continue;
+          last.parentNode.removeChild(last);
+          added--;
+        }
+      }
       setTimeout(function () { try { window.dispatchEvent(new Event('resize')); } catch (e) {} }, 60);
     });
   }
